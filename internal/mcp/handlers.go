@@ -3,9 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"log"
+	db "memento-mcp/internal/indexing"
 	"net/http"
-
-	db "memento-mcp/internal/database"
 )
 
 type Handler struct {
@@ -13,10 +12,10 @@ type Handler struct {
 	db  *db.DB
 }
 
-func New(db *db.DB) *Handler {
+func New(database *db.DB) *Handler {
 	return &Handler{
 		mux: http.NewServeMux(),
-		db:  db,
+		db:  database,
 	}
 }
 
