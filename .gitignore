@@ -1,0 +1,27 @@
+# Build files
+build
+memento-mcp
+
+# Environment variable files
+.env*
+
+# Go
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go build cache
+/go.work
+/go.work.sum
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
