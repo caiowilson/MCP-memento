@@ -1,42 +1,21 @@
-package handlers
+package mcp
 
-import (
-	"encoding/json"
-	"log"
-	db "memento-mcp/internal/indexing"
-	"net/http"
-)
+// Handler is a stub for the MCP server functionality.
+// For now it does not start an HTTP server. We'll add MCP
+// protocol handling later.
+type Handler struct{}
 
-type Handler struct {
-	mux *http.ServeMux
-	db  *db.DB
+func (h *Handler) StartServer() any {
+	panic("unimplemented")
 }
 
-func New(database *db.DB) *Handler {
-	return &Handler{
-		mux: http.NewServeMux(),
-		db:  database,
-	}
+// New creates a new MCP handler stub.
+func New() *Handler {
+	return &Handler{}
 }
 
-func (h *Handler) SetupRoutes() {
-	h.mux.HandleFunc("/health", h.HealthCheck)
-
-	// Add more routes here (E.g.)
-	// h.mux.HandleFunc("/hello", h.Hello)
-}
-
-func (h *Handler) StartServer() error {
-	err := http.ListenAndServe(":8080", h.mux)
-	if err != nil {
-		return err
-	}
+// Setup is a placeholder for MCP setup logic.
+func (h *Handler) Setup() error {
+	// no-op for now
 	return nil
-}
-
-func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-
-	log.Println("Health check passed")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode("OK")
 }
