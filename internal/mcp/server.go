@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"memento-mcp/internal/indexing"
@@ -90,12 +91,21 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 		_ = s.idx.IndexAll(ctx)
 	}()
 
+	notifySemantic := func(add, del []string) {
+		if !touchesGoSemantic(add) && !touchesGoSemantic(del) {
+			return
+		}
+		InvalidateGoSemanticCache(s.root)
+		go WarmGoSemanticCache(ctx, s.root)
+	}
+
 	if indexing.IsGitRepo(s.root) {
 		monitor := indexing.NewGitChangeMonitor(
 			s.root,
 			s.idx,
 			time.Duration(envInt("MEMENTO_GIT_POLL_SECONDS", 2))*time.Second,
 			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
+			notifySemantic,
 		)
 		monitor.Start(ctx)
 		return
@@ -105,8 +115,27 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 		s.root,
 		s.idx,
 		time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
+		notifySemantic,
 	)
 	_ = monitor.Start(ctx)
+}
+
+func touchesGoSemantic(paths []string) bool {
+	for _, p := range paths {
+		if isGoSemanticPath(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isGoSemanticPath(rel string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	base := filepath.Base(rel)
+	if base == "go.mod" || base == "go.sum" {
+		return true
+	}
+	return strings.HasSuffix(rel, ".go")
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {

@@ -38,7 +38,7 @@ func TestFSChangeMonitorDetectsWrites(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mon := NewFSChangeMonitor(root, idx, 50*time.Millisecond)
+	mon := NewFSChangeMonitor(root, idx, 50*time.Millisecond, nil)
 	if err := mon.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

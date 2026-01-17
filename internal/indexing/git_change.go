@@ -16,13 +16,16 @@ type GitChangeMonitor struct {
 	idx        *Indexer
 	interval   time.Duration
 	debounce   time.Duration
+	onChange   ChangeHandler
 	pendingAdd map[string]struct{}
 	pendingDel map[string]struct{}
 	mu         sync.Mutex
 	timer      *time.Timer
 }
 
-func NewGitChangeMonitor(rootAbs string, idx *Indexer, interval, debounce time.Duration) *GitChangeMonitor {
+type ChangeHandler func(add, del []string)
+
+func NewGitChangeMonitor(rootAbs string, idx *Indexer, interval, debounce time.Duration, onChange ChangeHandler) *GitChangeMonitor {
 	if interval <= 0 {
 		interval = 2 * time.Second
 	}
@@ -34,6 +37,7 @@ func NewGitChangeMonitor(rootAbs string, idx *Indexer, interval, debounce time.D
 		idx:        idx,
 		interval:   interval,
 		debounce:   debounce,
+		onChange:   onChange,
 		pendingAdd: map[string]struct{}{},
 		pendingDel: map[string]struct{}{},
 	}
@@ -105,6 +109,9 @@ func (m *GitChangeMonitor) flush() {
 	}
 	if len(add) > 0 {
 		_ = m.idx.EnsureIndexed(context.Background(), add)
+	}
+	if m.onChange != nil {
+		m.onChange(add, del)
 	}
 }
 

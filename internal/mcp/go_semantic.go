@@ -39,6 +39,14 @@ func getGoSemanticIndex(ctx context.Context, rootAbs string) (*goSemanticIndex, 
 	return idx, nil
 }
 
+func InvalidateGoSemanticCache(rootAbs string) {
+	goIndexCache.Delete(filepath.Clean(rootAbs))
+}
+
+func WarmGoSemanticCache(ctx context.Context, rootAbs string) {
+	_, _ = getGoSemanticIndex(ctx, rootAbs)
+}
+
 func addGoTypeSemanticRelated(ctx context.Context, rootAbs, targetAbs, targetRel string, c *relatedCollector) {
 	_ = ctx
 	idx, err := getGoSemanticIndex(ctx, rootAbs)

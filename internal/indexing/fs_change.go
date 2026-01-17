@@ -15,6 +15,7 @@ type FSChangeMonitor struct {
 	root     string
 	idx      *Indexer
 	debounce time.Duration
+	onChange ChangeHandler
 
 	mu         sync.Mutex
 	pendingAdd map[string]struct{}
@@ -22,7 +23,7 @@ type FSChangeMonitor struct {
 	timer      *time.Timer
 }
 
-func NewFSChangeMonitor(rootAbs string, idx *Indexer, debounce time.Duration) *FSChangeMonitor {
+func NewFSChangeMonitor(rootAbs string, idx *Indexer, debounce time.Duration, onChange ChangeHandler) *FSChangeMonitor {
 	if debounce <= 0 {
 		debounce = 500 * time.Millisecond
 	}
@@ -30,6 +31,7 @@ func NewFSChangeMonitor(rootAbs string, idx *Indexer, debounce time.Duration) *F
 		root:       rootAbs,
 		idx:        idx,
 		debounce:   debounce,
+		onChange:   onChange,
 		pendingAdd: map[string]struct{}{},
 		pendingDel: map[string]struct{}{},
 	}
@@ -137,6 +139,9 @@ func (m *FSChangeMonitor) flush() {
 	}
 	if len(add) > 0 {
 		_ = m.idx.EnsureIndexed(context.Background(), add)
+	}
+	if m.onChange != nil {
+		m.onChange(add, del)
 	}
 }
 

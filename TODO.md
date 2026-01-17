@@ -50,23 +50,23 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 5 — Go semantic freshness
 
+- Status: done
+- Owner: codex
+
+### Steps
+
+- [x] Invalidate go/types cache on `*.go`, `go.mod`, `go.sum` changes (owner: codex) (status: done)
+- [x] Rebuild semantic index in the background (owner: codex) (status: done)
+
+## Slice 6 — Context quality + hard limits
+
 - Status: in-progress
 - Owner: codex
 
 ### Steps
 
-- [ ] Invalidate go/types cache on `*.go`, `go.mod`, `go.sum` changes (owner: codex) (status: in-progress)
-- [ ] Rebuild semantic index in the background (owner: codex) (status: in-progress)
-
-## Slice 6 — Context quality + hard limits
-
-- Status: todo
-- Owner: unassigned
-
-### Steps
-
-- [ ] Add total byte limits + clamping metadata to `repo.context` (owner: unassigned) (status: todo)
-- [ ] Improve chunk scoring (focus hits > semantic edges > imports > same-dir) (owner: unassigned) (status: todo)
+- [ ] Add total byte limits + clamping metadata to `repo.context` (owner: codex) (status: in-progress)
+- [ ] Improve chunk scoring (focus hits > semantic edges > imports > same-dir) (owner: codex) (status: in-progress)
 
 ## Slice 7 — Ops/admin tools
 
