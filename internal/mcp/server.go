@@ -233,6 +233,15 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallR
 			break
 		}
 	}
+	if tool == nil && strings.Contains(params.Name, ".") {
+		alt := strings.ReplaceAll(params.Name, ".", "_")
+		for i := range s.tools {
+			if s.tools[i].Name == alt {
+				tool = &s.tools[i]
+				break
+			}
+		}
+	}
 	if tool == nil || tool.Handler == nil {
 		return toolCallResult{}, fmt.Errorf("unknown tool: %s", params.Name)
 	}

@@ -16,7 +16,7 @@ import (
 
 func newRepoRelatedFilesTool(root string) Tool {
 	return Tool{
-		Name:        "repo.related_files",
+		Name:        "repo_related_files",
 		Description: "Given a repo-relative file path, returns related files (same folder, imports, importers, and basic semantic refs).",
 		InputSchema: map[string]any{
 			"type":     "object",

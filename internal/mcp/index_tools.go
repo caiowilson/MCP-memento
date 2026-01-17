@@ -9,7 +9,7 @@ import (
 
 func newRepoIndexStatusTool(idx *indexing.Indexer) Tool {
 	return Tool{
-		Name:        "repo.index_status",
+		Name:        "repo_index_status",
 		Description: "Return the current automatic indexer status.",
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -22,7 +22,7 @@ func newRepoIndexStatusTool(idx *indexing.Indexer) Tool {
 
 func newRepoReindexTool(idx *indexing.Indexer) Tool {
 	return Tool{
-		Name:        "repo.reindex",
+		Name:        "repo_reindex",
 		Description: "Trigger a full re-index of the workspace (automatic memory).",
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -37,7 +37,7 @@ func newRepoReindexTool(idx *indexing.Indexer) Tool {
 
 func newRepoClearIndexTool(idx *indexing.Indexer) Tool {
 	return Tool{
-		Name:        "repo.clear_index",
+		Name:        "repo_clear_index",
 		Description: "Remove all indexed chunks and reset the index manifest.",
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -53,7 +53,7 @@ func newRepoClearIndexTool(idx *indexing.Indexer) Tool {
 
 func newRepoIndexDebugTool(idx *indexing.Indexer) Tool {
 	return Tool{
-		Name:        "repo.index_debug",
+		Name:        "repo_index_debug",
 		Description: "Return index debug information (paths count, filters, last error).",
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {

@@ -45,14 +45,22 @@ You can verify the server responds to MCP JSON-RPC over stdio:
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/memento-mcp
+
+To call a tool, use `tools/call`:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"repo_index_debug","arguments":{}}}' | ./bin/memento-mcp
+```
 ```
 
 ### What it provides
 
-- Repo context tools (`repo.*`) for listing, reading, and searching files.
-- `repo.related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
-- `repo.context` to fetch a single “context window” (uses automatic indexing in the background).
-- Repo-scoped explicit memory (`memory.*`) persisted under `~/.memento-mcp/`.
+- Repo context tools (`repo_*`) for listing, reading, and searching files.
+- `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
+- `repo_context` to fetch a single “context window” (uses automatic indexing in the background).
+- Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
 
 ### Index tuning (optional)
 

@@ -14,7 +14,7 @@ import (
 
 func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 	return Tool{
-		Name:        "repo.context",
+		Name:        "repo_context",
 		Description: "Return indexed code chunks for a file plus its related files (best-effort automatic context window).",
 		InputSchema: map[string]any{
 			"type":     "object",

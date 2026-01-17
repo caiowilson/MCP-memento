@@ -8,7 +8,7 @@ import (
 
 func newMemoryUpsertTool(store *NoteStore) Tool {
 	return Tool{
-		Name:        "memory.upsert",
+		Name:        "memory_upsert",
 		Description: "Upsert a repo-scoped note (explicit memory) keyed by `key`.",
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -79,7 +79,7 @@ func newMemoryUpsertTool(store *NoteStore) Tool {
 
 func newMemorySearchTool(store *NoteStore) Tool {
 	return Tool{
-		Name:        "memory.search",
+		Name:        "memory_search",
 		Description: "Search repo-scoped notes (explicit memory) by substring and/or tags.",
 		InputSchema: map[string]any{
 			"type": "object",
@@ -131,7 +131,7 @@ func newMemorySearchTool(store *NoteStore) Tool {
 
 func newMemoryClearTool(store *NoteStore) Tool {
 	return Tool{
-		Name:        "memory.clear",
+		Name:        "memory_clear",
 		Description: "Clear all repo-scoped notes.",
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {

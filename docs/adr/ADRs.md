@@ -61,16 +61,16 @@ Start with an MVP MCP stdio server that exposes repository context tools and a s
 
 #### Repo context tools (MVP)
 
-- `repo.list_files` — list files under the workspace root (with basic ignores)
-- `repo.read_file` — read file content (optionally line-bounded)
-- `repo.search` — substring search across files (optionally glob-bounded)
-- `repo.related_files` — fetch related files for a given path (same folder, imports, importers; heuristics)
-- `repo.context` — fetch indexed chunks for a file plus its related files
+- `repo_list_files` — list files under the workspace root (with basic ignores)
+- `repo_read_file` — read file content (optionally line-bounded)
+- `repo_search` — substring search across files (optionally glob-bounded)
+- `repo_related_files` — fetch related files for a given path (same folder, imports, importers; heuristics)
+- `repo_context` — fetch indexed chunks for a file plus its related files
 
 #### Repo-scoped memory (MVP)
 
-- `memory.upsert` — store/update a note keyed to the repo (optionally associated with a path and tags)
-- `memory.search` — search stored notes by substring/tags
+- `memory_upsert` — store/update a note keyed to the repo (optionally associated with a path and tags)
+- `memory_search` — search stored notes by substring/tags
 
 The server runs over stdio JSON-RPC 2.0 using MCP methods `initialize`, `tools/list`, and `tools/call`.
 
@@ -103,7 +103,7 @@ A naive approach (same-folder + substring search) is often too noisy and misses 
 
 ### Decision
 
-Implement `repo.related_files` using a layered, language-aware approach that stays decoupled:
+Implement `repo_related_files` using a layered, language-aware approach that stays decoupled:
 
 - Shared heuristics:
   - same-directory files
@@ -158,7 +158,7 @@ Implement a background indexer that:
 - Persists chunks on disk under `~/.memento-mcp/` scoped to the repo root.
 - Enforces byte budgets (max total bytes indexed, max file size, chunk size).
 
-Expose a tool (`repo.context`) that returns indexed chunks for the active file plus its related files.
+Expose a tool (`repo_context`) that returns indexed chunks for the active file plus its related files.
 
 ### Consequences
 
@@ -236,7 +236,7 @@ Adopt a tiered index + controller architecture:
   - Reads file bytes, chunks into bounded segments, writes to persistent store.
   - Maintains a manifest for incremental updates (size/modtime/hash and chunk count).
 - `SemanticIndexer` (Go)
-  - Produces semantic edges used by `repo.related_files` / `repo.context`.
+  - Produces semantic edges used by `repo_related_files` / `repo_context`.
   - Runs in background; can be restarted/invalidate-on-change.
 
 #### Data flow (high level)
@@ -261,7 +261,7 @@ This section pins the expected behavior and shapes of the primary “automatic m
 
 All tool outputs should be machine-readable JSON objects (even if transported as MCP `text` content).
 
-#### `repo.context`
+#### `repo_context`
 
 **Purpose**
 
@@ -313,7 +313,7 @@ Return a single “context window” for an active file by combining:
 - If `path` is missing/invalid/unreadable: return a tool error.
 - If indexing is incomplete: return best-effort `files` based on what is already indexed.
 
-#### `repo.related_files`
+#### `repo_related_files`
 
 **Purpose**
 
@@ -347,7 +347,7 @@ Return an ordered list of repo-relative files related to a given file. Relations
 - Sorted by descending `score`, then path.
 - `reasons` provides stable, inspectable justification for why a file was included.
 
-#### `repo.index_status`
+#### `repo_index_status`
 
 **Purpose**
 
@@ -366,13 +366,13 @@ Expose whether automatic indexing is ready and provide basic freshness/size indi
 }
 ```
 
-#### `repo.reindex`
+#### `repo_reindex`
 
 **Purpose**
 
-Trigger a full re-index (useful for recovery if change detection misses events). Returns the same shape as `repo.index_status`.
+Trigger a full re-index (useful for recovery if change detection misses events). Returns the same shape as `repo_index_status`.
 
-#### `repo.clear_index`
+#### `repo_clear_index`
 
 **Purpose**
 
@@ -380,9 +380,9 @@ Delete all persisted index data for the repo (chunks + manifest).
 
 **Output**
 
-Returns the same shape as `repo.index_status`.
+Returns the same shape as `repo_index_status`.
 
-#### `repo.index_debug`
+#### `repo_index_debug`
 
 **Purpose**
 
@@ -405,7 +405,7 @@ Return index debug information to help diagnose filter/coverage issues.
 }
 ```
 
-#### `memory.clear`
+#### `memory_clear`
 
 **Purpose**
 
