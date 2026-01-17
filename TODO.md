@@ -40,23 +40,23 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 4 — Filesystem watcher fallback
 
+- Status: done
+- Owner: codex
+
+### Steps
+
+- [x] Add fs watcher for non-git repos (create/modify/delete/rename) (owner: codex) (status: done)
+- [x] Debounce and re-index touched paths (owner: codex) (status: done)
+
+## Slice 5 — Go semantic freshness
+
 - Status: in-progress
 - Owner: codex
 
 ### Steps
 
-- [ ] Add fs watcher for non-git repos (create/modify/delete/rename) (owner: codex) (status: in-progress)
-- [ ] Debounce and re-index touched paths (owner: codex) (status: in-progress)
-
-## Slice 5 — Go semantic freshness
-
-- Status: todo
-- Owner: unassigned
-
-### Steps
-
-- [ ] Invalidate go/types cache on `*.go`, `go.mod`, `go.sum` changes (owner: unassigned) (status: todo)
-- [ ] Rebuild semantic index in the background (owner: unassigned) (status: todo)
+- [ ] Invalidate go/types cache on `*.go`, `go.mod`, `go.sum` changes (owner: codex) (status: in-progress)
+- [ ] Rebuild semantic index in the background (owner: codex) (status: in-progress)
 
 ## Slice 6 — Context quality + hard limits
 

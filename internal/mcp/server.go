@@ -98,7 +98,15 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
 		)
 		monitor.Start(ctx)
+		return
 	}
+
+	monitor := indexing.NewFSChangeMonitor(
+		s.root,
+		s.idx,
+		time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
+	)
+	_ = monitor.Start(ctx)
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {

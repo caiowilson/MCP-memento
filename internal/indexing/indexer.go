@@ -283,6 +283,9 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 		default:
 		}
 
+		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
+			continue
+		}
 		abs, err := safeJoin(i.rootAbs, rel)
 		if err != nil {
 			continue
