@@ -14,3 +14,4 @@ go run ./cmd/server
 
 - Project docs: `docs/README.md`
 - Architecture decisions (ADRs): `docs/adr/README.md`
+- To do: `TODO.md`

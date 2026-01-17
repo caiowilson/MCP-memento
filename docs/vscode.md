@@ -2,21 +2,50 @@
 
 This server is designed to be launched as an MCP stdio server with the working directory set to the repository root. It exposes tools for reading/searching the repo and storing repo-scoped notes.
 
-### Run locally
+### Build a local binary
 
 From the repo root:
 
 ```bash
-go run ./cmd/server
+go build -o ./bin/memento-mcp ./cmd/server
 ```
 
-### Configure in VS Code
+### Run locally (binary)
 
-Use any VS Code extension that supports MCP stdio servers and configure it to run:
+From the repo root:
 
-- Command: `go`
-- Args: `run`, `./cmd/server`
-- CWD: your workspace root
+```bash
+./bin/memento-mcp
+```
+
+### Configure in VS Code (client-agnostic)
+
+Use any VS Code extension that supports MCP stdio servers and configure it to run the binary with the workspace root as its CWD. A generic config looks like:
+
+```
+{
+  "name": "memento-mcp",
+  "transport": "stdio",
+  "command": "${workspaceFolder}/bin/memento-mcp",
+  "args": [],
+  "cwd": "${workspaceFolder}",
+  "env": {
+    "MEMENTO_INDEX_POLL_SECONDS": "10"
+  }
+}
+```
+
+If your MCP client uses different field names, map them to the same concepts: **command**, **args**, **cwd**, **env**, and **stdio transport**.
+
+### Smoke test (raw stdio)
+
+You can verify the server responds to MCP JSON-RPC over stdio:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/memento-mcp
+```
 
 ### What it provides
 
