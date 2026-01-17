@@ -60,20 +60,20 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 6 — Context quality + hard limits
 
+- Status: done
+- Owner: codex
+
+### Steps
+
+- [x] Add total byte limits + clamping metadata to `repo.context` (owner: codex) (status: done)
+- [x] Improve chunk scoring (focus hits > semantic edges > imports > same-dir) (owner: codex) (status: done)
+
+## Slice 7 — Ops/admin tools
+
 - Status: in-progress
 - Owner: codex
 
 ### Steps
 
-- [ ] Add total byte limits + clamping metadata to `repo.context` (owner: codex) (status: in-progress)
-- [ ] Improve chunk scoring (focus hits > semantic edges > imports > same-dir) (owner: codex) (status: in-progress)
-
-## Slice 7 — Ops/admin tools
-
-- Status: todo
-- Owner: unassigned
-
-### Steps
-
-- [ ] Add `repo.clear_index` / `memory.clear` tools (owner: unassigned) (status: todo)
-- [ ] Add an index/debug tool (counts, filters applied, last error) (owner: unassigned) (status: todo)
+- [ ] Add `repo.clear_index` / `memory.clear` tools (owner: codex) (status: in-progress)
+- [ ] Add an index/debug tool (counts, filters applied, last error) (owner: codex) (status: in-progress)
