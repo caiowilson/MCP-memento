@@ -59,3 +59,5 @@ printf '%s\n' \
 - `MEMENTO_INDEX_POLL_SECONDS` (default `10`)
 - `MEMENTO_INDEX_MAX_TOTAL_BYTES` (default `20971520`)
 - `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)
+- `MEMENTO_GIT_POLL_SECONDS` (default `2`)
+- `MEMENTO_GIT_DEBOUNCE_MS` (default `500`)

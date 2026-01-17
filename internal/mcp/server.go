@@ -46,9 +46,14 @@ func NewServer(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
+	isGit := indexing.IsGitRepo(absRoot)
+	pollSeconds := envInt("MEMENTO_INDEX_POLL_SECONDS", 10)
+	if isGit {
+		pollSeconds = 0
+	}
 	idxCfg := indexing.Config{
 		RootAbs:       absRoot,
-		PollInterval:  time.Duration(envInt("MEMENTO_INDEX_POLL_SECONDS", 10)) * time.Second,
+		PollInterval:  time.Duration(pollSeconds) * time.Second,
 		MaxTotalBytes: int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
 		MaxFileBytes:  int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
 	}
@@ -84,6 +89,16 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 	go func() {
 		_ = s.idx.IndexAll(ctx)
 	}()
+
+	if indexing.IsGitRepo(s.root) {
+		monitor := indexing.NewGitChangeMonitor(
+			s.root,
+			s.idx,
+			time.Duration(envInt("MEMENTO_GIT_POLL_SECONDS", 2))*time.Second,
+			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
+		)
+		monitor.Start(ctx)
+	}
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {

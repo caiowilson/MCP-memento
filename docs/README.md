@@ -22,7 +22,7 @@ This repository is a work-in-progress Go implementation of an MCP server. The co
 
 ### Automatic indexing
 
-On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo.context` can return useful chunks quickly. See `docs/adr/ADRs.md`.
+On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo.context` can return useful chunks quickly. For git repos it prefers `git status` to detect changes; otherwise it falls back to periodic scanning. See `docs/adr/ADRs.md`.
 
 Default include/exclude rules (configurable in code):
 

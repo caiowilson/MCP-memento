@@ -20,33 +20,33 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 2 — Indexer safety + file selection
 
+- Status: done
+- Owner: codex
+
+### Steps
+
+- [x] Implement explicit allowlist (Go + high-signal files) and denylist (secrets/binaries) (owner: codex) (status: done)
+- [x] Document default include/exclude rules (owner: codex) (status: done)
+
+## Slice 3 — Git-first incremental reindex
+
+- Status: done
+- Owner: codex
+
+### Steps
+
+- [x] Detect git worktree and use `git status --porcelain -z --untracked-files=all` (owner: codex) (status: done)
+- [x] Debounce and re-index only changed paths (owner: codex) (status: done)
+
+## Slice 4 — Filesystem watcher fallback
+
 - Status: in-progress
 - Owner: codex
 
 ### Steps
 
-- [ ] Implement explicit allowlist (Go + high-signal files) and denylist (secrets/binaries) (owner: codex) (status: in-progress)
-- [ ] Document default include/exclude rules (owner: codex) (status: in-progress)
-
-## Slice 3 — Git-first incremental reindex
-
-- Status: todo
-- Owner: unassigned
-
-### Steps
-
-- [ ] Detect git worktree and use `git status --porcelain -z --untracked-files=all` (owner: unassigned) (status: todo)
-- [ ] Debounce and re-index only changed paths (owner: unassigned) (status: todo)
-
-## Slice 4 — Filesystem watcher fallback
-
-- Status: todo
-- Owner: unassigned
-
-### Steps
-
-- [ ] Add fs watcher for non-git repos (create/modify/delete/rename) (owner: unassigned) (status: todo)
-- [ ] Debounce and re-index touched paths (owner: unassigned) (status: todo)
+- [ ] Add fs watcher for non-git repos (create/modify/delete/rename) (owner: codex) (status: in-progress)
+- [ ] Debounce and re-index touched paths (owner: codex) (status: in-progress)
 
 ## Slice 5 — Go semantic freshness
 

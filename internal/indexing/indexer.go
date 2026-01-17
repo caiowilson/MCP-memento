@@ -119,6 +119,25 @@ func (i *Indexer) EnsureIndexed(ctx context.Context, relPaths []string) error {
 	return <-done
 }
 
+func (i *Indexer) RemovePaths(relPaths []string) error {
+	relPaths = normalizeRelPaths(relPaths)
+	if len(relPaths) == 0 {
+		return nil
+	}
+	i.mu.Lock()
+	for _, rel := range relPaths {
+		ent, ok := i.manifest.Files[rel]
+		if !ok {
+			continue
+		}
+		_ = os.Remove(i.chunkFilePath(ent.ID))
+		i.manifest.TotalBytes -= ent.Size
+		delete(i.manifest.Files, rel)
+	}
+	i.mu.Unlock()
+	return i.saveManifest()
+}
+
 func (i *Indexer) Status() Status {
 	i.mu.Lock()
 	defer i.mu.Unlock()
