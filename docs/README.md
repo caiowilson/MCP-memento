@@ -17,8 +17,11 @@ This repository is a work-in-progress Go implementation of an MCP server. The co
 - `repo.context` — indexed chunks for a file + related files
 - `repo.index_status` — background indexer status
 - `repo.reindex` — trigger full re-index
+- `repo.clear_index` — delete all indexed chunks and manifest
+- `repo.index_debug` — index debug info (filters, counts, last error)
 - `memory.upsert` — store/update repo-scoped notes
 - `memory.search` — search repo-scoped notes
+- `memory.clear` — delete all repo-scoped notes
 
 ### Automatic indexing
 

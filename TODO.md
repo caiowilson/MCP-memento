@@ -70,10 +70,10 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 7 — Ops/admin tools
 
-- Status: in-progress
+- Status: done
 - Owner: codex
 
 ### Steps
 
-- [ ] Add `repo.clear_index` / `memory.clear` tools (owner: codex) (status: in-progress)
-- [ ] Add an index/debug tool (counts, filters applied, last error) (owner: codex) (status: in-progress)
+- [x] Add `repo.clear_index` / `memory.clear` tools (owner: codex) (status: done)
+- [x] Add an index/debug tool (counts, filters applied, last error) (owner: codex) (status: done)

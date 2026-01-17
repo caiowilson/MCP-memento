@@ -76,8 +76,11 @@ func NewServer(cfg Config) (*Server, error) {
 		newRepoContextTool(absRoot, idx),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),
+		newRepoClearIndexTool(idx),
+		newRepoIndexDebugTool(idx),
 		newMemoryUpsertTool(mem),
 		newMemorySearchTool(mem),
+		newMemoryClearTool(mem),
 	}
 	return s, nil
 }

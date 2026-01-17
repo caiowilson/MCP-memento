@@ -129,6 +129,14 @@ func (s *NoteStore) Search(query string, tags []string, limit int) ([]Note, erro
 	return out, nil
 }
 
+func (s *NoteStore) Clear() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f := noteFile{Repo: s.repo, Notes: nil}
+	return s.saveLocked(f)
+}
+
 func (s *NoteStore) loadLocked() (noteFile, error) {
 	b, err := os.ReadFile(s.path)
 	if err != nil {

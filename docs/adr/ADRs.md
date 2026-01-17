@@ -372,6 +372,51 @@ Expose whether automatic indexing is ready and provide basic freshness/size indi
 
 Trigger a full re-index (useful for recovery if change detection misses events). Returns the same shape as `repo.index_status`.
 
+#### `repo.clear_index`
+
+**Purpose**
+
+Delete all persisted index data for the repo (chunks + manifest).
+
+**Output**
+
+Returns the same shape as `repo.index_status`.
+
+#### `repo.index_debug`
+
+**Purpose**
+
+Return index debug information to help diagnose filter/coverage issues.
+
+**Output**
+
+```json
+{
+  "root": "...",
+  "storeDir": "...",
+  "filesIndexed": 123,
+  "totalBytes": 456789,
+  "preferredExts": [".go", ".md"],
+  "allowGlobs": ["go.mod", "README*"],
+  "denyGlobs": ["*.key"],
+  "extraIgnoreDirs": [],
+  "extraIgnoreGlobs": [],
+  "lastError": ""
+}
+```
+
+#### `memory.clear`
+
+**Purpose**
+
+Delete all repo-scoped notes.
+
+**Output**
+
+```json
+{ "cleared": true }
+```
+
 ### Open questions
 
 - Which git paths are sufficient to watch reliably across platforms (`.git/index` vs refs/HEAD)?
@@ -396,4 +441,3 @@ Trigger a full re-index (useful for recovery if change detection misses events).
 ### Alternatives considered
 
 ### References
-

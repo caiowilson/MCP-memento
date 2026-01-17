@@ -128,3 +128,19 @@ func newMemorySearchTool(store *NoteStore) Tool {
 		},
 	}
 }
+
+func newMemoryClearTool(store *NoteStore) Tool {
+	return Tool{
+		Name:        "memory.clear",
+		Description: "Clear all repo-scoped notes.",
+		InputSchema: map[string]any{"type": "object"},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = ctx
+			_ = raw
+			if err := store.Clear(); err != nil {
+				return nil, err
+			}
+			return map[string]any{"cleared": true}, nil
+		},
+	}
+}

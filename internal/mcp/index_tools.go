@@ -34,3 +34,32 @@ func newRepoReindexTool(idx *indexing.Indexer) Tool {
 		},
 	}
 }
+
+func newRepoClearIndexTool(idx *indexing.Indexer) Tool {
+	return Tool{
+		Name:        "repo.clear_index",
+		Description: "Remove all indexed chunks and reset the index manifest.",
+		InputSchema: map[string]any{"type": "object"},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = ctx
+			_ = raw
+			if err := idx.Clear(); err != nil {
+				return nil, err
+			}
+			return idx.Status(), nil
+		},
+	}
+}
+
+func newRepoIndexDebugTool(idx *indexing.Indexer) Tool {
+	return Tool{
+		Name:        "repo.index_debug",
+		Description: "Return index debug information (paths count, filters, last error).",
+		InputSchema: map[string]any{"type": "object"},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = ctx
+			_ = raw
+			return idx.DebugInfo(), nil
+		},
+	}
+}

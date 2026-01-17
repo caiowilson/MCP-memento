@@ -144,6 +144,19 @@ func (i *Indexer) Status() Status {
 	return i.status
 }
 
+type DebugInfo struct {
+	RootAbs          string   `json:"root"`
+	StoreDir         string   `json:"storeDir"`
+	FilesIndexed     int      `json:"filesIndexed"`
+	TotalBytes       int64    `json:"totalBytes"`
+	PreferredExts    []string `json:"preferredExts"`
+	AllowGlobs       []string `json:"allowGlobs"`
+	DenyGlobs        []string `json:"denyGlobs"`
+	ExtraIgnoreDirs  []string `json:"extraIgnoreDirs"`
+	ExtraIgnoreGlobs []string `json:"extraIgnoreGlobs"`
+	LastError        string   `json:"lastError,omitempty"`
+}
+
 func (i *Indexer) FileChunks(relPath string) ([]Chunk, error) {
 	i.mu.Lock()
 	ent, ok := i.manifest.Files[relPath]
@@ -152,6 +165,39 @@ func (i *Indexer) FileChunks(relPath string) ([]Chunk, error) {
 		return nil, os.ErrNotExist
 	}
 	return i.readChunksFile(ent.ID)
+}
+
+func (i *Indexer) DebugInfo() DebugInfo {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return DebugInfo{
+		RootAbs:          i.rootAbs,
+		StoreDir:         i.dir,
+		FilesIndexed:     len(i.manifest.Files),
+		TotalBytes:       i.manifest.TotalBytes,
+		PreferredExts:    append([]string{}, i.cfg.PreferredExts...),
+		AllowGlobs:       append([]string{}, i.cfg.AllowGlobs...),
+		DenyGlobs:        append([]string{}, i.cfg.DenyGlobs...),
+		ExtraIgnoreDirs:  append([]string{}, i.cfg.ExtraIgnoreDirs...),
+		ExtraIgnoreGlobs: append([]string{}, i.cfg.ExtraIgnoreGlobs...),
+		LastError:        i.status.Error,
+	}
+}
+
+func (i *Indexer) Clear() error {
+	i.mu.Lock()
+	ids := make([]string, 0, len(i.manifest.Files))
+	for _, ent := range i.manifest.Files {
+		ids = append(ids, ent.ID)
+	}
+	i.manifest = manifest{}
+	i.status = Status{}
+	i.mu.Unlock()
+
+	for _, id := range ids {
+		_ = os.Remove(i.chunkFilePath(id))
+	}
+	return i.saveManifest()
 }
 
 func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
