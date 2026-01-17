@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,6 +25,8 @@ type Config struct {
 	MaxChunkLines    int
 	PollInterval     time.Duration
 	PreferredExts    []string
+	AllowGlobs       []string
+	DenyGlobs        []string
 	ExtraIgnoreDirs  []string
 	ExtraIgnoreGlobs []string
 }
@@ -404,7 +407,7 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if !isPreferredExt(rel, i.cfg.PreferredExts) {
+		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
 			return nil
 		}
 		out = append(out, candidate{Rel: rel, Abs: path, Size: info.Size(), Info: info})
@@ -704,6 +707,35 @@ func applyDefaults(cfg *Config) {
 	if len(cfg.PreferredExts) == 0 {
 		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".php", ".md", ".json", ".yaml", ".yml"}
 	}
+	if len(cfg.AllowGlobs) == 0 {
+		cfg.AllowGlobs = []string{
+			"go.mod",
+			"go.sum",
+			"README*",
+			"Makefile",
+			"Dockerfile",
+			".github/workflows/*",
+			"Taskfile.yml",
+			"Taskfile.yaml",
+		}
+	}
+	if len(cfg.DenyGlobs) == 0 {
+		cfg.DenyGlobs = []string{
+			"*.key",
+			"*.pem",
+			"*.p12",
+			"*.pfx",
+			"*.crt",
+			"*.der",
+			"*.ppk",
+			"id_rsa",
+			"id_ed25519",
+			"*.sqlite",
+			"*.db",
+			"*.bin",
+			"*.exe",
+		}
+	}
 }
 
 func guessLanguage(rel string) string {
@@ -731,4 +763,48 @@ func max64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func shouldIndex(rel string, exts, allowGlobs, denyGlobs []string) bool {
+	if matchAnyGlob(rel, denyGlobs) {
+		return false
+	}
+	if matchAnyGlob(rel, allowGlobs) {
+		return true
+	}
+	return isPreferredExt(rel, exts)
+}
+
+func matchAnyGlob(rel string, globs []string) bool {
+	if len(globs) == 0 {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	base := pathBase(rel)
+	for _, g := range globs {
+		g = strings.TrimSpace(g)
+		if g == "" {
+			continue
+		}
+		g = filepath.ToSlash(g)
+		if ok, _ := pathMatch(g, rel); ok {
+			return true
+		}
+		if ok, _ := pathMatch(g, base); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func pathMatch(pattern, name string) (bool, error) {
+	// Use path-style matching (always forward slashes).
+	return path.Match(pattern, name)
+}
+
+func pathBase(rel string) string {
+	if idx := strings.LastIndex(rel, "/"); idx >= 0 {
+		return rel[idx+1:]
+	}
+	return rel
 }

@@ -20,13 +20,13 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 2 — Indexer safety + file selection
 
-- Status: todo
-- Owner: unassigned
+- Status: in-progress
+- Owner: codex
 
 ### Steps
 
-- [ ] Implement explicit allowlist (Go + high-signal files) and denylist (secrets/binaries) (owner: unassigned) (status: todo)
-- [ ] Document default include/exclude rules (owner: unassigned) (status: todo)
+- [ ] Implement explicit allowlist (Go + high-signal files) and denylist (secrets/binaries) (owner: codex) (status: in-progress)
+- [ ] Document default include/exclude rules (owner: codex) (status: in-progress)
 
 ## Slice 3 — Git-first incremental reindex
 
