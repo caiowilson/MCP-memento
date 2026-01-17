@@ -1,0 +1,228 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"memento-mcp/internal/indexing"
+)
+
+func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
+	return Tool{
+		Name:        "repo.context",
+		Description: "Return indexed code chunks for a file plus its related files (best-effort automatic context window).",
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []any{"path"},
+			"properties": map[string]any{
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Repo-relative path of the active file.",
+				},
+				"focus": map[string]any{
+					"type":        "string",
+					"description": "Optional query used to prioritize chunks (e.g. function/type name).",
+				},
+				"maxFiles": map[string]any{
+					"type":        "integer",
+					"description": "Maximum number of files to include (default 10).",
+				},
+				"maxChunksPerFile": map[string]any{
+					"type":        "integer",
+					"description": "Maximum chunks per file (default 2).",
+				},
+				"includeSameDir": map[string]any{
+					"type":        "boolean",
+					"description": "Include same-directory files (default true).",
+				},
+				"includeImports": map[string]any{
+					"type":        "boolean",
+					"description": "Include imported files (default true).",
+				},
+				"includeImporters": map[string]any{
+					"type":        "boolean",
+					"description": "Include importing files (default true).",
+				},
+				"includeReferences": map[string]any{
+					"type":        "boolean",
+					"description": "Include semantic references where supported (default true).",
+				},
+			},
+		},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			args, err := requireArgs(raw)
+			if err != nil {
+				return nil, err
+			}
+			rel, ok := asString(args, "path")
+			if !ok || strings.TrimSpace(rel) == "" {
+				return nil, fmt.Errorf("missing required argument: path")
+			}
+			rel = filepath.ToSlash(filepath.Clean(rel))
+			abs, err := safeJoin(root, rel)
+			if err != nil {
+				return nil, err
+			}
+			info, err := os.Stat(abs)
+			if err != nil {
+				return nil, err
+			}
+			if info.IsDir() {
+				return nil, fmt.Errorf("path is a directory, expected file: %s", rel)
+			}
+
+			focus, _ := asString(args, "focus")
+			focusLower := strings.ToLower(strings.TrimSpace(focus))
+
+			maxFiles := 10
+			if f, ok := asFloat(args, "maxFiles"); ok && int(f) > 0 {
+				maxFiles = int(f)
+			}
+			maxChunksPerFile := 2
+			if f, ok := asFloat(args, "maxChunksPerFile"); ok && int(f) > 0 {
+				maxChunksPerFile = int(f)
+			}
+
+			includeSameDir := true
+			if v, ok := args["includeSameDir"].(bool); ok {
+				includeSameDir = v
+			}
+			includeImports := true
+			if v, ok := args["includeImports"].(bool); ok {
+				includeImports = v
+			}
+			includeImporters := true
+			if v, ok := args["includeImporters"].(bool); ok {
+				includeImporters = v
+			}
+			includeReferences := true
+			if v, ok := args["includeReferences"].(bool); ok {
+				includeReferences = v
+			}
+
+			related, err := computeRelatedFiles(ctx, root, rel, relatedOptions{
+				Max:              maxFiles * 3,
+				IncludeSameDir:   includeSameDir,
+				IncludeImports:   includeImports,
+				IncludeImporters: includeImporters,
+				IncludeRefs:      includeReferences,
+			})
+			if err != nil {
+				related = nil
+			}
+
+			paths := make([]string, 0, 1+len(related))
+			paths = append(paths, rel)
+			for _, r := range related {
+				paths = append(paths, r.Path)
+			}
+			paths = uniqueStrings(paths)
+			if len(paths) > maxFiles {
+				paths = paths[:maxFiles]
+			}
+
+			if err := idx.EnsureIndexed(ctx, paths); err != nil {
+				// best-effort: still try to read whatever is already indexed
+			}
+
+			type fileCtx struct {
+				Path   string           `json:"path"`
+				Chunks []indexing.Chunk `json:"chunks"`
+			}
+
+			files := make([]fileCtx, 0, len(paths))
+			for _, p := range paths {
+				chunks, err := idx.FileChunks(p)
+				if err != nil {
+					continue
+				}
+
+				selected := selectChunks(chunks, focusLower, maxChunksPerFile)
+				if len(selected) == 0 {
+					continue
+				}
+				files = append(files, fileCtx{Path: p, Chunks: selected})
+			}
+
+			return map[string]any{
+				"path":  rel,
+				"focus": focus,
+				"files": files,
+			}, nil
+		},
+	}
+}
+
+func selectChunks(chunks []indexing.Chunk, focusLower string, maxChunks int) []indexing.Chunk {
+	if maxChunks <= 0 {
+		maxChunks = 2
+	}
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// Prefer chunks that match focus; always include the first chunk as a fallback.
+	type scored struct {
+		ch indexing.Chunk
+		s  int
+	}
+	scoredChunks := make([]scored, 0, len(chunks))
+	for _, ch := range chunks {
+		s := 0
+		if focusLower != "" {
+			hay := strings.ToLower(ch.Content)
+			if strings.Contains(hay, focusLower) {
+				s += 10 + strings.Count(hay, focusLower)
+			}
+		}
+		if ch.StartLine <= 5 {
+			s += 1
+		}
+		scoredChunks = append(scoredChunks, scored{ch: ch, s: s})
+	}
+	sort.Slice(scoredChunks, func(i, j int) bool {
+		if scoredChunks[i].s != scoredChunks[j].s {
+			return scoredChunks[i].s > scoredChunks[j].s
+		}
+		return scoredChunks[i].ch.StartLine < scoredChunks[j].ch.StartLine
+	})
+
+	selected := make([]indexing.Chunk, 0, min(maxChunks, len(scoredChunks)))
+	for _, s := range scoredChunks {
+		if len(selected) >= maxChunks {
+			break
+		}
+		selected = append(selected, s.ch)
+	}
+
+	// If no focus match and we didn't pick the first chunk, include it.
+	if focusLower == "" && len(chunks) > 0 && (len(selected) == 0 || selected[0].StartLine != chunks[0].StartLine) {
+		selected = append([]indexing.Chunk{chunks[0]}, selected...)
+		if len(selected) > maxChunks {
+			selected = selected[:maxChunks]
+		}
+	}
+	return selected
+}
+
+func uniqueStrings(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = filepath.ToSlash(filepath.Clean(s))
+		if s == "" || s == "." {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}

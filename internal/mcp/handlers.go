@@ -1,21 +1,24 @@
 package mcp
 
-// Handler is a stub for the MCP server functionality.
-// For now it does not start an HTTP server. We'll add MCP
-// protocol handling later.
-type Handler struct{}
+import (
+	"context"
+	"os"
+)
 
-func (h *Handler) StartServer() any {
-	panic("unimplemented")
+// Handler is kept for backward-compatibility with earlier scaffolding.
+// Prefer using `Server` directly.
+type Handler struct {
+	Server *Server
 }
 
-// New creates a new MCP handler stub.
-func New() *Handler {
-	return &Handler{}
+func New() (*Handler, error) {
+	srv, err := NewServer(Config{})
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{Server: srv}, nil
 }
 
-// Setup is a placeholder for MCP setup logic.
-func (h *Handler) Setup() error {
-	// no-op for now
-	return nil
+func (h *Handler) StartServer(ctx context.Context) error {
+	return h.Server.ServeStdio(ctx, os.Stdin, os.Stdout)
 }
