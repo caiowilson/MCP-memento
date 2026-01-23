@@ -77,3 +77,20 @@ Vertical slices (ship small, end-to-end improvements).
 
 - [x] Add `repo.clear_index` / `memory.clear` tools (owner: codex) (status: done)
 - [x] Add an index/debug tool (counts, filters applied, last error) (owner: codex) (status: done)
+
+## Slice 8 — VS Code extension UX polish
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: vscode-extension (commands, settings, UX surfaces)
+- Agent: memento-mcp-vscode
+
+### Steps
+
+- [ ] Add first-activation onboarding prompt that offers Install / Open Snippet / Copy Snippet (status: todo)
+- [ ] Add `mementoMcp.serverPath` setting override and honor it in path resolution (status: todo)
+- [ ] Add status bar item showing resolved server path + install state (status: todo)
+- [ ] Improve install error UX with actionable guidance when releases/assets are missing (status: todo)
+- [ ] Add command to open or create MCP config file using the snippet builder (status: todo)
+- [ ] Add command palette/menu contributions for better discoverability (status: todo)

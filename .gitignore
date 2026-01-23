@@ -23,5 +23,10 @@ memento-mcp
 .vscode/
 .idea/
 
+# Allow VS Code extension dev configs (kept in-repo)
+!vscode-extension/.vscode/
+!vscode-extension/.vscode/launch.json
+!vscode-extension/.vscode/tasks.json
+
 # OS
 .DS_Store

@@ -2,6 +2,15 @@
 
 This server is designed to be launched as an MCP stdio server with the working directory set to the repository root. It exposes tools for reading/searching the repo and storing repo-scoped notes.
 
+### Option 1: VS Code extension (WIP)
+
+This repo includes a companion VS Code extension under `vscode-extension/` that can:
+
+- Download/install a `memento-mcp` binary into VS Code extension storage
+- Generate an MCP config snippet for your `mcp.json`
+
+See `vscode-extension/README.md`.
+
 ### Build a local binary
 
 From the repo root:
@@ -22,7 +31,7 @@ From the repo root:
 
 Use any VS Code extension that supports MCP stdio servers and configure it to run the binary with the workspace root as its CWD. A generic config looks like:
 
-```
+```json
 {
   "name": "memento-mcp",
   "transport": "stdio",
@@ -45,6 +54,7 @@ You can verify the server responds to MCP JSON-RPC over stdio:
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/memento-mcp
+```
 
 To call a tool, use `tools/call`:
 
@@ -52,7 +62,6 @@ To call a tool, use `tools/call`:
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"repo_index_debug","arguments":{}}}' | ./bin/memento-mcp
-```
 ```
 
 ### What it provides

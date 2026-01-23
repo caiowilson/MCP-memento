@@ -71,6 +71,8 @@ make uninstall
 
 See `docs/vscode.md` for a client-agnostic config snippet and a raw stdio smoke test.
 
+There’s also a companion VS Code extension scaffold under `vscode-extension/` (WIP) intended to download/install the server binary and generate an `mcp.json` snippet.
+
 To bias Copilot Chat toward using these tools, this repo includes `/.github/copilot-instructions.md`.
 
 Important: the server uses its process working directory as the workspace root, so VS Code should set the MCP server `cwd` to `${workspaceFolder}`.

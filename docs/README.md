@@ -6,6 +6,7 @@ This repository is a work-in-progress Go implementation of an MCP server. The co
 
 - Getting started: `../README.md`
 - VS Code usage: `vscode.md`
+- VS Code extension (WIP): `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
 
 ### MCP tools (current)
