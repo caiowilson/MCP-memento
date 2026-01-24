@@ -83,6 +83,15 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("mementoMcp.saveDevToolLogTail", async () => {
       try {
+        const cfg = vscode.workspace.getConfiguration("mementoMcp");
+        const enabled = Boolean(cfg.get("devLogToolCalls", false));
+        if (!enabled) {
+          void vscode.window.showInformationMessage(
+            "Enable `mementoMcp.devLogToolCalls` to use this dev-only command.",
+          );
+          return;
+        }
+
         const tail = await readDevToolLogTail();
         if (!tail) {
           void vscode.window.showInformationMessage(

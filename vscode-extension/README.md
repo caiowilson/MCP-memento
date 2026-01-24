@@ -39,6 +39,8 @@ On first activation, the extension offers quick actions to install the server or
 - `mementoMcp.devLogToolCalls` (default: `false`, includes `MEMENTO_MCP_DEV_LOG=1` in configured entries)
 - `mementoMcp.devLogTailLines` (default: `200`, used by “Save Dev Tool Log Tail”)
 
+Note: “Save Dev Tool Log Tail” is only shown when `mementoMcp.devLogToolCalls` is enabled.
+
 ## Releases expectation
 
 This extension expects GitHub Releases to include raw (uncompressed) binary assets named like:

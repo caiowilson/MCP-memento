@@ -104,7 +104,8 @@
         },
         {
           "command": "mementoMcp.saveDevToolLogTail",
-          "group": "Memento MCP"
+          "group": "Memento MCP",
+          "when": "config.mementoMcp.devLogToolCalls"
         },
         {
           "command": "mementoMcp.copyMcpConfigSnippet",
