@@ -42,7 +42,7 @@
       "properties": {
         "mementoMcp.githubRepo": {
           "type": "string",
-          "default": "caiowilson/memento-mcp",
+          "default": "caiowilson/MCP-memento",
           "description": "GitHub repo used to download server binaries from Releases (owner/name)."
         },
         "mementoMcp.releaseTag": {

@@ -28,7 +28,7 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
       await fs.mkdir(path.dirname(binPath), { recursive: true });
 
       const cfg = vscode.workspace.getConfiguration("mementoMcp");
-      const repo = String(cfg.get("githubRepo", "caiowilson/memento-mcp"));
+      const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
       const tag = String(cfg.get("releaseTag", "server/latest"));
 
       const release = await fetchRelease(repo, tag);

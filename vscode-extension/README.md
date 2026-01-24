@@ -32,7 +32,7 @@ On first activation, the extension offers quick actions to install the server or
 
 ## Settings
 
-- `mementoMcp.githubRepo` (default: `caiowilson/memento-mcp`)
+- `mementoMcp.githubRepo` (default: `caiowilson/MCP-memento`)
 - `mementoMcp.releaseTag` (default: `server/latest`)
 - `mementoMcp.serverPath` (optional override)
 - `mementoMcp.preferWorkspaceBinary` (default: `true`)

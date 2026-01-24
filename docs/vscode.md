@@ -13,7 +13,7 @@ This repo includes a companion VS Code extension under `vscode-extension/` that 
 See `vscode-extension/README.md`.
 
 Defaults:
-- GitHub repo: `caiowilson/memento-mcp`
+- GitHub repo: `caiowilson/MCP-memento`
 - Release tag: `server/latest` (server releases are `server/vX.Y.Z`)
 
 ### Build a local binary
