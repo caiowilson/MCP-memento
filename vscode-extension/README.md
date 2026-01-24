@@ -6,7 +6,7 @@ What it does:
 
 - Downloads a platform-specific `memento-mcp` binary into VS Code extension storage.
 - Generates an MCP server config snippet you can paste into your VS Code `mcp.json`.
-- Opens or creates `mcp.json` in your workspace.
+- Configures MCP for your workspace or globally by writing/merging an MCP config entry.
 - Shows a status bar item with the resolved server path and install state.
 
 ## Development
@@ -28,7 +28,7 @@ Then in VS Code:
   - `Memento MCP: Open MCP Config Snippet`
   - `Memento MCP: Copy MCP Config Snippet`
 
-On first activation, the extension offers quick actions to install the server or configure/copy config snippets. After installation, it can also offer to configure MCP for the workspace or globally by writing an MCP config entry.
+On first activation, the extension offers quick actions to install the server or configure/copy config snippets. After installation, it can also offer to configure MCP for the workspace or globally by writing/merging an MCP config entry.
 
 ## Settings
 

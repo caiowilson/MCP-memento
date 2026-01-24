@@ -100,6 +100,14 @@ Optional local install:
 make install
 ```
 
+Developer-friendly install (no sudo, installs to `~/.local/bin`):
+
+```bash
+make install-dev
+```
+
+If `memento-mcp` is not found after this, add `~/.local/bin` to your `PATH`.
+
 ### Smoke Test (Raw Stdio)
 
 ```bash
@@ -198,7 +206,7 @@ _Note: `.env` files are currently **indexed** by default to support local develo
 
 To use this with VS Code's MCP client (e.g., via Copilot):
 
-- **Extension:** The companion VS Code extension in `vscode-extension/` can install the server binary, open/create `mcp.json`, and generate config snippets.
+- **Extension:** The companion VS Code extension in `vscode-extension/` can install the server binary and configure MCP for either the workspace or a global config file (it will write/merge a `memento-mcp` entry).
 - **Manual config:** Add an MCP stdio entry to your settings file (often `~/.vscode/mcp.json`):
 
 ```json

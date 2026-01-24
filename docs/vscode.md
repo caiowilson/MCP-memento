@@ -8,7 +8,7 @@ This repo includes a companion VS Code extension under `vscode-extension/` that 
 
 - Download/install a `memento-mcp` binary into VS Code extension storage
 - Generate an MCP config snippet for your `mcp.json`
-- Open or create `mcp.json` in your workspace
+- Configure MCP by writing/merging an entry into either a workspace `mcp.json` or a user/global config file
 
 See `vscode-extension/README.md`.
 
