@@ -48,17 +48,34 @@ Most of the time you rely on the background indexer. When you need a determinist
 - Call **`repo_reindex`** as a "Memory Start Index" operation to force a full re-scan and rebuild of the code index.
 - Use **`repo_index_status`** and **`repo_index_debug`** to check readiness and active rules, and **`repo_clear_index`** to wipe the on-disk index for the current repo.
 
-Clients like VS Code can choose to eagerly warm up small workspaces (for example, calling `repo_reindex` once when the index is empty and the repo is under ~10MB) and otherwise rely on background indexing. See `docs/README.md` for the full indexing/memory reference and `docs/vscode.md` for VS Code-specific guidance.
+Clients like VS Code can choose to eagerly warm up small workspaces (for example, calling `repo_reindex` once when the index is empty) and otherwise rely on background indexing. See `docs/README.md` for the full indexing/memory reference and `docs/vscode.md` for VS Code-specific guidance.
 
 ---
 
 ## 🛠️ Installation & Quickstart
 
+### End‑User Installation (Release Binary)
+
+1. Download the latest server binary for your OS/arch from GitHub Releases:
+   - `server/latest` (recommended) or a specific `server/vX.Y.Z`
+2. Rename it to `memento-mcp` (or keep the name and use that path in config).
+3. Make it executable (macOS/Linux):
+
+```bash
+chmod +x /path/to/memento-mcp
+```
+
+4. (Optional) Move it onto your PATH:
+
+```bash
+sudo install -m 0755 /path/to/memento-mcp /usr/local/bin/memento-mcp
+```
+
 ### Prerequisites
 
 - **Go 1.25.5** (see `go.mod`).
 
-### Build from Source
+### Developer Installation (Contributing)
 
 ```bash
 # Clone the repository
@@ -70,6 +87,12 @@ go build -o ./bin/memento-mcp ./cmd/server
 
 # Run it directly (stdio mode)
 ./bin/memento-mcp
+```
+
+Optional local install:
+
+```bash
+make install
 ```
 
 ### Smoke Test (Raw Stdio)
