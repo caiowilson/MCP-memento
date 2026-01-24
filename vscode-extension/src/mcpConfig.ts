@@ -5,35 +5,41 @@ const DEFAULT_ENV: Record<string, string> = {
   MEMENTO_FS_DEBOUNCE_MS: "500",
 };
 
-export function buildConfigEntry(serverPath: string): Record<string, unknown> {
+export function buildConfigEntry(
+  serverPath: string,
+  extraEnv: Record<string, string> = {},
+): Record<string, unknown> {
   return {
     name: "memento-mcp",
     transport: "stdio",
     command: serverPath,
     args: [],
     cwd: "${workspaceFolder}",
-    env: DEFAULT_ENV,
+    env: { ...DEFAULT_ENV, ...extraEnv },
   };
 }
 
-export function buildConfigEntryJson(serverPath: string): string {
-  return JSON.stringify(buildConfigEntry(serverPath), null, 2);
+export function buildConfigEntryJson(serverPath: string, extraEnv: Record<string, string> = {}): string {
+  return JSON.stringify(buildConfigEntry(serverPath, extraEnv), null, 2);
 }
 
-export function buildMcpServersConfig(serverPath: string): Record<string, unknown> {
+export function buildMcpServersConfig(
+  serverPath: string,
+  extraEnv: Record<string, string> = {},
+): Record<string, unknown> {
   return {
     mcpServers: {
-      "memento-mcp": buildConfigEntry(serverPath),
+      "memento-mcp": buildConfigEntry(serverPath, extraEnv),
     },
   };
 }
 
-export function buildMcpServersConfigJson(serverPath: string): string {
-  return JSON.stringify(buildMcpServersConfig(serverPath), null, 2);
+export function buildMcpServersConfigJson(serverPath: string, extraEnv: Record<string, string> = {}): string {
+  return JSON.stringify(buildMcpServersConfig(serverPath, extraEnv), null, 2);
 }
 
-export function buildSnippetMarkdown(serverPath: string): string {
-  const entry = buildConfigEntry(serverPath);
+export function buildSnippetMarkdown(serverPath: string, extraEnv: Record<string, string> = {}): string {
+  const entry = buildConfigEntry(serverPath, extraEnv);
 
   const entryOnly = JSON.stringify(entry, null, 2);
   const asServersArray = JSON.stringify({ servers: [entry] }, null, 2);

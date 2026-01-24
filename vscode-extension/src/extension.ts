@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("mementoMcp.openMcpConfigSnippet", async () => {
       try {
         const serverPath = await resolvePreferredServerPath(context);
-        const md = buildSnippetMarkdown(serverPath);
+        const md = buildSnippetMarkdown(serverPath, getExtraEnvFromSettings());
         const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: md });
         await vscode.window.showTextDocument(doc, { preview: false });
       } catch (err) {
@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("mementoMcp.copyMcpConfigSnippet", async () => {
       try {
         const serverPath = await resolvePreferredServerPath(context);
-        const json = buildConfigEntryJson(serverPath);
+        const json = buildConfigEntryJson(serverPath, getExtraEnvFromSettings());
         await vscode.env.clipboard.writeText(json);
         void vscode.window.showInformationMessage("Copied MCP config entry JSON to clipboard.");
       } catch (err) {
@@ -258,10 +258,14 @@ async function resolveConfigUri(scope: ConfigureScope, workspaceUri?: vscode.Uri
 }
 
 async function upsertMcpEntry(configUri: vscode.Uri, serverPath: string): Promise<void> {
-  const entry = buildConfigEntry(serverPath);
+  const extraEnv = getExtraEnvFromSettings();
+  const entry = buildConfigEntry(serverPath, extraEnv);
   const text = await readTextOrEmpty(configUri);
   if (text.trim().length === 0) {
-    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    await vscode.workspace.fs.writeFile(
+      configUri,
+      Buffer.from(buildMcpServersConfigJson(serverPath, extraEnv), "utf8"),
+    );
     return;
   }
 
@@ -277,7 +281,10 @@ async function upsertMcpEntry(configUri: vscode.Uri, serverPath: string): Promis
     if (choice !== "Overwrite") {
       throw new Error("Canceled.");
     }
-    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    await vscode.workspace.fs.writeFile(
+      configUri,
+      Buffer.from(buildMcpServersConfigJson(serverPath, extraEnv), "utf8"),
+    );
     return;
   }
 
@@ -291,7 +298,10 @@ async function upsertMcpEntry(configUri: vscode.Uri, serverPath: string): Promis
     if (choice !== "Overwrite") {
       throw new Error("Canceled.");
     }
-    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    await vscode.workspace.fs.writeFile(
+      configUri,
+      Buffer.from(buildMcpServersConfigJson(serverPath, extraEnv), "utf8"),
+    );
     return;
   }
 
@@ -351,4 +361,13 @@ async function readTextOrEmpty(uri: vscode.Uri): Promise<string> {
   } catch {
     return "";
   }
+}
+
+function getExtraEnvFromSettings(): Record<string, string> {
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const devLogToolCalls = Boolean(cfg.get("devLogToolCalls", false));
+  if (!devLogToolCalls) {
+    return {};
+  }
+  return { MEMENTO_MCP_DEV_LOG: "1" };
 }

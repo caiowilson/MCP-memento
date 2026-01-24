@@ -36,6 +36,7 @@ On first activation, the extension offers quick actions to install the server or
 - `mementoMcp.releaseTag` (default: `server/latest`)
 - `mementoMcp.serverPath` (optional override)
 - `mementoMcp.preferWorkspaceBinary` (default: `true`)
+- `mementoMcp.devLogToolCalls` (default: `false`, includes `MEMENTO_MCP_DEV_LOG=1` in configured entries)
 
 ## Releases expectation
 

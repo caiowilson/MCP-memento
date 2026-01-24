@@ -64,6 +64,11 @@
           "type": "boolean",
           "default": true,
           "description": "If ${workspaceFolder}/bin/memento-mcp exists, prefer it for the generated snippet."
+        },
+        "mementoMcp.devLogToolCalls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Opt-in: include MEMENTO_MCP_DEV_LOG=1 in generated/configured MCP entries to log tool calls. nothing leaves your machine."
         }
       }
     },
