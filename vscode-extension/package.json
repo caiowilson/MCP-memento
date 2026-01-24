@@ -14,6 +14,7 @@
     "onStartupFinished",
     "onCommand:mementoMcp.installServer",
     "onCommand:mementoMcp.configureMcp",
+    "onCommand:mementoMcp.saveDevToolLogTail",
     "onCommand:mementoMcp.openOrCreateMcpConfig",
     "onCommand:mementoMcp.openMcpConfigSnippet",
     "onCommand:mementoMcp.copyMcpConfigSnippet"
@@ -32,6 +33,10 @@
       {
         "command": "mementoMcp.openOrCreateMcpConfig",
         "title": "Memento MCP: Configure MCP (Workspace)"
+      },
+      {
+        "command": "mementoMcp.saveDevToolLogTail",
+        "title": "Memento MCP: Save Dev Tool Log Tail"
       },
       {
         "command": "mementoMcp.openMcpConfigSnippet",
@@ -68,7 +73,14 @@
         "mementoMcp.devLogToolCalls": {
           "type": "boolean",
           "default": false,
-          "description": "Opt-in: include MEMENTO_MCP_DEV_LOG=1 in generated/configured MCP entries to log tool calls. nothing leaves your machine."
+          "description": "Opt-in: include MEMENTO_MCP_DEV_LOG=1 in generated/configured MCP entries to log tool calls."
+        },
+        "mementoMcp.devLogTailLines": {
+          "type": "number",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 2000,
+          "description": "How many lines to include when saving/copying the dev tool-call log tail."
         }
       }
     },
@@ -88,6 +100,10 @@
         },
         {
           "command": "mementoMcp.openMcpConfigSnippet",
+          "group": "Memento MCP"
+        },
+        {
+          "command": "mementoMcp.saveDevToolLogTail",
           "group": "Memento MCP"
         },
         {

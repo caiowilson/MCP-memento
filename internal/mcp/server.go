@@ -3,6 +3,8 @@ package mcp
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +25,9 @@ type Server struct {
 	mem    *NoteStore
 	idx    *indexing.Indexer
 	devLog bool
+
+	devLogFilePath    string
+	devLogFileErrOnce bool
 }
 
 type Config struct {
@@ -69,6 +74,11 @@ func NewServer(cfg Config) (*Server, error) {
 		mem:    mem,
 		idx:    idx,
 		devLog: os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
+	}
+	if s.devLog {
+		if p, err := defaultDevToolLogPath(absRoot); err == nil {
+			s.devLogFilePath = p
+		}
 	}
 	s.tools = []Tool{
 		newRepoListFilesTool(absRoot),
@@ -253,7 +263,14 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallR
 		args = json.RawMessage([]byte(`{}`))
 	}
 	if s.devLog {
-		s.logf("tool-call name=%s args=%s", params.Name, formatArgsForLog(args))
+		line := fmt.Sprintf(
+			"%s tool-call name=%s args=%s",
+			time.Now().UTC().Format(time.RFC3339Nano),
+			params.Name,
+			formatArgsForLog(args),
+		)
+		s.logf("%s", line)
+		s.appendDevLogLine(line)
 	}
 
 	content, err := tool.Handler(ctx, args)
@@ -398,4 +415,34 @@ func formatArgsForLog(raw json.RawMessage) string {
 		return string(raw)
 	}
 	return string(raw[:maxBytes]) + "…"
+}
+
+func defaultDevToolLogPath(repoRoot string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(repoRoot))
+	repoID := hex.EncodeToString(sum[:16])
+	dir := filepath.Join(home, ".memento-mcp", "repos", repoID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "tool-calls.log"), nil
+}
+
+func (s *Server) appendDevLogLine(line string) {
+	if s.devLogFilePath == "" {
+		return
+	}
+	f, err := os.OpenFile(s.devLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		if !s.devLogFileErrOnce {
+			s.devLogFileErrOnce = true
+			s.logf("dev log file open failed: %v", err)
+		}
+		return
+	}
+	_, _ = f.WriteString(line + "\n")
+	_ = f.Close()
 }

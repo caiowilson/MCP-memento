@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { createHash } from "node:crypto";
+import * as path from "node:path";
 import { ensureServerInstalled, getServerStatus, resolvePreferredServerPath } from "./installer";
 import { buildConfigEntry, buildConfigEntryJson, buildMcpServersConfigJson, buildSnippetMarkdown } from "./mcpConfig";
 
@@ -72,6 +74,50 @@ export function activate(context: vscode.ExtensionContext) {
         const { scope, promptForScope } = parseScope(args);
         const doc = await openOrCreateMcpConfig(serverPath, scope, promptForScope);
         await vscode.window.showTextDocument(doc, { preview: false });
+      } catch (err) {
+        void vscode.window.showErrorMessage(asErrorMessage(err));
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mementoMcp.saveDevToolLogTail", async () => {
+      try {
+        const tail = await readDevToolLogTail();
+        if (!tail) {
+          void vscode.window.showInformationMessage(
+            "No dev tool-call log found. Enable `mementoMcp.devLogToolCalls`, restart the MCP server, then try again.",
+          );
+          return;
+        }
+
+        const action = await vscode.window.showQuickPick(
+          ["Copy to Clipboard", "Save to File"],
+          { placeHolder: "Dev tool-call tail" },
+        );
+        if (!action) {
+          return;
+        }
+        if (action === "Copy to Clipboard") {
+          await vscode.env.clipboard.writeText(tail);
+          void vscode.window.showInformationMessage("Copied dev tool-call tail to clipboard.");
+          return;
+        }
+
+        const folders = vscode.workspace.workspaceFolders;
+        const defaultUri = folders?.[0]?.uri
+          ? vscode.Uri.joinPath(folders[0].uri, "memento-mcp-tool-calls.tail.txt")
+          : undefined;
+        const uri = await vscode.window.showSaveDialog({
+          defaultUri,
+          saveLabel: "Save",
+          filters: { Text: ["txt", "log"] },
+        });
+        if (!uri) {
+          return;
+        }
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(tail, "utf8"));
+        void vscode.window.showInformationMessage(`Saved dev tool-call tail: ${uri.fsPath}`);
       } catch (err) {
         void vscode.window.showErrorMessage(asErrorMessage(err));
       }
@@ -370,4 +416,34 @@ function getExtraEnvFromSettings(): Record<string, string> {
     return {};
   }
   return { MEMENTO_MCP_DEV_LOG: "1" };
+}
+
+async function readDevToolLogTail(): Promise<string | null> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    return null;
+  }
+  const root = folders[0].uri.fsPath;
+  const repoID = createHash("sha256").update(root).digest("hex").slice(0, 32);
+
+  const home = process.env.HOME;
+  if (!home) {
+    return null;
+  }
+  const logPath = path.join(home, ".memento-mcp", "repos", repoID, "tool-calls.log");
+  const logUri = vscode.Uri.file(logPath);
+
+  let raw: Uint8Array;
+  try {
+    raw = await vscode.workspace.fs.readFile(logUri);
+  } catch {
+    return null;
+  }
+
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const tailLines = Math.max(1, Math.min(2000, Number(cfg.get("devLogTailLines", 200))));
+  const text = Buffer.from(raw).toString("utf8");
+  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const tail = lines.slice(Math.max(0, lines.length - tailLines)).join("\n");
+  return tail.length > 0 ? tail + "\n" : null;
 }
