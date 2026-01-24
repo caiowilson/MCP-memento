@@ -28,15 +28,20 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
       await fs.mkdir(path.dirname(binPath), { recursive: true });
 
       const cfg = vscode.workspace.getConfiguration("mementoMcp");
-      const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
-      const tag = String(cfg.get("releaseTag", "latest"));
+      const repo = String(cfg.get("githubRepo", "caiowilson/memento-mcp"));
+      const tag = String(cfg.get("releaseTag", "server/latest"));
 
       const release = await fetchRelease(repo, tag);
       const wanted = desiredAssetNames();
       const asset = release.assets.find((a) => wanted.includes(a.name));
       if (!asset) {
         throw new Error(
-          `No matching binary asset found in ${repo}@${release.tag_name}. Looked for: ${wanted.join(", ")}`,
+          [
+            `No matching binary asset found in ${repo}@${release.tag_name}.`,
+            `Looked for: ${wanted.join(", ")}.`,
+            "Check that the release includes raw binaries and that the settings",
+            "`mementoMcp.githubRepo` and `mementoMcp.releaseTag` point to the right repo/tag.",
+          ].join(" "),
         );
       }
 
@@ -53,6 +58,11 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
 }
 
 export async function resolvePreferredServerPath(context: vscode.ExtensionContext): Promise<string> {
+  const override = getConfiguredServerPath();
+  if (override) {
+    return override;
+  }
+
   const cfg = vscode.workspace.getConfiguration("mementoMcp");
   const preferWorkspace = Boolean(cfg.get("preferWorkspaceBinary", true));
 
@@ -71,6 +81,31 @@ export async function resolvePreferredServerPath(context: vscode.ExtensionContex
   }
 
   return "${workspaceFolder}/bin/" + binaryName();
+}
+
+export async function getServerStatus(
+  context: vscode.ExtensionContext,
+): Promise<{ path: string; source: "override" | "workspace" | "installed" | "missing" }> {
+  const override = getConfiguredServerPath();
+  if (override) {
+    return { path: override, source: "override" };
+  }
+
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const preferWorkspace = Boolean(cfg.get("preferWorkspaceBinary", true));
+
+  const workspaceBin = await findWorkspaceBinary();
+  const installed = getInstalledBinaryPath(context);
+  if (preferWorkspace && workspaceBin) {
+    return { path: workspaceBin, source: "workspace" };
+  }
+  if (await fileExists(installed)) {
+    return { path: installed, source: "installed" };
+  }
+  if (workspaceBin) {
+    return { path: workspaceBin, source: "workspace" };
+  }
+  return { path: "${workspaceFolder}/bin/" + binaryName(), source: "missing" };
 }
 
 function getInstalledBinaryPath(context: vscode.ExtensionContext): string {
@@ -104,8 +139,22 @@ function desiredAssetNames(): string[] {
 
 async function fetchRelease(repo: string, tag: string): Promise<GitHubRelease> {
   const base = "https://api.github.com/repos/" + repo;
-  const url = tag === "latest" ? `${base}/releases/latest` : `${base}/releases/tags/${tag}`;
-  return await fetchJson<GitHubRelease>(url);
+  const url =
+    tag === "latest"
+      ? `${base}/releases/latest`
+      : `${base}/releases/tags/${encodeURIComponent(tag)}`;
+  try {
+    return await fetchJson<GitHubRelease>(url);
+  } catch (err) {
+    throw new Error(
+      [
+        `Failed to fetch release for ${repo}@${tag}.`,
+        "If you use namespaced tags like `server/latest`, they must exist on GitHub Releases.",
+        "Check `mementoMcp.githubRepo` and `mementoMcp.releaseTag` settings.",
+        asErrorMessage(err),
+      ].join(" "),
+    );
+  }
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -171,4 +220,17 @@ async function fileExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function getConfiguredServerPath(): string | null {
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const raw = String(cfg.get("serverPath", "")).trim();
+  return raw.length > 0 ? raw : null;
+}
+
+function asErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }

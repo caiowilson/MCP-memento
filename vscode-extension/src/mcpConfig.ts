@@ -20,6 +20,18 @@ export function buildConfigEntryJson(serverPath: string): string {
   return JSON.stringify(buildConfigEntry(serverPath), null, 2);
 }
 
+export function buildMcpServersConfig(serverPath: string): Record<string, unknown> {
+  return {
+    mcpServers: {
+      "memento-mcp": buildConfigEntry(serverPath),
+    },
+  };
+}
+
+export function buildMcpServersConfigJson(serverPath: string): string {
+  return JSON.stringify(buildMcpServersConfig(serverPath), null, 2);
+}
+
 export function buildSnippetMarkdown(serverPath: string): string {
   const entry = buildConfigEntry(serverPath);
 

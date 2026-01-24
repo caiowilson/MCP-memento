@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:mementoMcp.installServer",
+    "onCommand:mementoMcp.openOrCreateMcpConfig",
     "onCommand:mementoMcp.openMcpConfigSnippet",
     "onCommand:mementoMcp.copyMcpConfigSnippet"
   ],
@@ -21,6 +23,10 @@
       {
         "command": "mementoMcp.installServer",
         "title": "Memento MCP: Install Server Binary"
+      },
+      {
+        "command": "mementoMcp.openOrCreateMcpConfig",
+        "title": "Memento MCP: Open or Create mcp.json"
       },
       {
         "command": "mementoMcp.openMcpConfigSnippet",
@@ -36,13 +42,18 @@
       "properties": {
         "mementoMcp.githubRepo": {
           "type": "string",
-          "default": "caiowilson/MCP-memento",
+          "default": "caiowilson/memento-mcp",
           "description": "GitHub repo used to download server binaries from Releases (owner/name)."
         },
         "mementoMcp.releaseTag": {
           "type": "string",
-          "default": "latest",
-          "description": "GitHub release tag to download (or 'latest')."
+          "default": "server/latest",
+          "description": "GitHub release tag to download (e.g. 'server/latest' or 'latest')."
+        },
+        "mementoMcp.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override path to the memento-mcp binary."
         },
         "mementoMcp.preferWorkspaceBinary": {
           "type": "boolean",
@@ -50,6 +61,26 @@
           "description": "If ${workspaceFolder}/bin/memento-mcp exists, prefer it for the generated snippet."
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "mementoMcp.installServer",
+          "group": "Memento MCP"
+        },
+        {
+          "command": "mementoMcp.openOrCreateMcpConfig",
+          "group": "Memento MCP"
+        },
+        {
+          "command": "mementoMcp.openMcpConfigSnippet",
+          "group": "Memento MCP"
+        },
+        {
+          "command": "mementoMcp.copyMcpConfigSnippet",
+          "group": "Memento MCP"
+        }
+      ]
     }
   },
   "scripts": {
@@ -65,4 +96,3 @@
     "typescript": "^5.5.0"
   }
 }
-

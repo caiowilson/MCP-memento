@@ -1,0 +1,48 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - "extension/v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Build extension
+        working-directory: vscode-extension
+        run: npm run build
+
+      - name: Package VSIX
+        working-directory: vscode-extension
+        run: npx @vscode/vsce package -o dist/memento-mcp-vscode.vsix
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vscode-extension/dist/memento-mcp-vscode.vsix
+
+      - name: Publish to Marketplace (optional)
+        if: ${{ secrets.VSCE_PAT != '' }}
+        working-directory: vscode-extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish -p "$VSCE_PAT"

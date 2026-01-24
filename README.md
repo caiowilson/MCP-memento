@@ -71,7 +71,9 @@ make uninstall
 
 See `docs/vscode.md` for a client-agnostic config snippet and a raw stdio smoke test.
 
-There’s also a companion VS Code extension scaffold under `vscode-extension/` (WIP) intended to download/install the server binary and generate an `mcp.json` snippet.
+There’s also a companion VS Code extension scaffold under `vscode-extension/` (WIP) that can download/install the server binary, create `mcp.json`, and generate snippets.
+
+Release tags are namespaced: server releases use `server/vX.Y.Z` (with `server/latest` kept up to date), and the VS Code extension uses `extension/vA.B.C`.
 
 To bias Copilot Chat toward using these tools, this repo includes `/.github/copilot-instructions.md`.
 

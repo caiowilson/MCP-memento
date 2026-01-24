@@ -80,7 +80,7 @@ Vertical slices (ship small, end-to-end improvements).
 
 ## Slice 8 — VS Code extension UX polish
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: vscode-extension (commands, settings, UX surfaces)
@@ -88,9 +88,29 @@ Vertical slices (ship small, end-to-end improvements).
 
 ### Steps
 
-- [ ] Add first-activation onboarding prompt that offers Install / Open Snippet / Copy Snippet (status: todo)
-- [ ] Add `mementoMcp.serverPath` setting override and honor it in path resolution (status: todo)
-- [ ] Add status bar item showing resolved server path + install state (status: todo)
-- [ ] Improve install error UX with actionable guidance when releases/assets are missing (status: todo)
-- [ ] Add command to open or create MCP config file using the snippet builder (status: todo)
-- [ ] Add command palette/menu contributions for better discoverability (status: todo)
+- [x] Add first-activation onboarding prompt that offers Install / Open Snippet / Copy Snippet (status: done)
+- [x] Add `mementoMcp.serverPath` setting override and honor it in path resolution (status: done)
+- [x] Add status bar item showing resolved server path + install state (status: done)
+- [x] Improve install error UX with actionable guidance when releases/assets are missing (status: done)
+- [x] Add command to open or create MCP config file using the snippet builder (status: done)
+- [x] Add command palette/menu contributions for better discoverability (status: done)
+
+## Slice 9 — Monorepo releases (server + extension)
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: hard
+- Scope: release tags + workflows + installer contract + docs
+- Agent: memento-mcp-release
+
+### Steps
+
+- [x] Adopt tag namespaces: `server/vX.Y.Z`, `server/latest`, `extension/vA.B.C` (status: done)
+- [x] Publish raw server binaries named `memento-mcp_${os}_${arch}[.exe]` (darwin/linux/windows × x64/arm64) (status: done)
+- [x] Add `.github/workflows/release-server.yml` to build/upload server assets on `server/v*` tags (status: done)
+- [x] Add `.github/workflows/move-server-latest.yml` to move `server/latest` and sync its release assets (status: done)
+- [x] Add `.github/workflows/release-extension.yml` to package/publish VSIX on `extension/v*` tags (status: done)
+- [x] Ensure installer supports namespaced tags (URL-encode in `vscode-extension/src/installer.ts`) (status: done)
+- [x] Confirm defaults in `vscode-extension/package.json` target `caiowilson/memento-mcp` + `server/latest` (status: done)
+- [x] Update docs: `README.md`, `docs/vscode.md`, `vscode-extension/README.md` (status: done)
+- [x] Smoke test: install server via extension using `server/latest` (status: done) — verified `server/latest` assets in `caiowilson/MCP-memento` via `gh` (repo is private, public repo needed for unauthenticated install)

@@ -1,0 +1,62 @@
+name: Move Server Latest
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: startsWith(github.event.release.tag_name, 'server/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve release commit
+        shell: bash
+        run: |
+          TAG_SHA=$(git rev-list -n 1 "${{ github.event.release.tag_name }}")
+          echo "TAG_SHA=$TAG_SHA" >> $GITHUB_ENV
+
+      - name: Update server/latest tag
+        shell: bash
+        run: |
+          git tag -f server/latest "$TAG_SHA"
+          git push -f origin refs/tags/server/latest
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOOS_LIST=(darwin linux windows)
+          GOARCH_LIST=(amd64 arm64)
+          for GOOS in "${GOOS_LIST[@]}"; do
+            for GOARCH in "${GOARCH_LIST[@]}"; do
+              ARCH_LABEL="$GOARCH"
+              if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
+              EXT=""
+              if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+                go build -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
+            done
+          done
+
+      - name: Publish server/latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: server/latest
+          name: server/latest
+          target_commitish: ${{ env.TAG_SHA }}
+          files: dist/*
