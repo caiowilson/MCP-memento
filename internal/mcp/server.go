@@ -18,10 +18,11 @@ import (
 )
 
 type Server struct {
-	root  string
-	tools []Tool
-	mem   *NoteStore
-	idx   *indexing.Indexer
+	root   string
+	tools  []Tool
+	mem    *NoteStore
+	idx    *indexing.Indexer
+	devLog bool
 }
 
 type Config struct {
@@ -64,9 +65,10 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		root: absRoot,
-		mem:  mem,
-		idx:  idx,
+		root:   absRoot,
+		mem:    mem,
+		idx:    idx,
+		devLog: os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
 	}
 	s.tools = []Tool{
 		newRepoListFilesTool(absRoot),
@@ -250,6 +252,9 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallR
 	if len(args) == 0 {
 		args = json.RawMessage([]byte(`{}`))
 	}
+	if s.devLog {
+		s.logf("tool-call name=%s args=%s", params.Name, formatArgsForLog(args))
+	}
 
 	content, err := tool.Handler(ctx, args)
 	if err != nil {
@@ -385,4 +390,12 @@ func envInt(key string, def int) int {
 		return def
 	}
 	return n
+}
+
+func formatArgsForLog(raw json.RawMessage) string {
+	const maxBytes = 2000
+	if len(raw) <= maxBytes {
+		return string(raw)
+	}
+	return string(raw[:maxBytes]) + "…"
 }

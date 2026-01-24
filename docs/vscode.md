@@ -13,6 +13,7 @@ This repo includes a companion VS Code extension under `vscode-extension/` that 
 See `vscode-extension/README.md`.
 
 Defaults:
+
 - GitHub repo: `caiowilson/MCP-memento`
 - Release tag: `server/latest` (server releases are `server/vX.Y.Z`)
 
@@ -76,6 +77,16 @@ printf '%s\n' \
 - `repo_context` to fetch a single “context window” (uses automatic indexing in the background).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
 
+### Index lifecycle & VS Code behavior
+
+The server maintains a background code index on disk, but clients can still control when a full reindex happens:
+
+- On activation, call `tools/call` for `repo_index_status` to see whether the index is already warm for the current workspace.
+- If the index is effectively empty and the workspace is small (for example, under ~10MB of source), you can eagerly call `repo_reindex` once to "warm up" the index for that VS Code window.
+- For larger workspaces or when an index already exists, rely on the background indexer (Git polling or filesystem watcher) and use `repo_index_status` / `repo_index_debug` only for UI status or diagnostics.
+- Expose a command such as **“Memento: Force Reindex”** that calls `repo_reindex` (optionally preceded by `repo_clear_index`) against the current workspace when the user wants a deterministic fresh snapshot.
+- Explicit memory (`memory_*`) is independent of the code index: notes remain available even while the index is building or being rebuilt.
+
 ### Index tuning (optional)
 
 - `MEMENTO_INDEX_POLL_SECONDS` (default `10`)
@@ -84,3 +95,4 @@ printf '%s\n' \
 - `MEMENTO_GIT_POLL_SECONDS` (default `2`)
 - `MEMENTO_GIT_DEBOUNCE_MS` (default `500`)
 - `MEMENTO_FS_DEBOUNCE_MS` (default `500`)
+- `MEMENTO_MCP_DEV_LOG` (default `0`, set to `1` to log tool calls)

@@ -36,6 +36,22 @@ Status: experimental / WIP (tooling and behavior may evolve).
 
 ---
 
+## 🧠 Indexing & Memory Model
+
+`memento-mcp` maintains two complementary "memory" systems:
+
+- An **automatic code index** that continuously scans your workspace (via Git status or filesystem events) and stores bounded chunks under `~/.memento-mcp/`. Tools like `repo_context`, `repo_related_files`, and `repo_search` read from this index.
+- An **explicit note store** backed by `notes.json`, managed via `memory_upsert`, `memory_search`, and `memory_clear`, for things that don’t naturally live in source files (architecture notes, gotchas, runbooks, etc.).
+
+Most of the time you rely on the background indexer. When you need a deterministic fresh snapshot, you can:
+
+- Call **`repo_reindex`** as a "Memory Start Index" operation to force a full re-scan and rebuild of the code index.
+- Use **`repo_index_status`** and **`repo_index_debug`** to check readiness and active rules, and **`repo_clear_index`** to wipe the on-disk index for the current repo.
+
+Clients like VS Code can choose to eagerly warm up small workspaces (for example, calling `repo_reindex` once when the index is empty and the repo is under ~10MB) and otherwise rely on background indexing. See `docs/README.md` for the full indexing/memory reference and `docs/vscode.md` for VS Code-specific guidance.
+
+---
+
 ## 🛠️ Installation & Quickstart
 
 ### Prerequisites
@@ -131,6 +147,7 @@ You can configure `memento-mcp` using environment variables.
 | `MEMENTO_GIT_POLL_SECONDS`   | `2`     | How often to check `git status` for changes.       |
 | `MEMENTO_GIT_DEBOUNCE_MS`    | `500`   | Wait time (ms) before processing Git changes.      |
 | `MEMENTO_FS_DEBOUNCE_MS`     | `500`   | Wait time (ms) for filesystem events.              |
+| `MEMENTO_MCP_DEV_LOG`        | `0`     | Log tool calls to stderr when set to `1`.          |
 
 ### Included / Excluded Files (Default Behavior)
 
@@ -194,6 +211,12 @@ Release tags are namespaced: server releases use `server/vX.Y.Z` (with `server/l
 ```bash
 go test ./...
 go vet ./...
+```
+
+To log tool calls while developing:
+
+```bash
+MEMENTO_MCP_DEV_LOG=1 ./bin/memento-mcp 2> /tmp/memento-mcp-dev.log
 ```
 
 ## 📚 Documentation
