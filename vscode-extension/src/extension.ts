@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import { ensureServerInstalled, getServerStatus, resolvePreferredServerPath } from "./installer";
-import { buildConfigEntryJson, buildMcpServersConfigJson, buildSnippetMarkdown } from "./mcpConfig";
+import { buildConfigEntry, buildConfigEntryJson, buildMcpServersConfigJson, buildSnippetMarkdown } from "./mcpConfig";
 
 export function activate(context: vscode.ExtensionContext) {
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  statusBar.command = "mementoMcp.openOrCreateMcpConfig";
+  statusBar.command = "mementoMcp.configureMcp";
   context.subscriptions.push(statusBar);
 
   context.subscriptions.push(
@@ -13,6 +13,17 @@ export function activate(context: vscode.ExtensionContext) {
         const bin = await ensureServerInstalled(context);
         void vscode.window.showInformationMessage(`memento-mcp installed: ${bin}`);
         await refreshStatusBar(context, statusBar);
+
+        const followUp = await vscode.window.showInformationMessage(
+          "Configure MCP to use the installed server?",
+          "Configure (Workspace)",
+          "Configure (Global)",
+        );
+        if (followUp === "Configure (Workspace)") {
+          await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "workspace" });
+        } else if (followUp === "Configure (Global)") {
+          await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "global" });
+        }
       } catch (err) {
         void vscode.window.showErrorMessage(asErrorMessage(err));
       }
@@ -47,9 +58,19 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("mementoMcp.openOrCreateMcpConfig", async () => {
+      void vscode.window.showWarningMessage(
+        "This command has moved. Use “Memento MCP: Configure MCP (Workspace/Global)”.",
+      );
+      await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "workspace" });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mementoMcp.configureMcp", async (args?: unknown) => {
       try {
         const serverPath = await resolvePreferredServerPath(context);
-        const doc = await openOrCreateMcpConfig(serverPath);
+        const { scope, promptForScope } = parseScope(args);
+        const doc = await openOrCreateMcpConfig(serverPath, scope, promptForScope);
         await vscode.window.showTextDocument(doc, { preview: false });
       } catch (err) {
         void vscode.window.showErrorMessage(asErrorMessage(err));
@@ -113,31 +134,221 @@ async function maybeShowOnboarding(context: vscode.ExtensionContext): Promise<vo
   const choice = await vscode.window.showInformationMessage(
     "Welcome to memento-mcp. Set up the server?",
     "Install Server",
-    "Open MCP Config",
+    "Configure MCP",
     "Copy Snippet",
   );
   if (choice === "Install Server") {
     await vscode.commands.executeCommand("mementoMcp.installServer");
-  } else if (choice === "Open MCP Config") {
-    await vscode.commands.executeCommand("mementoMcp.openOrCreateMcpConfig");
+  } else if (choice === "Configure MCP") {
+    await vscode.commands.executeCommand("mementoMcp.configureMcp");
   } else if (choice === "Copy Snippet") {
     await vscode.commands.executeCommand("mementoMcp.copyMcpConfigSnippet");
   }
 }
 
-async function openOrCreateMcpConfig(serverPath: string): Promise<vscode.TextDocument> {
+type ConfigureScope = "workspace" | "global";
+
+function parseScope(args: unknown): { scope: ConfigureScope; promptForScope: boolean } {
+  if (typeof args === "object" && args !== null && "scope" in args) {
+    const s = (args as { scope?: unknown }).scope;
+    if (s === "workspace" || s === "global") {
+      return { scope: s, promptForScope: false };
+    }
+  }
+  return { scope: "workspace", promptForScope: true };
+}
+
+async function openOrCreateMcpConfig(
+  serverPath: string,
+  initialScope: ConfigureScope,
+  promptForScope: boolean,
+): Promise<vscode.TextDocument> {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    throw new Error("Open a workspace folder to create mcp.json.");
+  const scope = promptForScope
+    ? await chooseScope(initialScope, Boolean(folders && folders.length > 0))
+    : initialScope;
+
+  const configUri = await resolveConfigUri(scope, folders?.[0]?.uri);
+  await upsertMcpEntry(configUri, serverPath);
+  return await vscode.workspace.openTextDocument(configUri);
+}
+
+async function chooseScope(
+  initial: ConfigureScope,
+  hasWorkspaceFolder: boolean,
+): Promise<ConfigureScope> {
+  if (!hasWorkspaceFolder && initial === "workspace") {
+    return "global";
   }
 
-  const configUri = vscode.Uri.joinPath(folders[0].uri, "mcp.json");
+  if (hasWorkspaceFolder) {
+    const picked = await vscode.window.showQuickPick(
+      [
+        { label: "Workspace", description: "Write to ${workspaceFolder}/mcp.json", value: "workspace" as const },
+        { label: "Global", description: "Write to your user MCP config file", value: "global" as const },
+      ],
+      { placeHolder: "Configure MCP for…" },
+    );
+    if (picked) {
+      return picked.value;
+    }
+  }
+
+  return initial;
+}
+
+async function resolveConfigUri(scope: ConfigureScope, workspaceUri?: vscode.Uri): Promise<vscode.Uri> {
+  if (scope === "workspace") {
+    if (!workspaceUri) {
+      throw new Error("Open a workspace folder to configure workspace mcp.json.");
+    }
+    return vscode.Uri.joinPath(workspaceUri, "mcp.json");
+  }
+
+  const home = process.env.HOME;
+  const appData = process.env.APPDATA;
+  const candidates: Array<{ label: string; uri: vscode.Uri }> = [];
+
+  if (home) {
+    candidates.push({ label: "~/.vscode/mcp.json", uri: vscode.Uri.file(`${home}/.vscode/mcp.json`) });
+  }
+  if (process.platform === "darwin" && home) {
+    candidates.push({
+      label: "~/Library/Application Support/Code/User/mcp.json",
+      uri: vscode.Uri.file(`${home}/Library/Application Support/Code/User/mcp.json`),
+    });
+  }
+  if (process.platform === "linux" && home) {
+    candidates.push({
+      label: "~/.config/Code/User/mcp.json",
+      uri: vscode.Uri.file(`${home}/.config/Code/User/mcp.json`),
+    });
+  }
+  if (process.platform === "win32" && appData) {
+    candidates.push({
+      label: "%APPDATA%\\Code\\User\\mcp.json",
+      uri: vscode.Uri.file(`${appData}\\Code\\User\\mcp.json`),
+    });
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    [
+      ...candidates.map((c) => ({ label: c.label, value: c.uri })),
+      { label: "Browse…", value: "browse" as const },
+    ],
+    { placeHolder: "Select your global MCP config file" },
+  );
+
+  if (!picked) {
+    throw new Error("Canceled.");
+  }
+  if (picked.value === "browse") {
+    const res = await vscode.window.showSaveDialog({
+      defaultUri: candidates[0]?.uri,
+      saveLabel: "Use this file",
+      filters: { JSON: ["json"] },
+    });
+    if (!res) {
+      throw new Error("Canceled.");
+    }
+    return res;
+  }
+
+  return picked.value;
+}
+
+async function upsertMcpEntry(configUri: vscode.Uri, serverPath: string): Promise<void> {
+  const entry = buildConfigEntry(serverPath);
+  const text = await readTextOrEmpty(configUri);
+  if (text.trim().length === 0) {
+    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    return;
+  }
+
+  let parsed: unknown;
   try {
-    await vscode.workspace.fs.stat(configUri);
-    return await vscode.workspace.openTextDocument(configUri);
+    parsed = JSON.parse(text);
   } catch {
-    const content = buildMcpServersConfigJson(serverPath);
-    await vscode.workspace.fs.writeFile(configUri, Buffer.from(content, "utf8"));
-    return await vscode.workspace.openTextDocument(configUri);
+    const choice = await vscode.window.showWarningMessage(
+      "Existing MCP config is not valid JSON. Overwrite it?",
+      "Overwrite",
+      "Cancel",
+    );
+    if (choice !== "Overwrite") {
+      throw new Error("Canceled.");
+    }
+    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    return;
+  }
+
+  const updated = upsertIntoKnownSchema(parsed, entry);
+  if (!updated) {
+    const choice = await vscode.window.showWarningMessage(
+      "Could not detect MCP config schema (expected mcpServers map or servers array). Overwrite with a default schema?",
+      "Overwrite",
+      "Cancel",
+    );
+    if (choice !== "Overwrite") {
+      throw new Error("Canceled.");
+    }
+    await vscode.workspace.fs.writeFile(configUri, Buffer.from(buildMcpServersConfigJson(serverPath), "utf8"));
+    return;
+  }
+
+  await vscode.workspace.fs.writeFile(configUri, Buffer.from(JSON.stringify(updated, null, 2), "utf8"));
+}
+
+function upsertIntoKnownSchema(
+  config: unknown,
+  entry: Record<string, unknown>,
+): Record<string, unknown> | unknown[] | null {
+  if (Array.isArray(config)) {
+    return upsertIntoServersArray(config, entry);
+  }
+  if (typeof config !== "object" || config === null) {
+    return null;
+  }
+
+  const obj = config as Record<string, unknown>;
+  const mcpServers = obj["mcpServers"];
+  if (typeof mcpServers === "object" && mcpServers !== null && !Array.isArray(mcpServers)) {
+    const next = { ...obj };
+    next["mcpServers"] = { ...(mcpServers as Record<string, unknown>), "memento-mcp": entry };
+    return next;
+  }
+
+  const servers = obj["servers"];
+  if (Array.isArray(servers)) {
+    const next = { ...obj };
+    next["servers"] = upsertIntoServersArray(servers, entry);
+    return next;
+  }
+
+  return null;
+}
+
+function upsertIntoServersArray(arr: unknown[], entry: Record<string, unknown>): unknown[] {
+  const name = String(entry["name"] ?? "memento-mcp");
+  const next = [...arr];
+  for (let i = 0; i < next.length; i++) {
+    const item = next[i];
+    if (typeof item === "object" && item !== null && "name" in item) {
+      const itemName = String((item as Record<string, unknown>)["name"] ?? "");
+      if (itemName === name) {
+        next[i] = entry;
+        return next;
+      }
+    }
+  }
+  next.push(entry);
+  return next;
+}
+
+async function readTextOrEmpty(uri: vscode.Uri): Promise<string> {
+  try {
+    const data = await vscode.workspace.fs.readFile(uri);
+    return Buffer.from(data).toString("utf8");
+  } catch {
+    return "";
   }
 }

@@ -13,6 +13,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:mementoMcp.installServer",
+    "onCommand:mementoMcp.configureMcp",
     "onCommand:mementoMcp.openOrCreateMcpConfig",
     "onCommand:mementoMcp.openMcpConfigSnippet",
     "onCommand:mementoMcp.copyMcpConfigSnippet"
@@ -25,8 +26,12 @@
         "title": "Memento MCP: Install Server Binary"
       },
       {
+        "command": "mementoMcp.configureMcp",
+        "title": "Memento MCP: Configure MCP (Workspace/Global)"
+      },
+      {
         "command": "mementoMcp.openOrCreateMcpConfig",
-        "title": "Memento MCP: Open or Create mcp.json"
+        "title": "Memento MCP: Configure MCP (Workspace)"
       },
       {
         "command": "mementoMcp.openMcpConfigSnippet",
@@ -66,6 +71,10 @@
       "commandPalette": [
         {
           "command": "mementoMcp.installServer",
+          "group": "Memento MCP"
+        },
+        {
+          "command": "mementoMcp.configureMcp",
           "group": "Memento MCP"
         },
         {

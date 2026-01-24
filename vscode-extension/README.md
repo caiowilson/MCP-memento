@@ -24,11 +24,11 @@ Then in VS Code:
 - Press `F5` (uses the included `.vscode/launch.json`), or run `npm run watch` and reload the Extension Development Host.
 - Use the commands:
   - `Memento MCP: Install Server Binary`
-  - `Memento MCP: Open or Create mcp.json`
+  - `Memento MCP: Configure MCP (Workspace/Global)`
   - `Memento MCP: Open MCP Config Snippet`
   - `Memento MCP: Copy MCP Config Snippet`
 
-On first activation, the extension offers quick actions to install the server or open/copy config snippets.
+On first activation, the extension offers quick actions to install the server or configure/copy config snippets. After installation, it can also offer to configure MCP for the workspace or globally by writing an MCP config entry.
 
 ## Settings
 
