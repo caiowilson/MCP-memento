@@ -71,6 +71,11 @@ chmod +x /path/to/memento-mcp
 sudo install -m 0755 /path/to/memento-mcp /usr/local/bin/memento-mcp
 ```
 
+#### OS‑specific notes
+
+- **macOS/Linux:** ensure the binary is executable (`chmod +x`) and place it on your `PATH`.
+- **Windows:** rename to `memento-mcp.exe` and add its folder to your `PATH` (or reference the full path in MCP config).
+
 ### Prerequisites
 
 - **Go 1.25.5** (see `go.mod`).
@@ -183,7 +188,7 @@ The indexer uses an "allowlist + denylist" strategy:
 - **Always Excluded (Globs):**
   `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.crt`, `*.der`, `*.ppk`, `id_rsa`, `id_ed25519`, `*.sqlite`, `*.db`, `*.bin`, `*.exe`
 - **Always Ignored (Dirs):**
-  `.git`, `node_modules`, `vendor`, `dist`, `build`, `out`, `.vscode`, `.idea`, `.memento-mcp`
+  `.git`, `node_modules`, `vendor`, `dist`, `build`, `out`, `.vscode`, `.idea`, `.memento-mcp`, `.next`, `.turbo`, `.cache`, `coverage`, `.nyc_output`, `.parcel-cache`, `.yarn`
 
 _Note: `.env` files are currently **indexed** by default to support local development contexts. Add them to the denylist code if this is a security concern._
 
