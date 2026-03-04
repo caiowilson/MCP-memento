@@ -1,10 +1,10 @@
-## Architecture Decision Records (ADRs)
+# Architecture Decision Records (ADRs)
 
 We use ADRs to capture decisions that affect architecture, interfaces, persistence, and operational behavior.
 
 All ADRs are consolidated in `docs/adr/ADRs.md`.
 
-### When to write an ADR
+## When to write an ADR
 
 Write an ADR when you are choosing between meaningful options, for example:
 
@@ -13,11 +13,11 @@ Write an ADR when you are choosing between meaningful options, for example:
 - Indexing model and update strategy
 - Public package boundaries and API stability
 
-### Where they live
+## Where they live
 
 ADRs live in `docs/adr/ADRs.md` and are numbered sequentially.
 
-### Format
+## Format
 
 Each ADR should include:
 
@@ -27,7 +27,7 @@ Each ADR should include:
 - Consequences: tradeoffs and follow-ups
 - Alternatives considered: what we didn’t choose and why
 
-### Create a new ADR
+## Create a new ADR
 
 1. Append a new section to `docs/adr/ADRs.md` using the template at the bottom of that file
 2. Add it to the index near the top

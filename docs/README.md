@@ -1,15 +1,16 @@
-## Documentation
+# Documentation
 
 This repository is a work-in-progress Go implementation of an MCP server. The codebase is currently a scaffold (some packages are placeholders/stubs).
+Memento is a local-first MCP server that gives AI agents durable, high-signal memory for your repository: indexed code context, semantic relationships, fast search, and explicit notes that persist across sessions.
 
-### Contents
+## Contents
 
 - Getting started: `../README.md`
 - VS Code usage: `vscode.md`
 - VS Code extension (WIP): `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
 
-### MCP tools (current)
+## MCP tools (current)
 
 - `repo_list_files` — list files under workspace root
 - `repo_read_file` — read file content (optionally line-bounded)
@@ -24,7 +25,7 @@ This repository is a work-in-progress Go implementation of an MCP server. The co
 - `memory_search` — search repo-scoped notes
 - `memory_clear` — delete all repo-scoped notes
 
-### Automatic indexing
+## Automatic indexing
 
 On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. For git repos it prefers `git status` to detect changes; otherwise it falls back to a filesystem watcher. See `docs/adr/ADRs.md`.
 
@@ -34,7 +35,7 @@ Default include/exclude rules (configurable in code):
 - Include by high-signal path: `go.mod`, `go.sum`, `README*`, `Makefile`, `Dockerfile`, `.github/workflows/*`, `Taskfile.yml`
 - Exclude by pattern: `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.crt`, `*.der`, `*.ppk`, `id_rsa`, `id_ed25519`, `*.sqlite`, `*.db`, `*.bin`, `*.exe`
 
-### Repository layout (current)
+## Repository layout (current)
 
 - `cmd/server/` — executable entrypoint
 - `internal/app/` — app lifecycle wiring (WIP)

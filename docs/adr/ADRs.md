@@ -242,11 +242,13 @@ Adopt a tiered index + controller architecture:
 #### Data flow (high level)
 
 Startup:
+
 1. Tier 1 full scan (bounded by byte budgets; “index everything if small enough”).
 2. Start change source (git-first or fs).
 3. Start Tier 2 Go semantic indexing in background.
 
 On change:
+
 1. Change source emits paths (debounced).
 2. Re-index only those files (and delete removed ones).
 3. If changes include Go-related inputs, invalidate/refresh the Go semantic cache.
