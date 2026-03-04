@@ -114,3 +114,19 @@ Vertical slices (ship small, end-to-end improvements).
 - [x] Confirm defaults in `vscode-extension/package.json` target `caiowilson/memento-mcp` + `server/latest` (status: done)
 - [x] Update docs: `README.md`, `docs/vscode.md`, `vscode-extension/README.md` (status: done)
 - [x] Smoke test: install server via extension using `server/latest` (status: done) — verified `server/latest` assets in `caiowilson/MCP-memento` via `gh` (repo is private, public repo needed for unauthenticated install)
+
+## Slice 10 — Signed macOS packaging + notarization
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: hard
+- Scope: release workflows, Apple signing assets, notarization pipeline
+- Agent: memento-mcp-release
+
+### Steps
+
+- [ ] Add Developer ID signing for macOS `.pkg` in release workflows (status: todo)
+- [ ] Add notarization submit + staple step for generated `.pkg` assets (status: todo)
+- [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
+- [ ] Add CI verification step (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
+- [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)

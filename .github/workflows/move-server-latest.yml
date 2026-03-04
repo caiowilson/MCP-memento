@@ -8,9 +8,12 @@ permissions:
   contents: write
 
 jobs:
-  update:
+  prepare:
     if: startsWith(github.event.release.tag_name, 'server/v')
     runs-on: ubuntu-latest
+    outputs:
+      tag_sha: ${{ steps.meta.outputs.tag_sha }}
+      version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout
@@ -19,44 +22,187 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.release.tag_name }}
 
+      - name: Resolve release commit and version
+        id: meta
+        shell: bash
+        run: |
+          TAG_SHA=$(git rev-list -n 1 "${{ github.event.release.tag_name }}")
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#server/v}"
+          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update server/latest tag
+        shell: bash
+        run: |
+          git tag -f server/latest "${{ steps.meta.outputs.tag_sha }}"
+          git push -f origin refs/tags/server/latest
+
+  build-binaries:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [darwin, linux, windows]
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Resolve release commit
+      - name: Build binary
         shell: bash
         run: |
-          TAG_SHA=$(git rev-list -n 1 "${{ github.event.release.tag_name }}")
-          echo "TAG_SHA=$TAG_SHA" >> $GITHUB_ENV
-
-      - name: Update server/latest tag
-        shell: bash
-        run: |
-          git tag -f server/latest "$TAG_SHA"
-          git push -f origin refs/tags/server/latest
-
-      - name: Build binaries
-        shell: bash
-        run: |
+          set -euo pipefail
           mkdir -p dist
-          GOOS_LIST=(darwin linux windows)
-          GOARCH_LIST=(amd64 arm64)
-          for GOOS in "${GOOS_LIST[@]}"; do
-            for GOARCH in "${GOARCH_LIST[@]}"; do
-              ARCH_LABEL="$GOARCH"
-              if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
-              EXT=""
-              if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-                go build -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
-            done
-          done
+          GOOS="${{ matrix.goos }}"
+          GOARCH="${{ matrix.goarch }}"
+          ARCH_LABEL="$GOARCH"
+          if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+            go build -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  build-deb:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH="${{ matrix.goarch }}" \
+            go build -o dist/memento-mcp ./cmd/server
+
+      - name: Build .deb package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          GOARCH="${{ matrix.goarch }}"
+
+          ROOT="pkgroot-${GOARCH}"
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/local/bin"
+
+          install -m 0755 dist/memento-mcp "$ROOT/usr/local/bin/memento-mcp"
+
+          cat > "$ROOT/DEBIAN/control" <<EOF
+Package: memento-mcp
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: ${GOARCH}
+Maintainer: memento-mcp maintainers
+Description: Local-first MCP server for durable codebase memory
+EOF
+
+          dpkg-deb --build "$ROOT" "dist/memento-mcp_${VERSION}_linux_${GOARCH}.deb"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.goarch }}
+          path: dist/*.deb
+
+  build-macos-pkg:
+    needs: prepare
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build macOS binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=darwin GOARCH="${{ matrix.goarch }}" \
+            go build -o dist/memento-mcp ./cmd/server
+
+      - name: Build .pkg package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          GOARCH="${{ matrix.goarch }}"
+
+          ROOT="pkgroot-darwin-${GOARCH}"
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT/usr/local/bin"
+          install -m 0755 dist/memento-mcp "$ROOT/usr/local/bin/memento-mcp"
+
+          pkgbuild \
+            --root "$ROOT" \
+            --identifier "com.caiowilson.memento-mcp" \
+            --version "$VERSION" \
+            --install-location "/" \
+            "dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.goarch }}
+          path: dist/*.pkg
+
+  publish:
+    needs: [prepare, build-binaries, build-deb, build-macos-pkg]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish server/latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: server/latest
           name: server/latest
-          target_commitish: ${{ env.TAG_SHA }}
+          target_commitish: ${{ needs.prepare.outputs.tag_sha }}
           files: dist/*

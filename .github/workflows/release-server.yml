@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-binaries:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -28,7 +28,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build binaries
+      - name: Build binary
         shell: bash
         run: |
           mkdir -p dist
@@ -41,7 +41,115 @@ jobs:
           CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
             go build -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
 
-      - name: Upload release assets
+      - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  package-deb:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOARCH="${{ matrix.goarch }}"
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
+            go build -o "dist/memento-mcp" ./cmd/server
+
+      - name: Build .deb package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#server/v}"
+          GOARCH="${{ matrix.goarch }}"
+          DEB_ARCH="$GOARCH"
+
+          PKG_ROOT="pkgroot"
+          mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/usr/local/bin"
+
+          install -m 0755 dist/memento-mcp "$PKG_ROOT/usr/local/bin/memento-mcp"
+
+          cat > "$PKG_ROOT/DEBIAN/control" <<EOF
+Package: memento-mcp
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: ${DEB_ARCH}
+Maintainer: memento-mcp maintainers
+Description: Local-first MCP server for durable codebase memory
+EOF
+
+          mkdir -p dist
+          dpkg-deb --build "$PKG_ROOT" "dist/memento-mcp_${VERSION}_linux_${DEB_ARCH}.deb"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+
+  package-macos-pkg:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build macOS binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOARCH="${{ matrix.goarch }}"
+          CGO_ENABLED=0 GOOS=darwin GOARCH="$GOARCH" \
+            go build -o "dist/memento-mcp" ./cmd/server
+
+      - name: Build .pkg installer
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#server/v}"
+          GOARCH="${{ matrix.goarch }}"
+
+          PKG_ROOT="pkgroot"
+          mkdir -p "$PKG_ROOT/usr/local/bin"
+          install -m 0755 dist/memento-mcp "$PKG_ROOT/usr/local/bin/memento-mcp"
+
+          pkgbuild \
+            --root "$PKG_ROOT" \
+            --identifier "com.caiowilson.memento-mcp" \
+            --version "$VERSION" \
+            --install-location "/" \
+            "dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.pkg
