@@ -11,7 +11,7 @@ A local-first MCP server that gives AI agents durable, high-signal memory for yo
 ## Languages
 
 - English: `README.md`
-- Brazilian Portuguese (coming soon): [`README.pt-BR.md`](./README.pt-BR.md)
+- Brazilian Portuguese: [`README.pt-BR.md`](./README.pt-BR.md)
 
 ## Documentation
 
