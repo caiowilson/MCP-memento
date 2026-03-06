@@ -28,8 +28,8 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
       await fs.mkdir(path.dirname(binPath), { recursive: true });
 
       const cfg = vscode.workspace.getConfiguration("mementoMcp");
-      const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
-      const tag = String(cfg.get("releaseTag", "latest"));
+      const repo = String(cfg.get("githubRepo", "caiowilson/memento-mcp"));
+      const tag = String(cfg.get("releaseTag", "server/latest"));
 
       const release = await fetchRelease(repo, tag);
       const wanted = desiredAssetNames();
@@ -104,7 +104,8 @@ function desiredAssetNames(): string[] {
 
 async function fetchRelease(repo: string, tag: string): Promise<GitHubRelease> {
   const base = "https://api.github.com/repos/" + repo;
-  const url = tag === "latest" ? `${base}/releases/latest` : `${base}/releases/tags/${tag}`;
+  const url =
+    tag === "latest" ? `${base}/releases/latest` : `${base}/releases/tags/${encodeURIComponent(tag)}`;
   return await fetchJson<GitHubRelease>(url);
 }
 

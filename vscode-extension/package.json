@@ -36,13 +36,13 @@
       "properties": {
         "mementoMcp.githubRepo": {
           "type": "string",
-          "default": "caiowilson/MCP-memento",
+          "default": "caiowilson/memento-mcp",
           "description": "GitHub repo used to download server binaries from Releases (owner/name)."
         },
         "mementoMcp.releaseTag": {
           "type": "string",
-          "default": "latest",
-          "description": "GitHub release tag to download (or 'latest')."
+          "default": "server/latest",
+          "description": "GitHub release tag to download (or 'latest'). Namespaced tags like 'server/latest' are supported."
         },
         "mementoMcp.preferWorkspaceBinary": {
           "type": "boolean",
@@ -65,4 +65,3 @@
     "typescript": "^5.5.0"
   }
 }
-
