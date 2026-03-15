@@ -174,6 +174,20 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 				}
 			}
 		}
+	} else if ext == ".py" {
+		g, err := getPythonImportGraph(ctx, root)
+		if err == nil && g != nil {
+			if opts.IncludeImports {
+				for _, p := range g.imports[relClean] {
+					collector.add(p, 9, "imports")
+				}
+			}
+			if opts.IncludeImporters {
+				for _, p := range g.importers[relClean] {
+					collector.add(p, 10, "imported_by")
+				}
+			}
+		}
 	} else {
 		addGenericMentionsRelated(ctx, root, relClean, collector)
 	}
