@@ -144,6 +144,111 @@ func TestRepoRelatedFilesPHPIncludesAndIncludedBy(t *testing.T) {
 	}
 }
 
+func TestRepoRelatedFilesTSInvalidatesStaleGraphOnRename(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "src")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.ts"), []byte("import { b } from './b'\nconsole.log(b)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldPath := filepath.Join(dir, "b.ts")
+	if err := os.WriteFile(oldPath, []byte("export const b = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+	raw, _ := json.Marshal(map[string]any{"path": "src/a.ts", "includeSameDir": false})
+	if _, err := tool.Handler(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+
+	newPath := filepath.Join(dir, "c.ts")
+	if err := os.Rename(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	InvalidateJSImportGraphCache(root)
+
+	got, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	related := got.(map[string]any)["related"].([]relatedCandidate)
+	if containsRelated(related, "src/b.ts") {
+		t.Fatalf("did not expect stale src/b.ts after invalidation: %#v", related)
+	}
+}
+
+func TestRepoRelatedFilesPHPInvalidatesStaleGraphOnDelete(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "app")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.php"), []byte("<?php\nrequire './util.php';\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	utilPath := filepath.Join(dir, "util.php")
+	if err := os.WriteFile(utilPath, []byte("<?php\nfunction util() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+	raw, _ := json.Marshal(map[string]any{"path": "app/main.php", "includeSameDir": false})
+	if _, err := tool.Handler(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(utilPath); err != nil {
+		t.Fatal(err)
+	}
+	InvalidatePHPIncludeGraphCache(root)
+
+	got, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	related := got.(map[string]any)["related"].([]relatedCandidate)
+	if containsRelated(related, "app/util.php") {
+		t.Fatalf("did not expect stale app/util.php after invalidation: %#v", related)
+	}
+}
+
+func TestRepoRelatedFilesFiltersStaleCachedCandidates(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "src")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.ts"), []byte("import { b } from './b'\nconsole.log(b)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stalePath := filepath.Join(dir, "b.ts")
+	if err := os.WriteFile(stalePath, []byte("export const b = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+	raw, _ := json.Marshal(map[string]any{"path": "src/a.ts", "includeSameDir": false})
+	if _, err := tool.Handler(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(stalePath); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	related := got.(map[string]any)["related"].([]relatedCandidate)
+	if containsRelated(related, "src/b.ts") {
+		t.Fatalf("did not expect stale cached src/b.ts: %#v", related)
+	}
+}
+
 func containsRelated(list []relatedCandidate, path string) bool {
 	for _, c := range list {
 		if c.Path == path {

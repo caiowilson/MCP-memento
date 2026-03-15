@@ -178,7 +178,7 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 		addGenericMentionsRelated(ctx, root, relClean, collector)
 	}
 
-	return collector.results(), nil
+	return filterExistingRelated(root, collector.results()), nil
 }
 
 type relatedCandidate struct {
@@ -416,4 +416,24 @@ func addGoImportersRelated(ctx context.Context, root, modulePath, targetDirRel, 
 		}
 		return nil
 	})
+}
+
+func filterExistingRelated(root string, related []relatedCandidate) []relatedCandidate {
+	if len(related) == 0 {
+		return nil
+	}
+
+	filtered := make([]relatedCandidate, 0, len(related))
+	for _, cand := range related {
+		abs, err := safeJoin(root, cand.Path)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(abs)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		filtered = append(filtered, cand)
+	}
+	return filtered
 }
