@@ -1,14 +1,16 @@
 # Documentation
 
-This repository is a work-in-progress Go implementation of an MCP server. The codebase is currently a scaffold (some packages are placeholders/stubs).
 Memento is a local-first MCP server that gives AI agents durable, high-signal memory for your repository: indexed code context, semantic relationships, fast search, and explicit notes that persist across sessions.
+
+This directory collects the main project documentation, including client setup, VS Code usage, architecture decisions, and the technical debt remediation backlog.
 
 ## Contents
 
 - Getting started: `../README.md`
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
-- VS Code extension (WIP): `../vscode-extension/README.md`
+- Technical debt remediation backlog: `technical-debt-remediation.md`
+- VS Code extension: `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
 
 ## MCP tools (current)
@@ -46,6 +48,6 @@ Default include/exclude rules (configurable in code):
 ## Repository layout (current)
 
 - `cmd/server/` — executable entrypoint
-- `internal/app/` — app lifecycle wiring (WIP)
+- `internal/app/` — app lifecycle wiring
 - `internal/mcp/` — MCP server implementation (stdio JSON-RPC + tools)
 - `internal/indexing/` — automatic code indexing (chunk store)

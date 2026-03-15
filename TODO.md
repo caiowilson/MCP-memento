@@ -301,3 +301,92 @@ Each language needs custom parsing for symbols, outlines, and chunk boundaries. 
 - [ ] Implement generic symbol extraction using tree-sitter queries (status: todo)
 - [ ] Replace language-specific outline/chunk logic with tree-sitter where available (status: todo)
 - [ ] Add tests across Go, JS/TS, Python, Rust (status: todo)
+
+## Slice 20 — Chunk boundary regression fixtures (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: internal/indexing/chunk.go, internal/indexing/\*\_test.go
+- Priority: P1
+
+### Problem
+
+Chunking behavior is not pinned down tightly enough before the syntax-aware chunking work. That makes the next chunking change riskier than it needs to be.
+
+### Steps
+
+- [ ] Add Go fixture coverage for adjacent declarations and doc comments (status: todo)
+- [ ] Add assertions for chunk start and end lines (status: todo)
+- [ ] Add one non-Go fallback test proving line-based chunking still works (status: todo)
+
+## Slice 21 — Package-level coverage reporting (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: CI workflow, internal/indexing, internal/mcp
+- Priority: P1
+
+### Problem
+
+The repo has green tests, but no package-level coverage signal for the highest-risk code paths.
+
+### Steps
+
+- [ ] Add coverage reporting for `internal/indexing` and `internal/mcp` in CI output (status: todo)
+- [ ] Set an initial floor that only blocks coverage regressions for those packages (status: todo)
+- [ ] Document the local coverage command in contributor-facing docs if needed (status: todo)
+
+## Slice 22 — `repo_context` golden output tests (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: internal/mcp/context_tool_test.go
+- Priority: P1
+
+### Problem
+
+`repo_context` supports multiple intents and modes, but the output contract is only partially protected by tests.
+
+### Steps
+
+- [ ] Add stable test coverage for `intent: navigate` output shape (status: todo)
+- [ ] Add stable test coverage for `intent: implement` and `intent: review` output shapes (status: todo)
+- [ ] Add explicit-mode contract assertions for `full`, `outline`, and `summary` as needed (status: todo)
+
+## Slice 23 — Docs landing page accuracy pass (P1)
+
+- Status: done
+- Owner: codex
+- Difficulty: small
+- Scope: docs/README.md
+- Priority: P1
+
+### Problem
+
+The docs landing page described the repository as a scaffold/work-in-progress in ways that no longer match the current server and test state.
+
+### Steps
+
+- [x] Rewrite the opening description to match the current project state (status: done)
+- [x] Remove stale WIP wording from the docs index where it is no longer accurate (status: done)
+
+## Slice 24 — Deprecate `README-old.md` safely (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: README-old.md, docs index
+- Priority: P1
+
+### Problem
+
+An old top-level README remains in the repo and can compete with the current documentation set.
+
+### Steps
+
+- [ ] Decide whether to archive, delete, or hard-deprecate `README-old.md` (status: todo)
+- [ ] If retained, add a top-of-file notice pointing to `README.md` (status: todo)
+- [ ] Remove any remaining links that direct readers to the old file (status: todo)
