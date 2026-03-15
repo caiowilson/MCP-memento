@@ -390,3 +390,201 @@ func TestRepoContextAutoMode(t *testing.T) {
 		t.Error("expected at least one related file with outline")
 	}
 }
+
+func TestRepoContextDefaultResolvesToAuto(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	raw, _ := json.Marshal(map[string]any{
+		"path":              "pkg/a.go",
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	})
+	result, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := json.Marshal(result)
+	var resp struct {
+		Mode     string `json:"mode"`
+		Resolved struct {
+			RequestedIntent *string `json:"requestedIntent"`
+			RequestedMode   *string `json:"requestedMode"`
+			ResolvedMode    string  `json:"resolvedMode"`
+			Strategy        string  `json:"strategy"`
+		} `json:"resolved"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Mode != "auto" {
+		t.Fatalf("expected default mode=auto, got %q", resp.Mode)
+	}
+	if resp.Resolved.ResolvedMode != "auto" {
+		t.Fatalf("expected resolved mode=auto, got %q", resp.Resolved.ResolvedMode)
+	}
+	if resp.Resolved.Strategy != "default_auto" {
+		t.Fatalf("expected default strategy, got %q", resp.Resolved.Strategy)
+	}
+	if resp.Resolved.RequestedIntent != nil {
+		t.Fatal("expected requestedIntent to be null")
+	}
+	if resp.Resolved.RequestedMode != nil {
+		t.Fatal("expected requestedMode to be null")
+	}
+}
+
+func TestRepoContextIntentRouting(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	tests := []struct {
+		name         string
+		intent       string
+		wantMode     string
+		wantStrategy string
+	}{
+		{name: "navigate", intent: "navigate", wantMode: "outline", wantStrategy: "intent:navigate"},
+		{name: "implement", intent: "implement", wantMode: "auto", wantStrategy: "intent:implement"},
+		{name: "review", intent: "review", wantMode: "auto", wantStrategy: "intent:review"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, _ := json.Marshal(map[string]any{
+				"path":              "pkg/a.go",
+				"intent":            tc.intent,
+				"includeImports":    false,
+				"includeImporters":  false,
+				"includeReferences": false,
+			})
+			result, err := tool.Handler(context.Background(), raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			data, _ := json.Marshal(result)
+			var resp struct {
+				Mode     string `json:"mode"`
+				Resolved struct {
+					RequestedIntent string `json:"requestedIntent"`
+					ResolvedMode    string `json:"resolvedMode"`
+					Strategy        string `json:"strategy"`
+				} `json:"resolved"`
+			}
+			if err := json.Unmarshal(data, &resp); err != nil {
+				t.Fatal(err)
+			}
+
+			if resp.Mode != tc.wantMode {
+				t.Fatalf("expected mode=%q, got %q", tc.wantMode, resp.Mode)
+			}
+			if resp.Resolved.RequestedIntent != tc.intent {
+				t.Fatalf("expected requested intent=%q, got %q", tc.intent, resp.Resolved.RequestedIntent)
+			}
+			if resp.Resolved.ResolvedMode != tc.wantMode {
+				t.Fatalf("expected resolved mode=%q, got %q", tc.wantMode, resp.Resolved.ResolvedMode)
+			}
+			if resp.Resolved.Strategy != tc.wantStrategy {
+				t.Fatalf("expected strategy=%q, got %q", tc.wantStrategy, resp.Resolved.Strategy)
+			}
+		})
+	}
+}
+
+func TestRepoContextExplicitModeWinsOverIntent(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	raw, _ := json.Marshal(map[string]any{
+		"path":              "pkg/a.go",
+		"intent":            "navigate",
+		"mode":              "summary",
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	})
+	result, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := json.Marshal(result)
+	var resp struct {
+		Mode     string `json:"mode"`
+		Resolved struct {
+			RequestedIntent string `json:"requestedIntent"`
+			RequestedMode   string `json:"requestedMode"`
+			ResolvedMode    string `json:"resolvedMode"`
+			Strategy        string `json:"strategy"`
+		} `json:"resolved"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Mode != "summary" {
+		t.Fatalf("expected mode=summary, got %q", resp.Mode)
+	}
+	if resp.Resolved.RequestedIntent != "navigate" {
+		t.Fatalf("expected requested intent=navigate, got %q", resp.Resolved.RequestedIntent)
+	}
+	if resp.Resolved.RequestedMode != "summary" {
+		t.Fatalf("expected requested mode=summary, got %q", resp.Resolved.RequestedMode)
+	}
+	if resp.Resolved.ResolvedMode != "summary" {
+		t.Fatalf("expected resolved mode=summary, got %q", resp.Resolved.ResolvedMode)
+	}
+	if resp.Resolved.Strategy != "explicit_mode" {
+		t.Fatalf("expected strategy=explicit_mode, got %q", resp.Resolved.Strategy)
+	}
+}
+
+func TestRepoContextSuggestedNextCall(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	raw, _ := json.Marshal(map[string]any{
+		"path":              "pkg/a.go",
+		"intent":            "review",
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	})
+	result, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := json.Marshal(result)
+	var resp struct {
+		SuggestedNextCall *struct {
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments"`
+			Reason    string         `json:"reason"`
+		} `json:"suggestedNextCall"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.SuggestedNextCall == nil {
+		t.Fatal("expected suggestedNextCall for auto response with related files")
+	}
+	if resp.SuggestedNextCall.Name != "repo_context" {
+		t.Fatalf("expected suggested call name=repo_context, got %q", resp.SuggestedNextCall.Name)
+	}
+	if got := resp.SuggestedNextCall.Arguments["mode"]; got != "full" {
+		t.Fatalf("expected suggested mode=full, got %#v", got)
+	}
+	excludePaths, ok := resp.SuggestedNextCall.Arguments["excludePaths"].([]any)
+	if !ok || len(excludePaths) == 0 {
+		t.Fatalf("expected excludePaths in suggested call, got %#v", resp.SuggestedNextCall.Arguments["excludePaths"])
+	}
+	if strings.TrimSpace(resp.SuggestedNextCall.Reason) == "" {
+		t.Fatal("expected suggestedNextCall reason")
+	}
+}

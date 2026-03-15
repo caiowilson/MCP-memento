@@ -229,7 +229,7 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		"protocolVersion": protocolVersion,
 		"serverInfo": map[string]any{
 			"name":    "memento-mcp",
-			"version": "0.1.0",
+			"version": "0.5.0",
 		},
 		"capabilities": map[string]any{
 			"tools": map[string]any{},
@@ -286,7 +286,14 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallR
 		if err != nil {
 			return toolCallResult{}, err
 		}
-		return toolCallResult{Content: []toolContent{{Type: "text", Text: string(b)}}}, nil
+		var structured any
+		if err := json.Unmarshal(b, &structured); err != nil {
+			return toolCallResult{}, err
+		}
+		return toolCallResult{
+			Content:           []toolContent{{Type: "text", Text: string(b)}},
+			StructuredContent: structured,
+		}, nil
 	}
 }
 
@@ -324,8 +331,9 @@ type toolCallParams struct {
 }
 
 type toolCallResult struct {
-	Content []toolContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
+	Content           []toolContent `json:"content"`
+	StructuredContent any           `json:"structuredContent,omitempty"`
+	IsError           bool          `json:"isError,omitempty"`
 }
 
 type toolContent struct {
@@ -334,13 +342,35 @@ type toolContent struct {
 }
 
 type Tool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-	Handler     ToolHandler    `json:"-"`
+	Name         string         `json:"name"`
+	Title        string         `json:"title,omitempty"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"inputSchema"`
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
+	Annotations  map[string]any `json:"annotations,omitempty"`
+	Handler      ToolHandler    `json:"-"`
 }
 
 type ToolHandler func(context.Context, json.RawMessage) (any, error)
+
+func readOnlyAnnotations() map[string]any {
+	return map[string]any{
+		"readOnlyHint": true,
+	}
+}
+
+func mutatingAnnotations() map[string]any {
+	return map[string]any{
+		"readOnlyHint": false,
+	}
+}
+
+func destructiveAnnotations() map[string]any {
+	return map[string]any{
+		"readOnlyHint":    false,
+		"destructiveHint": true,
+	}
+}
 
 func requireArgs(raw json.RawMessage) (map[string]any, error) {
 	var m map[string]any

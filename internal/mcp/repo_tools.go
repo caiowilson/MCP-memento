@@ -14,7 +14,9 @@ import (
 func newRepoListFilesTool(root string) Tool {
 	return Tool{
 		Name:        "repo_list_files",
+		Title:       "List Repository Files",
 		Description: "List files under the workspace root (basic ignores).",
+		Annotations: readOnlyAnnotations(),
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -87,7 +89,9 @@ func newRepoListFilesTool(root string) Tool {
 func newRepoReadFileTool(root string) Tool {
 	return Tool{
 		Name:        "repo_read_file",
+		Title:       "Read Repository File",
 		Description: "Read a file from the workspace root (optionally line-bounded).",
+		Annotations: readOnlyAnnotations(),
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"path"},
@@ -190,7 +194,9 @@ func newRepoReadFileTool(root string) Tool {
 func newRepoSearchTool(root string) Tool {
 	return Tool{
 		Name:        "repo_search",
+		Title:       "Search Repository",
 		Description: "Search for a substring across files in the workspace root (basic ignores).",
+		Annotations: readOnlyAnnotations(),
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"query"},

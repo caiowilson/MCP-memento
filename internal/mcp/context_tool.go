@@ -15,7 +15,9 @@ import (
 func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 	return Tool{
 		Name:        "repo_context",
-		Description: "Return context for a file plus related files. Use mode='auto' (recommended) to get full source for the target file and compact outlines for related files in a single call. Use mode='outline' or 'summary' to get lightweight views of all files, then 'full' + excludePaths for deep dives.",
+		Title:       "Get Repository Context",
+		Description: "Return context for a file plus related files. Prefer `intent` for higher-level LLM workflows: `navigate` resolves to `outline`, while `implement` and `review` resolve to `auto`. Use explicit `mode` only when you need to force a low-level behavior.",
+		Annotations: readOnlyAnnotations(),
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"path"},
@@ -45,9 +47,14 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					"items":       map[string]any{"type": "string"},
 					"description": "Repo-relative paths to exclude from results. Use this to skip files already in your context from prior calls, avoiding duplicate content.",
 				},
+				"intent": map[string]any{
+					"type":        "string",
+					"description": "Optional high-level task intent. `navigate` returns a lighter outline view; `implement` and `review` return `auto`. Ignored when explicit `mode` is provided.",
+					"enum":        []any{"navigate", "implement", "review"},
+				},
 				"mode": map[string]any{
 					"type":        "string",
-					"description": "Output mode: 'auto' (recommended) returns full source chunks for the target file and outlines for related files — best balance of detail and context efficiency in one call; 'full' (default) returns raw source chunks for all files; 'outline' returns declaration signatures + doc comments; 'summary' returns a compact one-line-per-symbol list with line numbers.",
+					"description": "Optional low-level output override. `auto` returns full source chunks for the target file and outlines for related files; `full` returns raw source chunks for all files; `outline` returns declaration signatures + doc comments; `summary` returns a compact one-line-per-symbol list with line numbers.",
 					"enum":        []any{"full", "auto", "outline", "summary"},
 				},
 				"includeSameDir": map[string]any{
@@ -68,6 +75,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				},
 			},
 		},
+		OutputSchema: repoContextOutputSchema(),
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			args, err := requireArgs(raw)
 			if err != nil {
@@ -133,12 +141,44 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				}
 			}
 
-			mode := "full"
+			intent, _ := asString(args, "intent")
+			intent = strings.TrimSpace(intent)
+			requestedIntent := any(nil)
+			if intent != "" {
+				requestedIntent = intent
+			}
+
+			requestedMode := any(nil)
+			resolvedMode := "auto"
+			strategy := "default_auto"
+			explicitMode := false
 			if m, ok := asString(args, "mode"); ok {
 				switch m {
-				case "auto", "outline", "summary":
-					mode = m
+				case "full", "auto", "outline", "summary":
+					requestedMode = m
+					resolvedMode = m
+					strategy = "explicit_mode"
+					explicitMode = true
 				}
+			}
+			if !explicitMode {
+				switch intent {
+				case "navigate":
+					resolvedMode = "outline"
+					strategy = "intent:navigate"
+				case "implement":
+					resolvedMode = "auto"
+					strategy = "intent:implement"
+				case "review":
+					resolvedMode = "auto"
+					strategy = "intent:review"
+				}
+			}
+			resolved := map[string]any{
+				"requestedIntent": requestedIntent,
+				"requestedMode":   requestedMode,
+				"resolvedMode":    resolvedMode,
+				"strategy":        strategy,
 			}
 
 			related, err := computeRelatedFiles(ctx, root, rel, relatedOptions{
@@ -180,10 +220,11 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				// best-effort: still try to read whatever is already indexed
 			}
 
-			if mode == "outline" || mode == "summary" {
+			if resolvedMode == "outline" || resolvedMode == "summary" {
 				type outlineEntry struct {
 					Path    string `json:"path"`
 					Outline string `json:"outline"`
+					Mode    string `json:"mode"`
 				}
 				entries := make([]outlineEntry, 0, len(paths))
 				totalOutlineBytes := 0
@@ -192,7 +233,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					ap := filepath.Join(root, p)
 					var content string
 					var oerr error
-					if mode == "summary" {
+					if resolvedMode == "summary" {
 						content, oerr = extractFileSummary(ap)
 					} else {
 						content, oerr = extractFileOutline(ap)
@@ -205,24 +246,36 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 						break
 					}
 					totalOutlineBytes += len(content)
-					entries = append(entries, outlineEntry{Path: p, Outline: content})
+					entries = append(entries, outlineEntry{Path: p, Outline: content, Mode: resolvedMode})
 				}
-				return map[string]any{
-					"path":  rel,
-					"focus": focus,
-					"mode":  mode,
-					"files": entries,
+				out := map[string]any{
+					"path":     rel,
+					"focus":    focus,
+					"intent":   requestedIntent,
+					"mode":     resolvedMode,
+					"resolved": resolved,
+					"files":    entries,
 					"limits": map[string]any{
 						"maxFiles":      maxFiles,
 						"maxTotalBytes": maxTotalBytes,
 						"usedBytes":     totalOutlineBytes,
 						"clamped":       outlineClamped,
 					},
-				}, nil
+				}
+				relatedPaths := make([]string, 0, len(entries))
+				for _, entry := range entries {
+					if entry.Path != rel {
+						relatedPaths = append(relatedPaths, entry.Path)
+					}
+				}
+				if next := suggestedRepoContextFollowUp(rel, focus, relatedPaths); next != nil {
+					out["suggestedNextCall"] = next
+				}
+				return out, nil
 			}
 
-			// mode == "auto": full chunks for target, outlines for related files
-			if mode == "auto" {
+			// resolvedMode == "auto": full chunks for target, outlines for related files
+			if resolvedMode == "auto" {
 				type autoFileEntry struct {
 					Path    string           `json:"path"`
 					Mode    string           `json:"mode"`
@@ -275,11 +328,13 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					})
 				}
 
-				return map[string]any{
-					"path":  rel,
-					"focus": focus,
-					"mode":  "auto",
-					"files": entries,
+				out := map[string]any{
+					"path":     rel,
+					"focus":    focus,
+					"intent":   requestedIntent,
+					"mode":     "auto",
+					"resolved": resolved,
+					"files":    entries,
 					"limits": map[string]any{
 						"maxFiles":         maxFiles,
 						"maxChunksPerFile": maxChunksPerFile,
@@ -287,7 +342,17 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 						"usedBytes":        totalAutoBytes,
 						"clamped":          autoClamped,
 					},
-				}, nil
+				}
+				relatedPaths := make([]string, 0, len(entries))
+				for _, entry := range entries {
+					if entry.Path != rel {
+						relatedPaths = append(relatedPaths, entry.Path)
+					}
+				}
+				if next := suggestedRepoContextFollowUp(rel, focus, relatedPaths); next != nil {
+					out["suggestedNextCall"] = next
+				}
+				return out, nil
 			}
 
 			type fileCtx struct {
@@ -391,9 +456,12 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 			}
 
 			return map[string]any{
-				"path":  rel,
-				"focus": focus,
-				"files": files,
+				"path":     rel,
+				"focus":    focus,
+				"intent":   requestedIntent,
+				"mode":     resolvedMode,
+				"resolved": resolved,
+				"files":    files,
 				"limits": map[string]any{
 					"maxFiles":         maxFiles,
 					"maxChunksPerFile": maxChunksPerFile,
@@ -500,4 +568,101 @@ func uniqueStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+func suggestedRepoContextFollowUp(rel, focus string, relatedPaths []string) map[string]any {
+	if len(relatedPaths) == 0 {
+		return nil
+	}
+	target := relatedPaths[0]
+	excludePaths := []string{rel}
+	for _, p := range relatedPaths[1:] {
+		excludePaths = append(excludePaths, p)
+	}
+	args := map[string]any{
+		"path":         target,
+		"mode":         "full",
+		"excludePaths": excludePaths,
+	}
+	if strings.TrimSpace(focus) != "" {
+		args["focus"] = focus
+	}
+	return map[string]any{
+		"name":      "repo_context",
+		"arguments": args,
+		"reason":    "Use `mode=full` on the most relevant related file for a deeper read without re-sending files already in context.",
+	}
+}
+
+func repoContextOutputSchema() map[string]any {
+	fileEntry := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path":    map[string]any{"type": "string"},
+			"mode":    map[string]any{"type": "string"},
+			"outline": map[string]any{"type": "string"},
+			"chunks": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path":      map[string]any{"type": "string"},
+						"language":  map[string]any{"type": "string"},
+						"startLine": map[string]any{"type": "integer"},
+						"endLine":   map[string]any{"type": "integer"},
+						"content":   map[string]any{"type": "string"},
+					},
+					"required": []any{"path", "language", "startLine", "endLine", "content"},
+				},
+			},
+		},
+		"required": []any{"path"},
+	}
+
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path":   map[string]any{"type": "string"},
+			"focus":  map[string]any{"type": "string"},
+			"intent": map[string]any{"type": []any{"string", "null"}},
+			"mode":   map[string]any{"type": "string"},
+			"resolved": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"requestedIntent": map[string]any{"type": []any{"string", "null"}},
+					"requestedMode":   map[string]any{"type": []any{"string", "null"}},
+					"resolvedMode":    map[string]any{"type": "string"},
+					"strategy":        map[string]any{"type": "string"},
+				},
+				"required": []any{"requestedIntent", "requestedMode", "resolvedMode", "strategy"},
+			},
+			"files": map[string]any{
+				"type":  "array",
+				"items": fileEntry,
+			},
+			"limits": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"maxFiles":         map[string]any{"type": "integer"},
+					"maxChunksPerFile": map[string]any{"type": "integer"},
+					"maxTotalBytes":    map[string]any{"type": "integer"},
+					"usedBytes":        map[string]any{"type": "integer"},
+					"clamped":          map[string]any{"type": "boolean"},
+				},
+				"required": []any{"maxFiles", "maxTotalBytes", "usedBytes", "clamped"},
+			},
+			"suggestedNextCall": map[string]any{
+				"type": []any{"object", "null"},
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string"},
+					"arguments": map[string]any{
+						"type": "object",
+					},
+					"reason": map[string]any{"type": "string"},
+				},
+				"required": []any{"name", "arguments", "reason"},
+			},
+		},
+		"required": []any{"path", "mode", "resolved", "files", "limits"},
+	}
 }

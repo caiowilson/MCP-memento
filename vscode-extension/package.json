@@ -2,7 +2,7 @@
   "name": "memento-mcp-vscode",
   "displayName": "Memento MCP",
   "description": "Companion VS Code extension that installs the memento-mcp server binary and helps generate MCP config snippets.",
-  "version": "0.0.1",
+  "version": "0.4.0",
   "publisher": "caiowilson",
   "engines": {
     "vscode": "^1.90.0"
@@ -117,6 +117,7 @@
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js --sourcemap",
     "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js --sourcemap --watch",
+    "test": "node --test ./test/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "npm run build"
   },

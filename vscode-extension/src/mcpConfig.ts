@@ -44,6 +44,11 @@ export function buildSnippetMarkdown(serverPath: string, extraEnv: Record<string
   const entryOnly = JSON.stringify(entry, null, 2);
   const asServersArray = JSON.stringify({ servers: [entry] }, null, 2);
   const asMcpServersMap = JSON.stringify({ mcpServers: { "memento-mcp": entry } }, null, 2);
+  const llmGuidance = [
+    "When using `memento-mcp`, start with `repo_context` and set `intent` to `navigate`, `implement`, or `review`.",
+    "Omit `mode` unless you need to force a low-level output shape such as `full`, `outline`, or `summary`.",
+    "If the tool returns `suggestedNextCall`, prefer following it for a deeper read without repeating context."
+  ].join(" ");
 
   return [
     "# memento-mcp — MCP config snippet",
@@ -69,8 +74,16 @@ export function buildSnippetMarkdown(serverPath: string, extraEnv: Record<string
     asMcpServersMap,
     "```",
     "",
+    "## Recommended LLM guidance",
+    "Paste this into your MCP-capable client instructions if it does not surface server metadata clearly.",
+    "",
+    "```text",
+    llmGuidance,
+    "```",
+    "",
     "Notes:",
     "- `cwd` should be the repository root (usually `${workspaceFolder}`).",
-    "- Tool names in this server use underscore style (e.g. `repo_index_status`)."
+    "- Tool names in this server use underscore style (e.g. `repo_index_status`).",
+    "- New callers should prefer `repo_context` with `intent`; existing explicit `mode` calls still work unchanged."
   ].join("\n");
 }

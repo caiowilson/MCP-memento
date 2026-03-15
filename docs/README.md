@@ -6,6 +6,7 @@ Memento is a local-first MCP server that gives AI agents durable, high-signal me
 ## Contents
 
 - Getting started: `../README.md`
+- Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
 - VS Code extension (WIP): `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
@@ -16,7 +17,7 @@ Memento is a local-first MCP server that gives AI agents durable, high-signal me
 - `repo_read_file` — read file content (optionally line-bounded)
 - `repo_search` — substring search across files
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware)
-- `repo_context` — indexed chunks for a file + related files
+- `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_index_status` — background indexer status
 - `repo_reindex` — trigger full re-index
 - `repo_clear_index` — delete all indexed chunks and manifest
@@ -28,6 +29,13 @@ Memento is a local-first MCP server that gives AI agents durable, high-signal me
 ## Automatic indexing
 
 On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. For git repos it prefers `git status` to detect changes; otherwise it falls back to a filesystem watcher. See `docs/adr/ADRs.md`.
+
+## LLM usage
+
+- Prefer `repo_context` with `intent` for normal workflows.
+- Use `intent: "navigate"` for lighter outlines and `intent: "implement"` or `intent: "review"` for mixed full+outline context.
+- Omit `mode` unless you need to force `full`, `outline`, or `summary`.
+- Existing callers that already send `mode` are unchanged.
 
 Default include/exclude rules (configurable in code):
 

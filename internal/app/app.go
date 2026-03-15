@@ -24,6 +24,13 @@ func (a *App) Init() {
 
 // Run is the entrypoint for the application.
 func Run() {
+	if handled, exitCode := handleCLICommand(os.Args[1:], os.Stdout, os.Stderr); handled {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+		return
+	}
+
 	log.Println("Starting memento-mcp…")
 
 	root, err := os.Getwd()

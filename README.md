@@ -16,6 +16,7 @@ A local-first MCP server that gives AI agents durable, high-signal memory for yo
 ## Documentation
 
 - Project docs: [`docs/README.md`](./docs/README.md)
+- Generic MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
@@ -64,6 +65,13 @@ git clone https://github.com/caiowilson/MCP-memento.git
 cd MCP-memento
 make build
 ./bin/memento-mcp
+```
+
+### Generic Client Onboarding
+
+```bash
+./bin/memento-mcp print-config
+./bin/memento-mcp print-guidance
 ```
 
 ### Run Tests

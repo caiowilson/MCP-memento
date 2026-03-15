@@ -74,8 +74,68 @@ printf '%s\n' \
 
 - Repo context tools (`repo_*`) for listing, reading, and searching files.
 - `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
-- `repo_context` to fetch a single “context window” (uses automatic indexing in the background).
+- `repo_context` to fetch a single “context window” with intent-aware routing (uses automatic indexing in the background).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
+
+### LLM usage recipe
+
+Prefer `repo_context` with `intent` for new callers. Keep explicit `mode` only for advanced overrides.
+
+Navigate or explain:
+
+```json
+{
+  "name": "repo_context",
+  "arguments": {
+    "path": "internal/mcp/context_tool.go",
+    "intent": "navigate"
+  }
+}
+```
+
+Implement or edit:
+
+```json
+{
+  "name": "repo_context",
+  "arguments": {
+    "path": "internal/mcp/context_tool.go",
+    "intent": "implement",
+    "focus": "repoContextOutputSchema"
+  }
+}
+```
+
+Review or debug:
+
+```json
+{
+  "name": "repo_context",
+  "arguments": {
+    "path": "internal/mcp/context_tool.go",
+    "intent": "review"
+  }
+}
+```
+
+Advanced explicit mode override:
+
+```json
+{
+  "name": "repo_context",
+  "arguments": {
+    "path": "internal/mcp/context_tool.go",
+    "mode": "full",
+    "excludePaths": ["internal/mcp/server.go"]
+  }
+}
+```
+
+Migration rule:
+
+- Existing callers that already send `mode` are unchanged.
+- New callers should prefer `intent`.
+- If `suggestedNextCall` is returned, it is the preferred progressive follow-up.
 
 ### Index lifecycle & VS Code behavior
 

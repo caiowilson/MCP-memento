@@ -176,7 +176,7 @@ async function maybeShowOnboarding(context) {
         return;
     }
     await context.globalState.update("mementoMcp.onboardingShown", true);
-    const choice = await vscode.window.showInformationMessage("Welcome to memento-mcp. Set up the server?", "Install Server", "Configure MCP", "Copy Snippet");
+    const choice = await vscode.window.showInformationMessage("Welcome to memento-mcp. Set up the server? For LLM workflows, prefer `repo_context` with `intent` and omit `mode` unless you need to force a specific output.", "Install Server", "Configure MCP", "Copy Snippet");
     if (choice === "Install Server") {
         await vscode.commands.executeCommand("mementoMcp.installServer");
     }
