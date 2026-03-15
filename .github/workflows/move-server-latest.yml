@@ -118,15 +118,15 @@ jobs:
 
           install -m 0755 dist/memento-mcp "$ROOT/usr/local/bin/memento-mcp"
 
-          cat > "$ROOT/DEBIAN/control" <<EOF
-Package: memento-mcp
-Version: ${VERSION}
-Section: utils
-Priority: optional
-Architecture: ${GOARCH}
-Maintainer: memento-mcp maintainers
-Description: Local-first MCP server for durable codebase memory
-EOF
+          printf '%s\n' \
+            "Package: memento-mcp" \
+            "Version: ${VERSION}" \
+            "Section: utils" \
+            "Priority: optional" \
+            "Architecture: ${GOARCH}" \
+            "Maintainer: memento-mcp maintainers" \
+            "Description: Local-first MCP server for durable codebase memory" \
+            > "$ROOT/DEBIAN/control"
 
           dpkg-deb --build "$ROOT" "dist/memento-mcp_${VERSION}_linux_${GOARCH}.deb"
 
