@@ -1,0 +1,62 @@
+name: Internal Package Coverage
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      MIN_COVERAGE_INDEXING: "63.0"
+      MIN_COVERAGE_MCP: "45.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify package coverage floors
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_pkg() {
+            local pkg="$1"
+            local floor="$2"
+            local output
+            local coverage
+
+            output="$(go test -count=1 -cover "$pkg" 2>&1)"
+            echo "$output"
+
+            coverage="$(printf '%s\n' "$output" | sed -nE 's/.*coverage: ([0-9]+(\.[0-9]+)?)% of statements.*/\1/p' | tail -n 1)"
+            if [ -z "$coverage" ]; then
+              echo "Failed to parse coverage for $pkg"
+              exit 1
+            fi
+
+            if awk -v cov="$coverage" -v min="$floor" 'BEGIN { exit !(cov + 0 >= min + 0) }'; then
+              echo "PASS: $pkg coverage ${coverage}% (floor ${floor}%)"
+            else
+              echo "FAIL: $pkg coverage ${coverage}% is below floor ${floor}%"
+              exit 1
+            fi
+
+            {
+              echo "- ${pkg}: ${coverage}% (floor ${floor}%)"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          echo "## Internal package coverage" >> "$GITHUB_STEP_SUMMARY"
+          check_pkg "./internal/indexing" "$MIN_COVERAGE_INDEXING"
+          check_pkg "./internal/mcp" "$MIN_COVERAGE_MCP"
