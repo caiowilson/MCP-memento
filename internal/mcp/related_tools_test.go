@@ -249,6 +249,96 @@ func TestRepoRelatedFilesFiltersStaleCachedCandidates(t *testing.T) {
 	}
 }
 
+func TestRepoRelatedFilesPythonImportsAndImporters(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "pkg", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	files := map[string]string{
+		"pkg/main.py":       "import pkg.util\nfrom pkg.sub import helper\nfrom . import local\n",
+		"pkg/util.py":       "def util():\n    return 1\n",
+		"pkg/local.py":      "LOCAL = True\n",
+		"pkg/sub/helper.py": "HELPER = True\n",
+	}
+	for rel, content := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+
+	rawMain, _ := json.Marshal(map[string]any{"path": "pkg/main.py", "includeSameDir": false})
+	gotMain, err := tool.Handler(context.Background(), rawMain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resMain := gotMain.(map[string]any)
+	relatedMain := resMain["related"].([]relatedCandidate)
+	if !containsRelated(relatedMain, "pkg/util.py") {
+		t.Fatalf("expected pkg/util.py related to pkg/main.py: %#v", relatedMain)
+	}
+	if !containsRelated(relatedMain, "pkg/sub/helper.py") {
+		t.Fatalf("expected pkg/sub/helper.py related to pkg/main.py: %#v", relatedMain)
+	}
+	if !containsRelated(relatedMain, "pkg/local.py") {
+		t.Fatalf("expected pkg/local.py related to pkg/main.py: %#v", relatedMain)
+	}
+
+	rawUtil, _ := json.Marshal(map[string]any{"path": "pkg/util.py", "includeSameDir": false})
+	gotUtil, err := tool.Handler(context.Background(), rawUtil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resUtil := gotUtil.(map[string]any)
+	relatedUtil := resUtil["related"].([]relatedCandidate)
+	if !containsRelated(relatedUtil, "pkg/main.py") {
+		t.Fatalf("expected pkg/main.py to import pkg/util.py: %#v", relatedUtil)
+	}
+}
+
+func TestRepoRelatedFilesPythonRelativeParentImport(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "pkg", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	files := map[string]string{
+		"pkg/util.py":       "VALUE = 1\n",
+		"pkg/sub/worker.py": "from .. import util\n",
+	}
+	for rel, content := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+
+	rawWorker, _ := json.Marshal(map[string]any{"path": "pkg/sub/worker.py", "includeSameDir": false})
+	gotWorker, err := tool.Handler(context.Background(), rawWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resWorker := gotWorker.(map[string]any)
+	relatedWorker := resWorker["related"].([]relatedCandidate)
+	if !containsRelated(relatedWorker, "pkg/util.py") {
+		t.Fatalf("expected pkg/util.py related to pkg/sub/worker.py: %#v", relatedWorker)
+	}
+
+	rawUtil, _ := json.Marshal(map[string]any{"path": "pkg/util.py", "includeSameDir": false})
+	gotUtil, err := tool.Handler(context.Background(), rawUtil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resUtil := gotUtil.(map[string]any)
+	relatedUtil := resUtil["related"].([]relatedCandidate)
+	if !containsRelated(relatedUtil, "pkg/sub/worker.py") {
+		t.Fatalf("expected pkg/sub/worker.py to import pkg/util.py: %#v", relatedUtil)
+	}
+}
+
 func containsRelated(list []relatedCandidate, path string) bool {
 	for _, c := range list {
 		if c.Path == path {
