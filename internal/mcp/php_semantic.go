@@ -24,6 +24,10 @@ func getPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, erro
 	return g, nil
 }
 
+func InvalidatePHPIncludeGraphCache(rootAbs string) {
+	phpGraphCache.Delete(filepath.Clean(rootAbs))
+}
+
 func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, error) {
 	g := &importGraph{
 		imports:   map[string][]string{},

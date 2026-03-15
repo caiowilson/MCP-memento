@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 
 	"memento-mcp/internal/mcp"
 )
@@ -22,9 +23,31 @@ func (a *App) Init() {
 	log.Println("Initializing the App")
 }
 
+// extractRootFlag extracts --root=DIR or --root DIR from args, returning
+// the root path and remaining args. Returns empty string if not specified.
+func extractRootFlag(args []string) (string, []string) {
+	var root string
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--root" && i+1 < len(args) {
+			root = args[i+1]
+			i++
+		} else if strings.HasPrefix(a, "--root=") {
+			root = strings.TrimPrefix(a, "--root=")
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return root, rest
+}
+
 // Run is the entrypoint for the application.
 func Run() {
-	if handled, exitCode := handleCLICommand(os.Args[1:], os.Stdout, os.Stderr); handled {
+	args := os.Args[1:]
+	root, args := extractRootFlag(args)
+
+	if handled, exitCode := handleCLICommand(args, os.Stdout, os.Stderr); handled {
 		if exitCode != 0 {
 			os.Exit(exitCode)
 		}
@@ -33,9 +56,12 @@ func Run() {
 
 	log.Println("Starting memento-mcp…")
 
-	root, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
+	if root == "" {
+		var err error
+		root, err = os.Getwd()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	srv, err := mcp.NewServer(mcp.Config{Root: root})

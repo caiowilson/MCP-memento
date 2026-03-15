@@ -20,6 +20,12 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 	}
 
 	switch args[0] {
+	case "setup":
+		if err := runSetup(args[1:], stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "setup: %v\n", err)
+			return true, 1
+		}
+		return true, 0
 	case "print-config":
 		exe, err := os.Executable()
 		if err != nil {
@@ -78,6 +84,12 @@ func cliHelpText() string {
 
 Usage:
   memento-mcp               Start the MCP stdio server in the current working directory
+  memento-mcp --root DIR    Start the server using DIR as workspace root (default: cwd)
+  memento-mcp setup         Detect MCP clients and write config (interactive)
+  memento-mcp setup --client=vscode --client=cursor
+                            Configure specific clients (non-interactive)
+  memento-mcp setup --print-only
+                            Print config to stdout without writing files
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing

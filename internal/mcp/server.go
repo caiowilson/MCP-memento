@@ -108,10 +108,17 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 
 	notifySemantic := func(add, del []string) {
 		if !touchesGoSemantic(add) && !touchesGoSemantic(del) {
-			return
+		} else {
+			InvalidateGoSemanticCache(s.root)
+			go WarmGoSemanticCache(ctx, s.root)
 		}
-		InvalidateGoSemanticCache(s.root)
-		go WarmGoSemanticCache(ctx, s.root)
+
+		if touchesJSRelations(add) || touchesJSRelations(del) {
+			InvalidateJSImportGraphCache(s.root)
+		}
+		if touchesPHPRelations(add) || touchesPHPRelations(del) {
+			InvalidatePHPIncludeGraphCache(s.root)
+		}
 	}
 
 	if indexing.IsGitRepo(s.root) {
@@ -151,6 +158,37 @@ func isGoSemanticPath(rel string) bool {
 		return true
 	}
 	return strings.HasSuffix(rel, ".go")
+}
+
+func touchesJSRelations(paths []string) bool {
+	for _, p := range paths {
+		if isJSRelationPath(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isJSRelationPath(rel string) bool {
+	switch strings.ToLower(filepath.Ext(filepath.ToSlash(filepath.Clean(rel)))) {
+	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs":
+		return true
+	default:
+		return false
+	}
+}
+
+func touchesPHPRelations(paths []string) bool {
+	for _, p := range paths {
+		if isPHPRelationPath(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPHPRelationPath(rel string) bool {
+	return strings.EqualFold(filepath.Ext(filepath.ToSlash(filepath.Clean(rel))), ".php")
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {
