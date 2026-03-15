@@ -15,7 +15,7 @@ import (
 func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 	return Tool{
 		Name:        "repo_context",
-		Description: "Return indexed code chunks for a file plus its related files (best-effort automatic context window).",
+		Description: "Return context for a file plus related files. Use mode='auto' (recommended) to get full source for the target file and compact outlines for related files in a single call. Use mode='outline' or 'summary' to get lightweight views of all files, then 'full' + excludePaths for deep dives.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"path"},
@@ -39,6 +39,16 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				"maxTotalBytes": map[string]any{
 					"type":        "integer",
 					"description": "Maximum total bytes across all returned chunks (default 120000).",
+				},
+				"excludePaths": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Repo-relative paths to exclude from results. Use this to skip files already in your context from prior calls, avoiding duplicate content.",
+				},
+				"mode": map[string]any{
+					"type":        "string",
+					"description": "Output mode: 'auto' (recommended) returns full source chunks for the target file and outlines for related files — best balance of detail and context efficiency in one call; 'full' (default) returns raw source chunks for all files; 'outline' returns declaration signatures + doc comments; 'summary' returns a compact one-line-per-symbol list with line numbers.",
+					"enum":        []any{"full", "auto", "outline", "summary"},
 				},
 				"includeSameDir": map[string]any{
 					"type":        "boolean",
@@ -113,6 +123,24 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				includeReferences = v
 			}
 
+			excludeSet := map[string]struct{}{}
+			if ep, ok := asStringSlice(args, "excludePaths"); ok {
+				for _, p := range ep {
+					p = filepath.ToSlash(filepath.Clean(p))
+					if p != "" && p != "." {
+						excludeSet[p] = struct{}{}
+					}
+				}
+			}
+
+			mode := "full"
+			if m, ok := asString(args, "mode"); ok {
+				switch m {
+				case "auto", "outline", "summary":
+					mode = m
+				}
+			}
+
 			related, err := computeRelatedFiles(ctx, root, rel, relatedOptions{
 				Max:              maxFiles * 3,
 				IncludeSameDir:   includeSameDir,
@@ -135,12 +163,131 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				paths = append(paths, r.Path)
 			}
 			paths = uniqueStrings(paths)
+			if len(excludeSet) > 0 {
+				filtered := make([]string, 0, len(paths))
+				for _, p := range paths {
+					if _, excluded := excludeSet[p]; !excluded {
+						filtered = append(filtered, p)
+					}
+				}
+				paths = filtered
+			}
 			if len(paths) > maxFiles {
 				paths = paths[:maxFiles]
 			}
 
 			if err := idx.EnsureIndexed(ctx, paths); err != nil {
 				// best-effort: still try to read whatever is already indexed
+			}
+
+			if mode == "outline" || mode == "summary" {
+				type outlineEntry struct {
+					Path    string `json:"path"`
+					Outline string `json:"outline"`
+				}
+				entries := make([]outlineEntry, 0, len(paths))
+				totalOutlineBytes := 0
+				outlineClamped := false
+				for _, p := range paths {
+					ap := filepath.Join(root, p)
+					var content string
+					var oerr error
+					if mode == "summary" {
+						content, oerr = extractFileSummary(ap)
+					} else {
+						content, oerr = extractFileOutline(ap)
+					}
+					if oerr != nil || content == "" {
+						continue
+					}
+					if maxTotalBytes > 0 && totalOutlineBytes+len(content) > maxTotalBytes {
+						outlineClamped = true
+						break
+					}
+					totalOutlineBytes += len(content)
+					entries = append(entries, outlineEntry{Path: p, Outline: content})
+				}
+				return map[string]any{
+					"path":  rel,
+					"focus": focus,
+					"mode":  mode,
+					"files": entries,
+					"limits": map[string]any{
+						"maxFiles":      maxFiles,
+						"maxTotalBytes": maxTotalBytes,
+						"usedBytes":     totalOutlineBytes,
+						"clamped":       outlineClamped,
+					},
+				}, nil
+			}
+
+			// mode == "auto": full chunks for target, outlines for related files
+			if mode == "auto" {
+				type autoFileEntry struct {
+					Path    string           `json:"path"`
+					Mode    string           `json:"mode"`
+					Chunks  []indexing.Chunk `json:"chunks,omitempty"`
+					Outline string           `json:"outline,omitempty"`
+				}
+				entries := make([]autoFileEntry, 0, len(paths))
+				totalAutoBytes := 0
+				autoClamped := false
+
+				// Target file: full chunks
+				for _, p := range paths {
+					if p != rel {
+						continue
+					}
+					chunks, cerr := idx.FileChunks(p)
+					if cerr != nil || len(chunks) == 0 {
+						continue
+					}
+					selected := selectChunks(chunks, focusLower, maxChunksPerFile)
+					for _, ch := range selected {
+						totalAutoBytes += len(ch.Content)
+					}
+					entries = append(entries, autoFileEntry{
+						Path:   p,
+						Mode:   "full",
+						Chunks: selected,
+					})
+				}
+
+				// Related files: outlines
+				for _, p := range paths {
+					if p == rel {
+						continue
+					}
+					ap := filepath.Join(root, p)
+					outline, oerr := extractFileOutline(ap)
+					if oerr != nil || outline == "" {
+						continue
+					}
+					if maxTotalBytes > 0 && totalAutoBytes+len(outline) > maxTotalBytes {
+						autoClamped = true
+						break
+					}
+					totalAutoBytes += len(outline)
+					entries = append(entries, autoFileEntry{
+						Path:    p,
+						Mode:    "outline",
+						Outline: outline,
+					})
+				}
+
+				return map[string]any{
+					"path":  rel,
+					"focus": focus,
+					"mode":  "auto",
+					"files": entries,
+					"limits": map[string]any{
+						"maxFiles":         maxFiles,
+						"maxChunksPerFile": maxChunksPerFile,
+						"maxTotalBytes":    maxTotalBytes,
+						"usedBytes":        totalAutoBytes,
+						"clamped":          autoClamped,
+					},
+				}, nil
 			}
 
 			type fileCtx struct {
@@ -207,9 +354,18 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				return candidates[i].chunk.StartLine < candidates[j].chunk.StartLine
 			})
 
+			type chunkKey struct {
+				path      string
+				startLine int
+			}
+			emitted := map[chunkKey]struct{}{}
 			perFile := map[string][]indexing.Chunk{}
 			for _, c := range candidates {
 				if len(perFile[c.path]) >= maxChunksPerFile {
+					continue
+				}
+				ck := chunkKey{path: c.path, startLine: c.chunk.StartLine}
+				if _, dup := emitted[ck]; dup {
 					continue
 				}
 				chBytes := len(c.chunk.Content)
@@ -218,6 +374,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					break
 				}
 				totalBytes += chBytes
+				emitted[ck] = struct{}{}
 				perFile[c.path] = append(perFile[c.path], c.chunk)
 			}
 

@@ -130,3 +130,174 @@ Vertical slices (ship small, end-to-end improvements).
 - [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
 - [ ] Add CI verification step (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
 - [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)
+
+## Slice 11 — Deduplicate `repo_context` output (P0)
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: internal/mcp/context_tool.go
+- Priority: P0
+
+### Problem
+
+When related files overlap (e.g. many siblings in `internal/mcp/`), `repo_context` returns the same file's chunks duplicated across the response. This wastes 30–50% of the context budget.
+
+### Steps
+
+- [x] Add `excludePaths` parameter to skip files already in caller's context from prior calls (status: done)
+- [x] Track emitted `(path, startLine)` pairs globally across the candidate loop (status: done)
+- [x] Skip already-emitted chunks when building `perFile` map (status: done)
+- [x] Add test: `excludePaths` filtering, no duplicate chunks, exclude target file (status: done)
+
+## Slice 12 — Outline / summary output mode for `repo_context` (P0)
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: internal/mcp/context_tool.go, internal/mcp/outline.go
+- Priority: P0
+
+### Problem
+
+`repo_context` always returns full source chunks. For navigation/planning, an outline (signatures + doc comments only) would reduce context by 80%+.
+
+### Steps
+
+- [x] Add `mode` parameter to `repo_context`: `full` (default, current), `outline`, `summary` (status: done)
+- [x] Implement Go outline extractor using `go/ast` — emit func/type/method signatures + doc comments (status: done)
+- [x] Implement JS/TS outline extractor using regex — emit export/function/class declarations (status: done)
+- [x] Fallback: for unsupported languages, return first N lines + function-like line matches (status: done)
+- [x] Add tests for each mode (status: done)
+
+## Slice 13 — Syntax-aware chunk boundaries (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: internal/indexing/chunk.go
+- Priority: P1
+
+### Problem
+
+Chunks split at arbitrary line/byte boundaries, often cutting functions in half. This wastes context on partial, less-useful code.
+
+### Steps
+
+- [ ] For Go files, use `go/ast` to find top-level declaration boundaries and split chunks there (status: todo)
+- [ ] For JS/TS, detect function/class/export boundaries via regex heuristics (status: todo)
+- [ ] Fallback to current line-based chunking for unknown languages (status: todo)
+- [ ] Add tests: verify Go chunks align with function boundaries (status: todo)
+
+## Slice 14 — `repo_diff_context` tool (P1)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: internal/mcp/ (new tool + git integration)
+- Priority: P1
+
+### Problem
+
+For edit/review workflows, the LLM only needs context around changed code, not the entire file graph. No tool exposes change-focused context.
+
+### Steps
+
+- [ ] Add `repo_diff_context` tool that detects changed files via `git status` or accepts explicit paths (status: todo)
+- [ ] Return only chunks overlapping changed line ranges + their immediate dependency context (status: todo)
+- [ ] Include a unified diff summary alongside the chunks (status: todo)
+- [ ] Add test with a simulated dirty worktree (status: todo)
+
+## Slice 15 — `repo_symbols` tool (P2)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: internal/mcp/ (new tool)
+- Priority: P2
+
+### Problem
+
+No tool exposes a structured symbol list. LLMs must read full chunks to discover what functions/types exist in a file.
+
+### Steps
+
+- [ ] Add `repo_symbols` tool returning `{name, kind, line, signature}` per symbol (status: todo)
+- [ ] Implement Go symbol extraction via `go/ast` (status: todo)
+- [ ] Implement JS/TS symbol extraction via regex (func, class, export, const) (status: todo)
+- [ ] Fallback: generic regex for `func`, `def`, `class`, `interface` keywords (status: todo)
+- [ ] Add tests (status: todo)
+
+## Slice 16 — Trigram search index (P2)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: internal/indexing/
+- Priority: P2
+
+### Problem
+
+`repo_search` and `Indexer.Search` do linear scans of all indexed content. Slow for large repos.
+
+### Steps
+
+- [ ] Build a trigram index during `indexAll` / `indexOne` (status: todo)
+- [ ] Use trigram index to pre-filter candidate files before substring matching (status: todo)
+- [ ] Add optional regex mode to `repo_search` (status: todo)
+- [ ] Benchmark: measure search latency before/after on a 1000-file repo (status: todo)
+
+## Slice 17 — Auto-surface memories in `repo_context` (P3)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: internal/mcp/context_tool.go, internal/mcp/memory_tools.go
+- Priority: P3
+
+### Problem
+
+`NoteStore` memories are disconnected from `repo_context`. The LLM must explicitly call `memory_search` to retrieve past insights.
+
+### Steps
+
+- [ ] When assembling `repo_context`, query `NoteStore` for notes matching the target file path (status: todo)
+- [ ] Include matching notes in the response under a `memories` key (status: todo)
+- [ ] Add test (status: todo)
+
+## Slice 18 — Python import graph (P3)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: internal/mcp/ (new file: py_semantic.go)
+- Priority: P3
+
+### Problem
+
+No semantic support for Python — one of the most common languages used with AI coding tools.
+
+### Steps
+
+- [ ] Build Python import graph via regex (`import X`, `from X import Y`, relative imports) (status: todo)
+- [ ] Wire into `computeRelatedFiles` for `.py` files (status: todo)
+- [ ] Add tests with sample Python import structures (status: todo)
+
+## Slice 19 — Tree-sitter integration for language-agnostic parsing (P4)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: large
+- Scope: internal/indexing/, internal/mcp/
+- Priority: P4
+
+### Problem
+
+Each language needs custom parsing for symbols, outlines, and chunk boundaries. Tree-sitter would provide a single dependency covering all languages.
+
+### Steps
+
+- [ ] Evaluate Go tree-sitter bindings (e.g. `smacker/go-tree-sitter`) (status: todo)
+- [ ] Implement generic symbol extraction using tree-sitter queries (status: todo)
+- [ ] Replace language-specific outline/chunk logic with tree-sitter where available (status: todo)
+- [ ] Add tests across Go, JS/TS, Python, Rust (status: todo)
