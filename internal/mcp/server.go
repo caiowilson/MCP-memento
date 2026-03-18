@@ -14,16 +14,38 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"memento-mcp/internal/indexing"
 )
+
+type serverMode int
+
+const (
+	serverModeBroker serverMode = iota
+	serverModeLeaf
+)
+
+type workspaceClient interface {
+	CallTool(context.Context, string, json.RawMessage) (toolCallResult, error)
+	ToolDefinitions(context.Context) ([]Tool, error)
+	Close() error
+}
+
+type childFactory func(string) (workspaceClient, error)
+
+type managedChild struct {
+	client     workspaceClient
+	lastUsedAt time.Time
+}
 
 type Server struct {
 	root   string
 	tools  []Tool
 	mem    *NoteStore
 	idx    *indexing.Indexer
+	mode   serverMode
 	devLog bool
 
 	devLogFilePath    string
@@ -31,10 +53,24 @@ type Server struct {
 
 	backgroundParentCtx context.Context
 	backgroundCancel    context.CancelFunc
+
+	executable        string
+	childIdleTimeout  time.Duration
+	childReapInterval time.Duration
+	spawnChild        childFactory
+	children          map[string]*managedChild
+	childrenMu        sync.Mutex
+	shutdownOnce      sync.Once
 }
 
 type Config struct {
-	Root string
+	Root              string
+	Child             bool
+	Executable        string
+	ChildIdleTimeout  time.Duration
+	ChildReapInterval time.Duration
+
+	childFactory childFactory
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -53,10 +89,47 @@ func NewServer(cfg Config) (*Server, error) {
 
 	s := &Server{
 		devLog: os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
+		mode:   serverModeBroker,
+		root:   absRoot,
 	}
-	if err := s.rebindWorkspace(absRoot); err != nil {
+
+	if cfg.Child {
+		s.mode = serverModeLeaf
+		if err := s.rebindWorkspace(absRoot); err != nil {
+			return nil, err
+		}
+		s.tools = s.leafToolsetFor(absRoot, s.idx, s.mem)
+		return s, nil
+	}
+
+	s.executable = strings.TrimSpace(cfg.Executable)
+	if s.executable == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return nil, err
+		}
+		s.executable = exe
+	}
+	s.childIdleTimeout = cfg.ChildIdleTimeout
+	if s.childIdleTimeout <= 0 {
+		s.childIdleTimeout = 10 * time.Minute
+	}
+	s.childReapInterval = cfg.ChildReapInterval
+	if s.childReapInterval <= 0 {
+		s.childReapInterval = time.Minute
+	}
+	if cfg.childFactory != nil {
+		s.spawnChild = cfg.childFactory
+	} else {
+		s.spawnChild = s.spawnProcessChild
+	}
+	s.children = map[string]*managedChild{}
+
+	defs, err := s.ensureChildToolDefinitions(context.Background(), absRoot)
+	if err != nil {
 		return nil, err
 	}
+	s.tools = s.brokerToolsetFrom(defs)
 	return s, nil
 }
 
@@ -65,6 +138,14 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 		ctx = context.Background()
 	}
 	s.backgroundParentCtx = ctx
+	if s.mode == serverModeBroker {
+		go s.reapIdleChildren(ctx)
+		go func() {
+			<-ctx.Done()
+			s.shutdown()
+		}()
+		return
+	}
 	s.restartBackgroundIndexing()
 }
 
@@ -101,14 +182,13 @@ func (s *Server) indexerConfig(rootAbs string) indexing.Config {
 	}
 }
 
-func (s *Server) toolsetFor(root string, idx *indexing.Indexer, mem *NoteStore) []Tool {
+func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteStore) []Tool {
 	return []Tool{
 		newRepoListFilesTool(root),
 		newRepoReadFileTool(root),
 		newRepoSearchTool(root),
 		newRepoRelatedFilesTool(root),
 		newRepoContextTool(root, idx),
-		newRepoSwitchWorkspaceTool(s),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),
 		newRepoClearIndexTool(idx),
@@ -132,7 +212,7 @@ func (s *Server) rebindWorkspace(rootAbs string) error {
 	s.root = rootAbs
 	s.mem = mem
 	s.idx = idx
-	s.tools = s.toolsetFor(rootAbs, idx, mem)
+	s.tools = s.leafToolsetFor(rootAbs, idx, mem)
 
 	s.devLogFilePath = ""
 	s.devLogFileErrOnce = false
@@ -142,6 +222,28 @@ func (s *Server) rebindWorkspace(rootAbs string) error {
 		}
 	}
 	return nil
+}
+
+func (s *Server) brokerToolsetFrom(defs []Tool) []Tool {
+	tools := make([]Tool, 0, len(defs)+1)
+	insertedSwitch := false
+	for _, def := range defs {
+		if def.Name == "repo_switch_workspace" {
+			continue
+		}
+		tool := cloneToolDefinition(def)
+		tool.InputSchema = augmentInputSchemaWithRoot(tool.InputSchema)
+		tool.Handler = s.proxyToolHandler(tool.Name)
+		tools = append(tools, tool)
+		if def.Name == "repo_context" && !insertedSwitch {
+			tools = append(tools, newRepoSwitchWorkspaceTool(s))
+			insertedSwitch = true
+		}
+	}
+	if !insertedSwitch {
+		tools = append(tools, newRepoSwitchWorkspaceTool(s))
+	}
+	return tools
 }
 
 func (s *Server) restartBackgroundIndexing() {
@@ -238,6 +340,236 @@ func (s *Server) restartBackgroundIndexing() {
 	}
 }
 
+func (s *Server) ensureChildToolDefinitions(ctx context.Context, root string) ([]Tool, error) {
+	client, _, err := s.ensureChild(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	return client.ToolDefinitions(ctx)
+}
+
+func (s *Server) ensureChild(ctx context.Context, root string) (workspaceClient, bool, error) {
+	now := time.Now()
+
+	s.childrenMu.Lock()
+	if existing := s.children[root]; existing != nil {
+		existing.lastUsedAt = now
+		client := existing.client
+		s.childrenMu.Unlock()
+		return client, false, nil
+	}
+	spawn := s.spawnChild
+	s.childrenMu.Unlock()
+
+	client, err := spawn(root)
+	if err != nil {
+		return nil, false, err
+	}
+
+	s.childrenMu.Lock()
+	defer s.childrenMu.Unlock()
+	if existing := s.children[root]; existing != nil {
+		existing.lastUsedAt = now
+		_ = client.Close()
+		return existing.client, false, nil
+	}
+	s.children[root] = &managedChild{client: client, lastUsedAt: now}
+	return client, true, nil
+}
+
+func (s *Server) currentRoot() string {
+	if s.mode != serverModeBroker {
+		return s.root
+	}
+	s.childrenMu.Lock()
+	defer s.childrenMu.Unlock()
+	return s.root
+}
+
+func (s *Server) setCurrentRoot(root string) {
+	if s.mode != serverModeBroker {
+		s.root = root
+		return
+	}
+	s.childrenMu.Lock()
+	s.root = root
+	s.childrenMu.Unlock()
+}
+
+func (s *Server) closeChild(root string) {
+	s.childrenMu.Lock()
+	child := s.children[root]
+	if child != nil {
+		delete(s.children, root)
+	}
+	s.childrenMu.Unlock()
+	if child != nil {
+		_ = child.client.Close()
+	}
+}
+
+func (s *Server) shutdown() {
+	s.shutdownOnce.Do(func() {
+		if s.backgroundCancel != nil {
+			s.backgroundCancel()
+		}
+		if s.mode != serverModeBroker {
+			return
+		}
+		s.childrenMu.Lock()
+		children := make([]workspaceClient, 0, len(s.children))
+		for root, child := range s.children {
+			children = append(children, child.client)
+			delete(s.children, root)
+		}
+		s.childrenMu.Unlock()
+		for _, child := range children {
+			_ = child.Close()
+		}
+	})
+}
+
+func (s *Server) reapIdleChildren(ctx context.Context) {
+	ticker := time.NewTicker(s.childReapInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cutoff := time.Now().Add(-s.childIdleTimeout)
+			var roots []string
+
+			s.childrenMu.Lock()
+			for root, child := range s.children {
+				if child.lastUsedAt.Before(cutoff) {
+					roots = append(roots, root)
+				}
+			}
+			s.childrenMu.Unlock()
+
+			for _, root := range roots {
+				s.closeChild(root)
+			}
+		}
+	}
+}
+
+func cloneToolDefinition(src Tool) Tool {
+	return Tool{
+		Name:         src.Name,
+		Title:        src.Title,
+		Description:  src.Description,
+		InputSchema:  deepCopyMap(src.InputSchema),
+		OutputSchema: deepCopyMap(src.OutputSchema),
+		Annotations:  deepCopyMap(src.Annotations),
+	}
+}
+
+func deepCopyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	b, err := json.Marshal(src)
+	if err != nil {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func augmentInputSchemaWithRoot(schema map[string]any) map[string]any {
+	out := deepCopyMap(schema)
+	if out == nil {
+		out = map[string]any{}
+	}
+	if typ, ok := out["type"].(string); !ok || typ == "" {
+		out["type"] = "object"
+	}
+	props, _ := out["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+		out["properties"] = props
+	}
+	props["root"] = map[string]any{
+		"type":        "string",
+		"description": "Optional workspace root override. When provided, routes this tool call to that workspace without changing the active session root.",
+	}
+	return out
+}
+
+func (s *Server) proxyToolHandler(name string) ToolHandler {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
+		targetRoot, forwarded, err := s.resolveProxyRequest(raw)
+		if err != nil {
+			return nil, err
+		}
+		res, err := s.callChildTool(ctx, targetRoot, name, forwarded)
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
+}
+
+func (s *Server) resolveProxyRequest(raw json.RawMessage) (string, json.RawMessage, error) {
+	args, err := requireArgs(raw)
+	if err != nil {
+		return "", nil, err
+	}
+
+	targetRoot := s.currentRoot()
+	if value, ok := args["root"]; ok {
+		root, ok := value.(string)
+		if !ok {
+			return "", nil, fmt.Errorf("invalid argument: root must be a string")
+		}
+		targetRoot, err = normalizeWorkspaceRoot(root)
+		if err != nil {
+			return "", nil, err
+		}
+		delete(args, "root")
+	}
+	if targetRoot == "" {
+		return "", nil, fmt.Errorf("workspace root is required")
+	}
+
+	if len(args) == 0 {
+		return targetRoot, json.RawMessage([]byte(`{}`)), nil
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return "", nil, err
+	}
+	return targetRoot, json.RawMessage(b), nil
+}
+
+func (s *Server) callChildTool(ctx context.Context, root, name string, args json.RawMessage) (toolCallResult, error) {
+	client, _, err := s.ensureChild(ctx, root)
+	if err != nil {
+		return toolCallResult{}, err
+	}
+	res, err := client.CallTool(ctx, name, args)
+	if err == nil {
+		return res, nil
+	}
+	if !isChildTransportError(err) {
+		return toolCallResult{}, err
+	}
+
+	s.closeChild(root)
+
+	client, _, err = s.ensureChild(ctx, root)
+	if err != nil {
+		return toolCallResult{}, err
+	}
+	return client.CallTool(ctx, name, args)
+}
+
 func touchesGoSemantic(paths []string) bool {
 	for _, p := range paths {
 		if isGoSemanticPath(p) {
@@ -288,6 +620,8 @@ func isPHPRelationPath(rel string) bool {
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {
+	defer s.shutdown()
+
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 1024), 10*1024*1024)
 	enc := json.NewEncoder(out)
@@ -415,6 +749,13 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallR
 	switch v := content.(type) {
 	case string:
 		return toolCallResult{Content: []toolContent{{Type: "text", Text: v}}}, nil
+	case toolCallResult:
+		return v, nil
+	case *toolCallResult:
+		if v == nil {
+			return toolCallResult{}, nil
+		}
+		return *v, nil
 	default:
 		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {

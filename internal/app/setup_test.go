@@ -34,6 +34,58 @@ func TestExtractRootFlag(t *testing.T) {
 	}
 }
 
+func TestExtractServeFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantRoot  string
+		wantChild bool
+		wantRest  []string
+	}{
+		{
+			name:      "keeps non-serve args",
+			args:      []string{"setup", "--print-only"},
+			wantRoot:  "",
+			wantChild: false,
+			wantRest:  []string{"setup", "--print-only"},
+		},
+		{
+			name:      "extracts child and root flags",
+			args:      []string{"--child", "--root", "/tmp/proj", "setup"},
+			wantRoot:  "/tmp/proj",
+			wantChild: true,
+			wantRest:  []string{"setup"},
+		},
+		{
+			name:      "extracts child and inline root flag",
+			args:      []string{"setup", "--root=/tmp/proj", "--child"},
+			wantRoot:  "/tmp/proj",
+			wantChild: true,
+			wantRest:  []string{"setup"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, child, rest := extractServeFlags(tt.args)
+			if root != tt.wantRoot {
+				t.Fatalf("root = %q, want %q", root, tt.wantRoot)
+			}
+			if child != tt.wantChild {
+				t.Fatalf("child = %v, want %v", child, tt.wantChild)
+			}
+			if len(rest) != len(tt.wantRest) {
+				t.Fatalf("rest len = %d, want %d (%v)", len(rest), len(tt.wantRest), rest)
+			}
+			for i := range rest {
+				if rest[i] != tt.wantRest[i] {
+					t.Fatalf("rest[%d] = %q, want %q", i, rest[i], tt.wantRest[i])
+				}
+			}
+		})
+	}
+}
+
 func TestParseSetupFlags(t *testing.T) {
 	opts := parseSetupFlags([]string{"--client=vscode", "--client=cursor", "--print-only"})
 	if !opts.printOnly {

@@ -31,10 +31,7 @@ func containsString(values []string, want string) bool {
 
 func TestServerExposesExpectedTools(t *testing.T) {
 	root := t.TempDir()
-	s, err := NewServer(Config{Root: root})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := newBrokerServerForTest(t, root)
 
 	resp := s.handleRPC(context.Background(), rpcRequest{
 		JSONRPC: "2.0",

@@ -23,10 +23,10 @@ func (a *App) Init() {
 	log.Println("Initializing the App")
 }
 
-// extractRootFlag extracts --root=DIR or --root DIR from args, returning
-// the root path and remaining args. Returns empty string if not specified.
-func extractRootFlag(args []string) (string, []string) {
+// extractServeFlags extracts hidden serve-mode flags such as --root and --child.
+func extractServeFlags(args []string) (string, bool, []string) {
 	var root string
+	var child bool
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -35,17 +35,26 @@ func extractRootFlag(args []string) (string, []string) {
 			i++
 		} else if strings.HasPrefix(a, "--root=") {
 			root = strings.TrimPrefix(a, "--root=")
+		} else if a == "--child" {
+			child = true
 		} else {
 			rest = append(rest, a)
 		}
 	}
+	return root, child, rest
+}
+
+// extractRootFlag extracts --root=DIR or --root DIR from args, returning
+// the root path and remaining args. Returns empty string if not specified.
+func extractRootFlag(args []string) (string, []string) {
+	root, _, rest := extractServeFlags(args)
 	return root, rest
 }
 
 // Run is the entrypoint for the application.
 func Run() {
 	args := os.Args[1:]
-	root, args := extractRootFlag(args)
+	root, child, args := extractServeFlags(args)
 
 	if handled, exitCode := handleCLICommand(args, os.Stdout, os.Stderr); handled {
 		if exitCode != 0 {
@@ -64,7 +73,7 @@ func Run() {
 		}
 	}
 
-	srv, err := mcp.NewServer(mcp.Config{Root: root})
+	srv, err := mcp.NewServer(mcp.Config{Root: root, Child: child})
 	if err != nil {
 		log.Fatal(err)
 	}

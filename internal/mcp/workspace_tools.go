@@ -51,54 +51,34 @@ func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bo
 		return nil, err
 	}
 
-	previousRoot := s.root
-	if absRoot == s.root {
-		if reindexNow {
-			if err := s.reindexCurrentWorkspace(ctx); err != nil {
-				return nil, err
-			}
-		}
-		return map[string]any{
-			"switched":     false,
-			"previousRoot": previousRoot,
-			"root":         s.root,
-			"indexDebug":   s.idx.DebugInfo(),
-			"indexStatus":  s.idx.Status(),
-		}, nil
-	}
-
-	if err := s.rebindWorkspace(absRoot); err != nil {
+	previousRoot := s.currentRoot()
+	_, spawned, err := s.ensureChild(ctx, absRoot)
+	if err != nil {
 		return nil, err
 	}
-	s.restartBackgroundIndexing()
 
 	if reindexNow {
-		if err := s.reindexCurrentWorkspace(ctx); err != nil {
+		if _, err := s.callChildTool(ctx, absRoot, "repo_reindex", json.RawMessage([]byte(`{}`))); err != nil {
 			return nil, err
 		}
 	}
+	s.setCurrentRoot(absRoot)
+
+	indexStatus, err := s.callChildTool(ctx, absRoot, "repo_index_status", json.RawMessage([]byte(`{}`)))
+	if err != nil {
+		return nil, err
+	}
+	indexDebug, err := s.callChildTool(ctx, absRoot, "repo_index_debug", json.RawMessage([]byte(`{}`)))
+	if err != nil {
+		return nil, err
+	}
 
 	return map[string]any{
-		"switched":     true,
+		"switched":     absRoot != previousRoot,
+		"spawned":      spawned,
 		"previousRoot": previousRoot,
-		"root":         s.root,
-		"indexDebug":   s.idx.DebugInfo(),
-		"indexStatus":  s.idx.Status(),
+		"root":         absRoot,
+		"indexDebug":   indexDebug.StructuredContent,
+		"indexStatus":  indexStatus.StructuredContent,
 	}, nil
-}
-
-func (s *Server) reindexCurrentWorkspace(ctx context.Context) error {
-	if s.idx == nil {
-		return nil
-	}
-
-	cancel := func() {}
-	if s.backgroundParentCtx == nil {
-		tempCtx, tempCancel := context.WithCancel(ctx)
-		cancel = tempCancel
-		s.idx.Start(tempCtx)
-	}
-	defer cancel()
-
-	return s.idx.IndexAll(ctx)
 }

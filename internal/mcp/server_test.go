@@ -110,10 +110,7 @@ func TestSwitchWorkspaceToolRebindsRootAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := NewServer(Config{Root: rootA})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := newBrokerServerForTest(t, rootA)
 
 	readA, err := s.callTool(context.Background(), toolCallParams{
 		Name:      "repo_read_file",
@@ -224,12 +221,6 @@ func TestSwitchWorkspaceToolRebindsRootAndIsolation(t *testing.T) {
 		t.Fatalf("expected at least one beta.go match, got %#v", matches)
 	}
 
-	// repo_context internally calls EnsureIndexed, which requires an active index worker.
-	// In production this is started by StartBackgroundIndexing; tests start it explicitly.
-	idxCtx, idxCancel := context.WithCancel(context.Background())
-	defer idxCancel()
-	s.idx.Start(idxCtx)
-
 	contextB, err := s.callTool(context.Background(), toolCallParams{
 		Name:      "repo_context",
 		Arguments: json.RawMessage([]byte(`{"path":"beta.go","intent":"navigate"}`)),
@@ -272,10 +263,7 @@ func TestSwitchWorkspaceToolRebindsRootAndIsolation(t *testing.T) {
 
 func TestSwitchWorkspaceNoopWhenSameRoot(t *testing.T) {
 	root := t.TempDir()
-	s, err := NewServer(Config{Root: root})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := newBrokerServerForTest(t, root)
 
 	res, err := s.callTool(context.Background(), toolCallParams{
 		Name:      "repo_switch_workspace",
