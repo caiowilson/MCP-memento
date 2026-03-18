@@ -177,7 +177,26 @@ func (s *Server) restartBackgroundIndexing() {
 		}
 	}
 
-	if indexing.IsGitRepo(root) {
+	startFS := func() bool {
+		monitor := indexing.NewFSChangeMonitor(
+			s.root,
+			s.idx,
+			time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
+			notifySemantic,
+		)
+		if err := monitor.Start(ctx); err != nil {
+			if s.devLog {
+				s.logf("fs watcher start failed, will fallback if possible: %v", err)
+			}
+			return false
+		}
+		return true
+	}
+
+	startGit := func() bool {
+		if !indexing.IsGitRepo(s.root) {
+			return false
+		}
 		monitor := indexing.NewGitChangeMonitor(
 			root,
 			idx,
@@ -185,67 +204,38 @@ func (s *Server) restartBackgroundIndexing() {
 			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
 			notifySemantic,
 		)
-		monitor.Start(runCtx)
-		return
+		monitor.Start(ctx)
+		return true
 	}
 
-	monitor := indexing.NewFSChangeMonitor(
-		root,
-		idx,
-		time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
-		notifySemantic,
-	)
-	_ = monitor.Start(runCtx)
-}
-
-func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bool) (map[string]any, error) {
-	nextRoot, err := normalizeWorkspaceRoot(root)
-	if err != nil {
-		return nil, err
-	}
-	prevRoot := s.root
-	if nextRoot == prevRoot {
-		return map[string]any{
-			"switched":     false,
-			"previousRoot": prevRoot,
-			"root":         nextRoot,
-			"indexStatus":  s.idx.Status(),
-			"indexDebug":   s.idx.DebugInfo(),
-		}, nil
-	}
-
-	if err := s.rebindWorkspace(nextRoot); err != nil {
-		return nil, err
-	}
-	if s.backgroundParentCtx != nil {
-		s.restartBackgroundIndexing()
-	}
-	if reindexNow {
-		// Indexer requests require an active worker. In the normal server flow
-		// this is already started by StartBackgroundIndexing, but tests and
-		// direct library usage may call switch before that.
-		if s.backgroundParentCtx == nil {
-			tmpCtx, cancel := context.WithCancel(context.Background())
-			s.idx.Start(tmpCtx)
-			err := s.idx.IndexAll(ctx)
-			cancel()
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			if err := s.idx.IndexAll(ctx); err != nil {
-				return nil, err
-			}
+	detector := strings.ToLower(strings.TrimSpace(os.Getenv("MEMENTO_CHANGE_DETECTOR")))
+	switch detector {
+	case "git":
+		if startGit() {
+			return
 		}
+		if s.devLog {
+			s.logf("git polling not available, falling back to fs watcher")
+		}
+		startFS()
+	case "fs":
+		if startFS() {
+			return
+		}
+		if s.devLog {
+			s.logf("fs watcher failed, falling back to git polling")
+		}
+		startGit()
+	default:
+		// "auto" or unknown: fs-first, fallback to git polling
+		if startFS() {
+			return
+		}
+		if s.devLog {
+			s.logf("fs watcher failed, falling back to git polling")
+		}
+		startGit()
 	}
-
-	return map[string]any{
-		"switched":     true,
-		"previousRoot": prevRoot,
-		"root":         nextRoot,
-		"indexStatus":  s.idx.Status(),
-		"indexDebug":   s.idx.DebugInfo(),
-	}, nil
 }
 
 func touchesGoSemantic(paths []string) bool {
