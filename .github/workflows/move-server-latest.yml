@@ -19,11 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       server_tag: ${{ steps.meta.outputs.server_tag }}
-      tag_sha: ${{ steps.meta.outputs.tag_sha }}
+      tag_sha: ${{ steps.tag_sha.outputs.tag_sha }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
-      - name: Resolve source tag, release commit, and version
+      - name: Resolve source tag and version
         id: meta
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -47,17 +47,8 @@ jobs:
           esac
 
           VERSION="${SOURCE_TAG#server/v}"
-          TAG_SHA=$(git ls-remote origin "refs/tags/${SOURCE_TAG}^{}" | awk '{print $1}')
-          if [ -z "$TAG_SHA" ]; then
-            TAG_SHA=$(git ls-remote origin "refs/tags/${SOURCE_TAG}" | awk '{print $1}')
-          fi
-          if [ -z "$TAG_SHA" ]; then
-            echo "could not resolve commit for $SOURCE_TAG" >&2
-            exit 1
-          fi
 
           echo "server_tag=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
-          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
@@ -66,10 +57,22 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.meta.outputs.server_tag }}
 
+      - name: Resolve release commit
+        id: tag_sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_SHA=$(git rev-list -n 1 "${{ steps.meta.outputs.server_tag }}")
+          if [ -z "$TAG_SHA" ]; then
+            echo "could not resolve commit for ${{ steps.meta.outputs.server_tag }}" >&2
+            exit 1
+          fi
+          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Update server/latest tag
         shell: bash
         run: |
-          git tag -f server/latest "${{ steps.meta.outputs.tag_sha }}"
+          git tag -f server/latest "${{ steps.tag_sha.outputs.tag_sha }}"
           git push -f origin refs/tags/server/latest
 
   build-binaries:
