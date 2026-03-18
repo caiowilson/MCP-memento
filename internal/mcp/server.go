@@ -184,7 +184,7 @@ func (s *Server) restartBackgroundIndexing() {
 			time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
 			notifySemantic,
 		)
-		if err := monitor.Start(ctx); err != nil {
+		if err := monitor.Start(runCtx); err != nil {
 			if s.devLog {
 				s.logf("fs watcher start failed, will fallback if possible: %v", err)
 			}
@@ -204,7 +204,7 @@ func (s *Server) restartBackgroundIndexing() {
 			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
 			notifySemantic,
 		)
-		monitor.Start(ctx)
+		monitor.Start(runCtx)
 		return true
 	}
 
