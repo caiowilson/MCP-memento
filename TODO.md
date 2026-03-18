@@ -1,303 +1,294 @@
-# To Do
+# Backlog
 
-Vertical slices (ship small, end-to-end improvements).
+Single source of truth for pending work. This file supersedes the previous duplicate debt tracker.
 
 ## Tracking
 
 - Status: `todo` | `in-progress` | `done` | `blocked`
-- Owner: GitHub handle (e.g. `@caiowilson`) or name
-- Convention: if a step is `done`, mark it `[x]` and set `(status: done)`
+- Owner: GitHub handle (for example, `@caiowilson`) or name
+- Convention: when a step is complete, mark it `[x]` and set `(status: done)`
+- Execution policy: complete priorities in order `P0 -> P1 -> P2 -> P3 -> P4`
 
-## Slice 1 — VS Code happy path
+## P0 — Critical Path
 
-- Status: done
-- Owner: codex
+### Slice 25 — Per-project MCP server instances + isolated vector stores
 
-### Steps
-
-- [x] Add a concrete MCP configuration snippet to `docs/vscode.md` (owner: codex) (status: done)
-- [x] Add a “try these tool calls” smoke section for `repo.context` (owner: codex) (status: done)
-
-## Slice 2 — Indexer safety + file selection
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Implement explicit allowlist (Go + high-signal files) and denylist (secrets/binaries) (owner: codex) (status: done)
-- [x] Document default include/exclude rules (owner: codex) (status: done)
-
-## Slice 3 — Git-first incremental reindex
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Detect git worktree and use `git status --porcelain -z --untracked-files=all` (owner: codex) (status: done)
-- [x] Debounce and re-index only changed paths (owner: codex) (status: done)
-
-## Slice 4 — Filesystem watcher fallback
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Add fs watcher for non-git repos (create/modify/delete/rename) (owner: codex) (status: done)
-- [x] Debounce and re-index touched paths (owner: codex) (status: done)
-
-## Slice 5 — Go semantic freshness
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Invalidate go/types cache on `*.go`, `go.mod`, `go.sum` changes (owner: codex) (status: done)
-- [x] Rebuild semantic index in the background (owner: codex) (status: done)
-
-## Slice 6 — Context quality + hard limits
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Add total byte limits + clamping metadata to `repo.context` (owner: codex) (status: done)
-- [x] Improve chunk scoring (focus hits > semantic edges > imports > same-dir) (owner: codex) (status: done)
-
-## Slice 7 — Ops/admin tools
-
-- Status: done
-- Owner: codex
-
-### Steps
-
-- [x] Add `repo.clear_index` / `memory.clear` tools (owner: codex) (status: done)
-- [x] Add an index/debug tool (counts, filters applied, last error) (owner: codex) (status: done)
-
-## Slice 8 — VS Code extension UX polish
-
-- Status: done
-- Owner: @caiowilson
-- Difficulty: medium
-- Scope: vscode-extension (commands, settings, UX surfaces)
-- Agent: memento-mcp-vscode
-
-### Steps
-
-- [x] Add first-activation onboarding prompt that offers Install / Open Snippet / Copy Snippet (status: done)
-- [x] Add `mementoMcp.serverPath` setting override and honor it in path resolution (status: done)
-- [x] Add status bar item showing resolved server path + install state (status: done)
-- [x] Improve install error UX with actionable guidance when releases/assets are missing (status: done)
-- [x] Add command to open or create MCP config file using the snippet builder (status: done)
-- [x] Add command palette/menu contributions for better discoverability (status: done)
-
-## Slice 9 — Monorepo releases (server + extension)
-
-- Status: done
+- Status: todo
 - Owner: @caiowilson
 - Difficulty: hard
-- Scope: release tags + workflows + installer contract + docs
-- Agent: memento-mcp-release
+- Scope: `internal/mcp/server.go`, `internal/indexing/indexer.go`, `internal/app/`, `vscode-extension/`
+- Priority: P0
 
-### Steps
+#### Problem
 
-- [x] Adopt tag namespaces: `server/vX.Y.Z`, `server/latest`, `extension/vA.B.C` (status: done)
-- [x] Publish raw server binaries named `memento-mcp_${os}_${arch}[.exe]` (darwin/linux/windows × x64/arm64) (status: done)
-- [x] Add `.github/workflows/release-server.yml` to build/upload server assets on `server/v*` tags (status: done)
-- [x] Add `.github/workflows/move-server-latest.yml` to move `server/latest` and sync its release assets (status: done)
-- [x] Add `.github/workflows/release-extension.yml` to package/publish VSIX on `extension/v*` tags (status: done)
-- [x] Ensure installer supports namespaced tags (URL-encode in `vscode-extension/src/installer.ts`) (status: done)
-- [x] Confirm defaults in `vscode-extension/package.json` target `caiowilson/memento-mcp` + `server/latest` (status: done)
-- [x] Update docs: `README.md`, `docs/vscode.md`, `vscode-extension/README.md` (status: done)
-- [x] Smoke test: install server via extension using `server/latest` (status: done) — verified `server/latest` assets in `caiowilson/MCP-memento` via `gh` (repo is private, public repo needed for unauthenticated install)
+A single MCP server instance is effectively shared across projects, which risks stale cross-project context leakage.
 
-## Slice 10 — Signed macOS packaging + notarization
+#### Steps
+
+- [ ] Spawn a dedicated MCP server process per project/workspace (one server per `cwd`) (status: todo)
+- [ ] Create an isolated vector/chunk store per project under `~/.memento-mcp/<project-hash>/` (status: todo)
+- [ ] Set the server root to the current working directory for that project instance (status: todo)
+- [ ] Ensure lifecycle management: start server on project open, stop on project close (status: todo)
+- [ ] Prevent cross-project index contamination (no shared state between server instances) (status: todo)
+- [ ] Update VS Code extension to manage multiple server processes (one per workspace folder) (status: todo)
+- [ ] Add tests verifying two concurrent servers maintain independent stores (status: todo)
+
+### Slice 10 — Signed macOS packaging + notarization
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: hard
 - Scope: release workflows, Apple signing assets, notarization pipeline
-- Agent: memento-mcp-release
+- Priority: P0
 
-### Steps
+#### Steps
 
 - [ ] Add Developer ID signing for macOS `.pkg` in release workflows (status: todo)
-- [ ] Add notarization submit + staple step for generated `.pkg` assets (status: todo)
+- [ ] Add notarization submit + staple steps for generated `.pkg` assets (status: todo)
 - [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
-- [ ] Add CI verification step (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
+- [ ] Add CI verification (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
 - [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)
 
-## Slice 11 — Deduplicate `repo_context` output (P0)
+## P1 — Quality and Safety
 
-- Status: done
+### Slice 20 — Chunk boundary regression fixtures
+
+- Status: todo
 - Owner: @caiowilson
 - Difficulty: small
-- Scope: internal/mcp/context_tool.go
-- Priority: P0
-
-### Problem
-
-When related files overlap (e.g. many siblings in `internal/mcp/`), `repo_context` returns the same file's chunks duplicated across the response. This wastes 30–50% of the context budget.
-
-### Steps
-
-- [x] Add `excludePaths` parameter to skip files already in caller's context from prior calls (status: done)
-- [x] Track emitted `(path, startLine)` pairs globally across the candidate loop (status: done)
-- [x] Skip already-emitted chunks when building `perFile` map (status: done)
-- [x] Add test: `excludePaths` filtering, no duplicate chunks, exclude target file (status: done)
-
-## Slice 12 — Outline / summary output mode for `repo_context` (P0)
-
-- Status: done
-- Owner: @caiowilson
-- Difficulty: medium
-- Scope: internal/mcp/context_tool.go, internal/mcp/outline.go
-- Priority: P0
-
-### Problem
-
-`repo_context` always returns full source chunks. For navigation/planning, an outline (signatures + doc comments only) would reduce context by 80%+.
-
-### Steps
-
-- [x] Add `mode` parameter to `repo_context`: `full` (default, current), `outline`, `summary` (status: done)
-- [x] Implement Go outline extractor using `go/ast` — emit func/type/method signatures + doc comments (status: done)
-- [x] Implement JS/TS outline extractor using regex — emit export/function/class declarations (status: done)
-- [x] Fallback: for unsupported languages, return first N lines + function-like line matches (status: done)
-- [x] Add tests for each mode (status: done)
-
-## Slice 13 — Syntax-aware chunk boundaries (P1)
-
-- Status: todo
-- Owner: @caiowilson
-- Difficulty: medium
-- Scope: internal/indexing/chunk.go
+- Scope: `internal/indexing/chunk.go`, `internal/indexing/*_test.go`
 - Priority: P1
 
-### Problem
+#### Problem
 
-Chunks split at arbitrary line/byte boundaries, often cutting functions in half. This wastes context on partial, less-useful code.
+Chunking behavior is not pinned down tightly enough before syntax-aware chunking changes.
 
-### Steps
+#### Steps
 
-- [ ] For Go files, use `go/ast` to find top-level declaration boundaries and split chunks there (status: todo)
-- [ ] For JS/TS, detect function/class/export boundaries via regex heuristics (status: todo)
-- [ ] Fallback to current line-based chunking for unknown languages (status: todo)
-- [ ] Add tests: verify Go chunks align with function boundaries (status: todo)
+- [ ] Add Go fixture coverage for adjacent declarations and doc comments (status: todo)
+- [ ] Add assertions for chunk start and end lines (status: todo)
+- [ ] Add one non-Go fallback test proving line-based chunking still works (status: todo)
 
-## Slice 14 — `repo_diff_context` tool (P1)
+### Slice 13 — Syntax-aware chunk boundaries
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: medium
-- Scope: internal/mcp/ (new tool + git integration)
+- Scope: `internal/indexing/chunk.go`
+- Priority: P1
+- Depends on: Slice 20
+
+#### Problem
+
+Chunks currently split at arbitrary line/byte boundaries and can cut functions in half.
+
+#### Steps
+
+- [ ] For Go files, use `go/ast` to split on top-level declaration boundaries (status: todo)
+- [ ] For JS/TS, detect function/class/export boundaries with regex heuristics (status: todo)
+- [ ] Fallback to line-based chunking for unknown languages (status: todo)
+- [ ] Add tests verifying Go chunks align to declaration boundaries (status: todo)
+
+### Slice 14A — `repo_diff_context` MVP (explicit paths)
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: `internal/mcp/` (new tool)
 - Priority: P1
 
-### Problem
+#### Problem
 
-For edit/review workflows, the LLM only needs context around changed code, not the entire file graph. No tool exposes change-focused context.
+Edit/review workflows need context centered on changed files, not full graph context.
 
-### Steps
+#### Steps
 
-- [ ] Add `repo_diff_context` tool that detects changed files via `git status` or accepts explicit paths (status: todo)
-- [ ] Return only chunks overlapping changed line ranges + their immediate dependency context (status: todo)
-- [ ] Include a unified diff summary alongside the chunks (status: todo)
-- [ ] Add test with a simulated dirty worktree (status: todo)
+- [ ] Add `repo_diff_context` tool that accepts explicit repo-relative paths (status: todo)
+- [ ] Return only chunks overlapping those paths with compact nearby context (status: todo)
+- [ ] Include a concise summary block in the response (status: todo)
+- [ ] Add tests for explicit-path behavior (status: todo)
 
-## Slice 15 — `repo_symbols` tool (P2)
+### Slice 14B — `repo_diff_context` dirty-worktree auto-detection
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: medium
-- Scope: internal/mcp/ (new tool)
+- Scope: `internal/mcp/` (git integration)
+- Priority: P1
+- Depends on: Slice 14A
+
+#### Steps
+
+- [ ] Detect changed files via `git status` when paths are omitted (status: todo)
+- [ ] Exclude deleted files from chunk loading (status: todo)
+- [ ] Include a unified diff summary alongside returned chunks (status: todo)
+- [ ] Add tests with a simulated dirty worktree (status: todo)
+
+### Slice 21 — Package-level coverage reporting
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: CI workflow, `internal/indexing`, `internal/mcp`
+- Priority: P1
+
+#### Steps
+
+- [ ] Add CI coverage reporting for `internal/indexing` and `internal/mcp` (status: todo)
+- [ ] Set an initial floor that only blocks regressions for those packages (status: todo)
+- [ ] Document local coverage command in contributor-facing docs (status: todo)
+
+### Slice 22 — `repo_context` golden output tests
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: `internal/mcp/context_tool_test.go`
+- Priority: P1
+
+#### Steps
+
+- [ ] Add stable coverage for `intent: navigate` output shape (status: todo)
+- [ ] Add stable coverage for `intent: implement` and `intent: review` output shapes (status: todo)
+- [ ] Add explicit-mode contract assertions for `full`, `outline`, and `summary` (status: todo)
+
+### Slice 24 — Deprecate `README-old.md` safely
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: `README-old.md`, docs index
+- Priority: P1
+
+#### Steps
+
+- [ ] Decide whether to archive, delete, or hard-deprecate `README-old.md` (status: todo)
+- [ ] If retained, keep a top-of-file notice pointing to `README.md` (status: todo)
+- [ ] Remove any remaining links that direct readers to the old file (status: todo)
+
+### Slice 26 — VS Code extension config tests
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: `vscode-extension/` tests
+- Priority: P1
+
+#### Steps
+
+- [ ] Add tests for workspace-binary preference and explicit server-path override (status: todo)
+- [ ] Add tests for MCP config merge behavior when a config already exists (status: todo)
+- [ ] Keep installer network behavior out of this slice (status: todo)
+
+## P2 — Capability Expansion
+
+### Slice 15 — `repo_symbols` tool
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: `internal/mcp/` (new tool)
 - Priority: P2
 
-### Problem
+#### Steps
 
-No tool exposes a structured symbol list. LLMs must read full chunks to discover what functions/types exist in a file.
-
-### Steps
-
-- [ ] Add `repo_symbols` tool returning `{name, kind, line, signature}` per symbol (status: todo)
+- [ ] Add `repo_symbols` returning `{name, kind, line, signature}` per symbol (status: todo)
 - [ ] Implement Go symbol extraction via `go/ast` (status: todo)
 - [ ] Implement JS/TS symbol extraction via regex (func, class, export, const) (status: todo)
-- [ ] Fallback: generic regex for `func`, `def`, `class`, `interface` keywords (status: todo)
+- [ ] Add generic fallback regex for `func`, `def`, `class`, `interface` keywords (status: todo)
 - [ ] Add tests (status: todo)
 
-## Slice 16 — Trigram search index (P2)
+### Slice 16 — Trigram search index
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: medium
-- Scope: internal/indexing/
+- Scope: `internal/indexing/`
 - Priority: P2
 
-### Problem
+#### Problem
 
-`repo_search` and `Indexer.Search` do linear scans of all indexed content. Slow for large repos.
+`repo_search` and `Indexer.Search` currently do linear scans of indexed content.
 
-### Steps
+#### Steps
 
-- [ ] Build a trigram index during `indexAll` / `indexOne` (status: todo)
+- [ ] Build a trigram index during `indexAll` and `indexOne` (status: todo)
 - [ ] Use trigram index to pre-filter candidate files before substring matching (status: todo)
 - [ ] Add optional regex mode to `repo_search` (status: todo)
-- [ ] Benchmark: measure search latency before/after on a 1000-file repo (status: todo)
+- [ ] Benchmark search latency before/after on a 1000-file repo (status: todo)
 
-## Slice 17 — Auto-surface memories in `repo_context` (P3)
+## P3 — Context and Docs Cohesion
 
-- Status: todo
-- Owner: @caiowilson
-- Difficulty: small
-- Scope: internal/mcp/context_tool.go, internal/mcp/memory_tools.go
-- Priority: P3
-
-### Problem
-
-`NoteStore` memories are disconnected from `repo_context`. The LLM must explicitly call `memory_search` to retrieve past insights.
-
-### Steps
-
-- [ ] When assembling `repo_context`, query `NoteStore` for notes matching the target file path (status: todo)
-- [ ] Include matching notes in the response under a `memories` key (status: todo)
-- [ ] Add test (status: todo)
-
-## Slice 18 — Python import graph (P3)
+### Slice 17 — Auto-surface memories in `repo_context`
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: small
-- Scope: internal/mcp/ (new file: py_semantic.go)
+- Scope: `internal/mcp/context_tool.go`, `internal/mcp/memory_tools.go`
 - Priority: P3
 
-### Problem
+#### Steps
 
-No semantic support for Python — one of the most common languages used with AI coding tools.
+- [ ] Query `NoteStore` for notes matching the target file path during `repo_context` assembly (status: todo)
+- [ ] Include matching notes under a `memories` key in the response (status: todo)
+- [ ] Add tests (status: todo)
 
-### Steps
+### Slice 18 — Python import graph
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: `internal/mcp/` (`py_semantic.go`)
+- Priority: P3
+
+#### Steps
 
 - [ ] Build Python import graph via regex (`import X`, `from X import Y`, relative imports) (status: todo)
-- [ ] Wire into `computeRelatedFiles` for `.py` files (status: todo)
+- [ ] Wire it into `computeRelatedFiles` for `.py` files (status: todo)
 - [ ] Add tests with sample Python import structures (status: todo)
 
-## Slice 19 — Tree-sitter integration for language-agnostic parsing (P4)
+### Slice 27 — Canonicalize config and LLM guidance
+
+- Status: todo
+- Owner: @caiowilson
+- Difficulty: small
+- Scope: `README.md`, `docs/clients.md`, `docs/vscode.md`, `vscode-extension/README.md`
+- Priority: P3
+
+#### Steps
+
+- [ ] Choose one canonical guidance page for config + LLM usage (status: todo)
+- [ ] Shorten duplicated sections in other docs and replace with links (status: todo)
+- [ ] Verify examples match current tool names and arguments (status: todo)
+
+## P4 — Long-term Architecture
+
+### Slice 19 — Tree-sitter integration for language-agnostic parsing
 
 - Status: todo
 - Owner: @caiowilson
 - Difficulty: large
-- Scope: internal/indexing/, internal/mcp/
+- Scope: `internal/indexing/`, `internal/mcp/`
 - Priority: P4
 
-### Problem
+#### Steps
 
-Each language needs custom parsing for symbols, outlines, and chunk boundaries. Tree-sitter would provide a single dependency covering all languages.
-
-### Steps
-
-- [ ] Evaluate Go tree-sitter bindings (e.g. `smacker/go-tree-sitter`) (status: todo)
+- [ ] Evaluate Go tree-sitter bindings (for example, `smacker/go-tree-sitter`) (status: todo)
 - [ ] Implement generic symbol extraction using tree-sitter queries (status: todo)
 - [ ] Replace language-specific outline/chunk logic with tree-sitter where available (status: todo)
-- [ ] Add tests across Go, JS/TS, Python, Rust (status: todo)
+- [ ] Add tests across Go, JS/TS, Python, and Rust (status: todo)
+
+## Recently Completed (historical)
+
+- Slice 1: VS Code happy path (done)
+- Slice 2: Indexer safety + file selection (done)
+- Slice 3: Git-first incremental reindex (done)
+- Slice 4: Filesystem watcher fallback (done)
+- Slice 5: Go semantic freshness (done)
+- Slice 6: Context quality + hard limits (done)
+- Slice 7: Ops/admin tools (done)
+- Slice 8: VS Code extension UX polish (done)
+- Slice 9: Monorepo releases (server + extension) (done)
+- Slice 11: Deduplicate `repo_context` output (done)
+- Slice 12: Outline/summary output mode for `repo_context` (done)
+- Slice 23: Docs landing page accuracy pass (done)

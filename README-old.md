@@ -1,5 +1,9 @@
 # memento-mcp
 
+> [!WARNING]
+> This file is deprecated and kept only for backward compatibility.
+> Use [README.md](README.md) as the canonical and maintained documentation.
+
 A **local-first, durability-focused Model Context Protocol (MCP) server** that empowers AI agents with a comprehensive, indexed "external memory" of your codebase.
 
 `memento-mcp` connects your LLM (via VS Code, Claude Desktop, or other MCP clients) to your local source code, providing fast semantic-aware context retrieval, full-text search, and persistent memory across sessions.

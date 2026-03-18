@@ -1,41 +1,78 @@
 name: Move Server Latest
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "server/v*"
+  workflow_dispatch:
+    inputs:
+      server_tag:
+        description: Server release tag to mirror to server/latest
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   prepare:
-    if: startsWith(github.event.release.tag_name, 'server/v')
     runs-on: ubuntu-latest
     outputs:
-      tag_sha: ${{ steps.meta.outputs.tag_sha }}
+      server_tag: ${{ steps.meta.outputs.server_tag }}
+      tag_sha: ${{ steps.tag_sha.outputs.tag_sha }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
+      - name: Resolve source tag and version
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.server_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_TAG="$PUSH_TAG"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SOURCE_TAG="$DISPATCH_TAG"
+          fi
+
+          case "$SOURCE_TAG" in
+            server/v*) ;;
+            *)
+              echo "expected a server/v* tag, got: $SOURCE_TAG" >&2
+              exit 1
+              ;;
+          esac
+
+          VERSION="${SOURCE_TAG#server/v}"
+
+          echo "server_tag=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ steps.meta.outputs.server_tag }}
 
-      - name: Resolve release commit and version
-        id: meta
+      - name: Resolve release commit
+        id: tag_sha
         shell: bash
         run: |
-          TAG_SHA=$(git rev-list -n 1 "${{ github.event.release.tag_name }}")
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#server/v}"
+          set -euo pipefail
+          TAG_SHA=$(git rev-list -n 1 "${{ steps.meta.outputs.server_tag }}")
+          if [ -z "$TAG_SHA" ]; then
+            echo "could not resolve commit for ${{ steps.meta.outputs.server_tag }}" >&2
+            exit 1
+          fi
           echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Update server/latest tag
         shell: bash
         run: |
-          git tag -f server/latest "${{ steps.meta.outputs.tag_sha }}"
+          git tag -f server/latest "${{ steps.tag_sha.outputs.tag_sha }}"
           git push -f origin refs/tags/server/latest
 
   build-binaries:
@@ -51,7 +88,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.prepare.outputs.server_tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -90,7 +127,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.prepare.outputs.server_tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -148,7 +185,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.prepare.outputs.server_tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -205,4 +242,5 @@ jobs:
           tag_name: server/latest
           name: server/latest
           target_commitish: ${{ needs.prepare.outputs.tag_sha }}
+          prerelease: true
           files: dist/*

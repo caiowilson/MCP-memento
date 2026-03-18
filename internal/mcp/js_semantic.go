@@ -13,16 +13,25 @@ import (
 var jsGraphCache sync.Map // key: rootAbs, value: *importGraph
 
 func getJSImportGraph(ctx context.Context, rootAbs string) (*importGraph, error) {
-	if v, ok := jsGraphCache.Load(rootAbs); ok {
-		return v.(*importGraph), nil
+
+	if cached, found := jsGraphCache.Load(rootAbs); found {
+		return cached.(*importGraph), nil
 	}
-	g, err := buildJSImportGraph(ctx, rootAbs)
+
+	graph, err := buildJSImportGraph(ctx, rootAbs)
 	if err != nil {
 		return nil, err
 	}
-	jsGraphCache.Store(rootAbs, g)
-	return g, nil
+
+	jsGraphCache.Store(rootAbs, graph)
+	return graph, nil
 }
+
+func InvalidateJSImportGraphCache(rootAbs string) {
+	jsGraphCache.Delete(filepath.Clean(rootAbs))
+}
+
+const maxJSFileSize = 400_000 // Maximum JS file size to parse (in bytes)
 
 func buildJSImportGraph(ctx context.Context, rootAbs string) (*importGraph, error) {
 	g := &importGraph{
@@ -30,57 +39,68 @@ func buildJSImportGraph(ctx context.Context, rootAbs string) (*importGraph, erro
 		importers: map[string][]string{},
 	}
 
-	_ = filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
+	walkErr := filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case ctx.Err() != nil:
 			return ctx.Err()
-		default:
-		}
-		if d.IsDir() {
-			if shouldIgnoreDir(d.Name()) {
-				return filepath.SkipDir
-			}
+		case shouldSkipDir(d):
+			return filepath.SkipDir
+		case shouldSkipFile(d):
 			return nil
 		}
-		if shouldIgnoreFile(d.Name()) {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		if ext != ".ts" && ext != ".tsx" && ext != ".js" && ext != ".jsx" && ext != ".mjs" && ext != ".cjs" {
-			return nil
-		}
-
-		info, err := d.Info()
-		if err != nil || info.Size() > 400_000 {
-			return nil
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-
-		fromRel, err := filepath.Rel(rootAbs, path)
-		if err != nil {
-			return nil
-		}
-		fromRel = filepath.ToSlash(fromRel)
-
-		specs := parseJSImportSpecifiers(string(b))
-		for _, spec := range specs {
-			resolvedRel := resolveJSModuleToRel(rootAbs, path, spec)
-			if resolvedRel == "" {
-				continue
-			}
-			g.imports[fromRel] = appendUnique(g.imports[fromRel], resolvedRel)
-			g.importers[resolvedRel] = appendUnique(g.importers[resolvedRel], fromRel)
-		}
-		return nil
+		return processJSFile(g, rootAbs, path, d)
 	})
 
+	if walkErr != nil {
+		return nil, walkErr
+	}
 	return g, nil
+}
+
+func shouldSkipDir(d fs.DirEntry) bool {
+	return d.IsDir() && shouldIgnoreDir(d.Name())
+}
+
+func shouldSkipFile(d fs.DirEntry) bool {
+	if d.IsDir() || shouldIgnoreFile(d.Name()) {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(d.Name()))
+	switch ext {
+	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs":
+		return false
+	default:
+		return true
+	}
+}
+
+func processJSFile(g *importGraph, rootAbs, path string, d fs.DirEntry) error {
+	info, err := d.Info()
+	if err != nil || info.Size() > maxJSFileSize {
+		return nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	fromRel, err := filepath.Rel(rootAbs, path)
+	if err != nil {
+		return nil
+	}
+	fromRel = filepath.ToSlash(fromRel)
+
+	specs := parseJSImportSpecifiers(string(b))
+	for _, spec := range specs {
+		resolvedRel := resolveJSModuleToRel(rootAbs, path, spec)
+		if resolvedRel == "" {
+			continue
+		}
+		g.imports[fromRel] = appendUnique(g.imports[fromRel], resolvedRel)
+		g.importers[resolvedRel] = appendUnique(g.importers[resolvedRel], fromRel)
+	}
+	return nil
 }
 
 var (

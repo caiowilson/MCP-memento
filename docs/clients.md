@@ -47,6 +47,7 @@ Use the output of `print-guidance` directly, or paste the following into client 
 When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
 If repo_context returns suggestedNextCall, prefer following it for a deeper read without repeating context.
+When you change repositories in the same MCP session, call repo_switch_workspace with the new root path instead of restarting.
 Existing explicit mode calls still work, but new callers should prefer intent.
 ```
 
@@ -85,6 +86,18 @@ Review:
   "arguments": {
     "path": "internal/mcp/context_tool.go",
     "intent": "review"
+  }
+}
+```
+
+Switch workspace without restart:
+
+```json
+{
+  "name": "repo_switch_workspace",
+  "arguments": {
+    "path": "/absolute/path/to/another/repo",
+    "reindexNow": true
   }
 }
 ```

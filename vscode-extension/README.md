@@ -37,6 +37,8 @@ On first activation, the extension offers quick actions to install the server or
 - `mementoMcp.releaseTag` (default: `server/latest`)
 - `mementoMcp.serverPath` (optional override)
 - `mementoMcp.preferWorkspaceBinary` (default: `true`)
+- `mementoMcp.autoSwitchWorkspace` (default: `true`, best-effort tool call to `repo_switch_workspace` on workspace-folder changes)
+- `mementoMcp.autoSwitchReindexNow` (default: `false`, sends `reindexNow: true` during auto-switch)
 - `mementoMcp.devLogToolCalls` (default: `false`, includes `MEMENTO_MCP_DEV_LOG=1` in configured entries)
 - `mementoMcp.devLogTailLines` (default: `200`, used by “Save Dev Tool Log Tail”)
 
@@ -53,6 +55,7 @@ This extension expects GitHub Releases to include raw (uncompressed) binary asse
 - `memento-mcp_windows_x64.exe`
 
 If no matching release asset exists, the install command will tell you what it looked for.
+If a downloaded binary still does not expose `repo_switch_workspace`, the command retries known latest tags and then offers a direct link to source build instructions in the repository README.
 
 ## Release tags
 

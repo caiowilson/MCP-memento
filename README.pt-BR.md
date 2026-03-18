@@ -23,7 +23,7 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 
 ## O Que Faz
 
-- Expõe ferramentas MCP para operações no repositório: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`
+- Expõe ferramentas MCP para operações no repositório: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_switch_workspace`
 - Mantém um índice de código em disco por repositório para recuperação de contexto rápida e com limites definidos
 - Armazena notas explícitas com escopo do repositório: `memory_upsert`, `memory_search`, `memory_clear`
 - Suporta uma extensão complementar para VS Code que instala e configura o servidor

@@ -2,7 +2,7 @@
   "name": "memento-mcp-vscode",
   "displayName": "Memento MCP",
   "description": "Companion VS Code extension that installs the memento-mcp server binary and helps generate MCP config snippets.",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "publisher": "caiowilson",
   "engines": {
     "vscode": "^1.90.0"
@@ -69,6 +69,16 @@
           "type": "boolean",
           "default": true,
           "description": "If ${workspaceFolder}/bin/memento-mcp exists, prefer it for the generated snippet."
+        },
+        "mementoMcp.autoSwitchWorkspace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Best-effort: when the first workspace folder changes, try calling `repo_switch_workspace` via MCP tools without restarting."
+        },
+        "mementoMcp.autoSwitchReindexNow": {
+          "type": "boolean",
+          "default": false,
+          "description": "When auto-switching workspace, pass `reindexNow: true` to block until the first full index pass completes."
         },
         "mementoMcp.devLogToolCalls": {
           "type": "boolean",

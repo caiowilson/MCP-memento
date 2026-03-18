@@ -21,6 +21,12 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 	}
 
 	switch args[0] {
+	case "setup":
+		if err := runSetup(args[1:], stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "setup: %v\n", err)
+			return true, 1
+		}
+		return true, 0
 	case "print-config":
 		exe, err := os.Executable()
 		if err != nil {
@@ -71,6 +77,7 @@ func clientGuidanceText() string {
 	return `When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
 If repo_context returns suggestedNextCall, prefer following it for a deeper read without repeating context.
+When you change repositories in the same MCP session, call repo_switch_workspace with the new root path instead of restarting.
 Existing explicit mode calls still work, but new callers should prefer intent.`
 }
 
@@ -79,6 +86,12 @@ func cliHelpText() string {
 
 Usage:
   memento-mcp               Start the MCP stdio server in the current working directory
+  memento-mcp --root DIR    Start the server using DIR as workspace root (default: cwd)
+  memento-mcp setup         Detect MCP clients and write config (interactive)
+  memento-mcp setup --client=vscode --client=cursor
+                            Configure specific clients (non-interactive)
+  memento-mcp setup --print-only
+                            Print config to stdout without writing files
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing

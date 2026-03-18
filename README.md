@@ -24,7 +24,7 @@ A local-first MCP server that gives AI agents durable, high-signal memory for yo
 
 ## What It Does
 
-- Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`
+- Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_switch_workspace`
 - Maintains an on-disk code index per repository for fast, bounded context retrieval
 - Stores explicit repo-scoped notes: `memory_upsert`, `memory_search`, `memory_clear`
 - Supports a companion VS Code extension that installs and configures the server
