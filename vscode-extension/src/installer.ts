@@ -3,6 +3,7 @@ import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as https from "node:https";
+import { spawn } from "node:child_process";
 
 type GitHubRelease = {
   tag_name: string;
@@ -12,9 +13,19 @@ type GitHubRelease = {
   }>;
 };
 
-export async function ensureServerInstalled(context: vscode.ExtensionContext): Promise<string> {
+export type InstallResult = {
+  binPath: string;
+  hasRepoSwitchWorkspace: boolean;
+  installedFromTag?: string;
+  releaseTried: boolean;
+};
+
+export async function ensureServerInstalled(
+  context: vscode.ExtensionContext,
+  opts: { force?: boolean; tagOverride?: string } = {},
+): Promise<string> {
   const binPath = getInstalledBinaryPath(context);
-  if (await fileExists(binPath)) {
+  if (!opts.force && (await fileExists(binPath))) {
     return binPath;
   }
 
@@ -29,7 +40,7 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
 
       const cfg = vscode.workspace.getConfiguration("mementoMcp");
       const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
-      const tag = String(cfg.get("releaseTag", "server/latest"));
+      const tag = (opts.tagOverride ?? String(cfg.get("releaseTag", "server/latest"))).trim();
 
       const release = await fetchRelease(repo, tag);
       const wanted = desiredAssetNames();
@@ -50,11 +61,64 @@ export async function ensureServerInstalled(context: vscode.ExtensionContext): P
       if (process.platform !== "win32") {
         await fs.chmod(tmpPath, 0o755);
       }
+      if (await fileExists(binPath)) {
+        await fs.rm(binPath, { force: true });
+      }
       await fs.rename(tmpPath, binPath);
     },
   );
 
   return binPath;
+}
+
+export async function ensureServerSupportsRepoSwitchWorkspace(
+  context: vscode.ExtensionContext,
+): Promise<InstallResult> {
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const configuredTag = String(cfg.get("releaseTag", "server/latest")).trim();
+  const binPath = getInstalledBinaryPath(context);
+
+  const hadToolBefore = await binaryExposesTool(binPath, "repo_switch_workspace");
+
+  const fallbackTags = uniqueNonEmpty(["server/latest", "latest", configuredTag]);
+  for (const tag of fallbackTags) {
+    try {
+      await ensureServerInstalled(context, { force: true, tagOverride: tag });
+      if (await binaryExposesTool(binPath, "repo_switch_workspace")) {
+        return {
+          binPath,
+          hasRepoSwitchWorkspace: true,
+          installedFromTag: tag,
+          releaseTried: true,
+        };
+      }
+    } catch {
+      // Continue trying the next fallback tag.
+    }
+  }
+
+  if (hadToolBefore) {
+    return {
+      binPath,
+      hasRepoSwitchWorkspace: true,
+      releaseTried: true,
+    };
+  }
+
+  return {
+    binPath,
+    hasRepoSwitchWorkspace: false,
+    releaseTried: true,
+    installedFromTag: fallbackTags.join(","),
+  };
+}
+
+export function sourceBuildReadmeUrl(repo: string): string {
+  const trimmed = repo.trim();
+  if (!trimmed) {
+    return "https://github.com/caiowilson/MCP-memento#local-development";
+  }
+  return `https://github.com/${trimmed}#local-development`;
 }
 
 export async function resolvePreferredServerPath(context: vscode.ExtensionContext): Promise<string> {
@@ -233,4 +297,101 @@ function asErrorMessage(err: unknown): string {
     return err.message;
   }
   return String(err);
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const key = v.trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+async function binaryExposesTool(binPath: string, toolName: string): Promise<boolean> {
+  if (!(await fileExists(binPath))) {
+    return false;
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn(binPath, [], { stdio: ["pipe", "pipe", "ignore"] });
+    let settled = false;
+    let buffer = "";
+
+    const settle = (ok: boolean): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        child.stdin.end();
+      } catch {
+        // ignore
+      }
+      try {
+        child.kill();
+      } catch {
+        // ignore
+      }
+      resolve(ok);
+    };
+
+    const timeout = setTimeout(() => settle(false), 3000);
+
+    child.on("error", () => settle(false));
+    child.on("exit", () => settle(false));
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      for (;;) {
+        const idx = buffer.indexOf("\n");
+        if (idx < 0) {
+          break;
+        }
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) {
+          continue;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const tools = (parsed as { result?: { tools?: Array<{ name?: unknown }> } })?.result?.tools;
+        if (!Array.isArray(tools)) {
+          continue;
+        }
+        const hasTool = tools.some((t) => String(t?.name ?? "") === toolName);
+        settle(hasTool);
+        return;
+      }
+    });
+
+    try {
+      child.stdin.write(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: { protocolVersion: "2024-11-05" },
+        }) + "\n",
+      );
+      child.stdin.write(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+        }) + "\n",
+      );
+    } catch {
+      settle(false);
+    }
+  });
 }

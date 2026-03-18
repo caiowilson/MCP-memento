@@ -28,6 +28,9 @@ type Server struct {
 
 	devLogFilePath    string
 	devLogFileErrOnce bool
+
+	backgroundParentCtx context.Context
+	backgroundCancel    context.CancelFunc
 }
 
 type Config struct {
@@ -43,49 +46,69 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 		root = wd
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return nil, err
-	}
-
-	mem, err := NewNoteStore(absRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	isGit := indexing.IsGitRepo(absRoot)
-	pollSeconds := envInt("MEMENTO_INDEX_POLL_SECONDS", 10)
-	if isGit {
-		pollSeconds = 0
-	}
-	idxCfg := indexing.Config{
-		RootAbs:       absRoot,
-		PollInterval:  time.Duration(pollSeconds) * time.Second,
-		MaxTotalBytes: int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
-		MaxFileBytes:  int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
-	}
-	idx, err := indexing.New(idxCfg)
+	absRoot, err := normalizeWorkspaceRoot(root)
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		root:   absRoot,
-		mem:    mem,
-		idx:    idx,
 		devLog: os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
 	}
-	if s.devLog {
-		if p, err := defaultDevToolLogPath(absRoot); err == nil {
-			s.devLogFilePath = p
-		}
+	if err := s.rebindWorkspace(absRoot); err != nil {
+		return nil, err
 	}
-	s.tools = []Tool{
-		newRepoListFilesTool(absRoot),
-		newRepoReadFileTool(absRoot),
-		newRepoSearchTool(absRoot),
-		newRepoRelatedFilesTool(absRoot),
-		newRepoContextTool(absRoot, idx),
+	return s, nil
+}
+
+func (s *Server) StartBackgroundIndexing(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.backgroundParentCtx = ctx
+	s.restartBackgroundIndexing()
+}
+
+func normalizeWorkspaceRoot(root string) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", fmt.Errorf("workspace root is required")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absRoot = filepath.Clean(absRoot)
+	info, err := os.Stat(absRoot)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workspace root is not a directory: %s", absRoot)
+	}
+	return absRoot, nil
+}
+
+func (s *Server) indexerConfig(rootAbs string) indexing.Config {
+	pollSeconds := envInt("MEMENTO_INDEX_POLL_SECONDS", 10)
+	if indexing.IsGitRepo(rootAbs) {
+		pollSeconds = 0
+	}
+	return indexing.Config{
+		RootAbs:       rootAbs,
+		PollInterval:  time.Duration(pollSeconds) * time.Second,
+		MaxTotalBytes: int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
+		MaxFileBytes:  int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
+	}
+}
+
+func (s *Server) toolsetFor(root string, idx *indexing.Indexer, mem *NoteStore) []Tool {
+	return []Tool{
+		newRepoListFilesTool(root),
+		newRepoReadFileTool(root),
+		newRepoSearchTool(root),
+		newRepoRelatedFilesTool(root),
+		newRepoContextTool(root, idx),
+		newRepoSwitchWorkspaceTool(s),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),
 		newRepoClearIndexTool(idx),
@@ -94,52 +117,135 @@ func NewServer(cfg Config) (*Server, error) {
 		newMemorySearchTool(mem),
 		newMemoryClearTool(mem),
 	}
-	return s, nil
 }
 
-func (s *Server) StartBackgroundIndexing(ctx context.Context) {
-	if s.idx == nil {
+func (s *Server) rebindWorkspace(rootAbs string) error {
+	mem, err := NewNoteStore(rootAbs)
+	if err != nil {
+		return err
+	}
+	idx, err := indexing.New(s.indexerConfig(rootAbs))
+	if err != nil {
+		return err
+	}
+
+	s.root = rootAbs
+	s.mem = mem
+	s.idx = idx
+	s.tools = s.toolsetFor(rootAbs, idx, mem)
+
+	s.devLogFilePath = ""
+	s.devLogFileErrOnce = false
+	if s.devLog {
+		if p, err := defaultDevToolLogPath(rootAbs); err == nil {
+			s.devLogFilePath = p
+		}
+	}
+	return nil
+}
+
+func (s *Server) restartBackgroundIndexing() {
+	if s.backgroundCancel != nil {
+		s.backgroundCancel()
+		s.backgroundCancel = nil
+	}
+	if s.backgroundParentCtx == nil || s.idx == nil {
 		return
 	}
-	s.idx.Start(ctx)
+
+	runCtx, cancel := context.WithCancel(s.backgroundParentCtx)
+	s.backgroundCancel = cancel
+
+	root := s.root
+	idx := s.idx
+
+	idx.Start(runCtx)
 	go func() {
-		_ = s.idx.IndexAll(ctx)
+		_ = idx.IndexAll(runCtx)
 	}()
 
 	notifySemantic := func(add, del []string) {
-		if !touchesGoSemantic(add) && !touchesGoSemantic(del) {
-		} else {
-			InvalidateGoSemanticCache(s.root)
-			go WarmGoSemanticCache(ctx, s.root)
+		if touchesGoSemantic(add) || touchesGoSemantic(del) {
+			InvalidateGoSemanticCache(root)
+			go WarmGoSemanticCache(runCtx, root)
 		}
-
 		if touchesJSRelations(add) || touchesJSRelations(del) {
-			InvalidateJSImportGraphCache(s.root)
+			InvalidateJSImportGraphCache(root)
 		}
 		if touchesPHPRelations(add) || touchesPHPRelations(del) {
-			InvalidatePHPIncludeGraphCache(s.root)
+			InvalidatePHPIncludeGraphCache(root)
 		}
 	}
 
-	if indexing.IsGitRepo(s.root) {
+	if indexing.IsGitRepo(root) {
 		monitor := indexing.NewGitChangeMonitor(
-			s.root,
-			s.idx,
+			root,
+			idx,
 			time.Duration(envInt("MEMENTO_GIT_POLL_SECONDS", 2))*time.Second,
 			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
 			notifySemantic,
 		)
-		monitor.Start(ctx)
+		monitor.Start(runCtx)
 		return
 	}
 
 	monitor := indexing.NewFSChangeMonitor(
-		s.root,
-		s.idx,
+		root,
+		idx,
 		time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
 		notifySemantic,
 	)
-	_ = monitor.Start(ctx)
+	_ = monitor.Start(runCtx)
+}
+
+func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bool) (map[string]any, error) {
+	nextRoot, err := normalizeWorkspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	prevRoot := s.root
+	if nextRoot == prevRoot {
+		return map[string]any{
+			"switched":     false,
+			"previousRoot": prevRoot,
+			"root":         nextRoot,
+			"indexStatus":  s.idx.Status(),
+			"indexDebug":   s.idx.DebugInfo(),
+		}, nil
+	}
+
+	if err := s.rebindWorkspace(nextRoot); err != nil {
+		return nil, err
+	}
+	if s.backgroundParentCtx != nil {
+		s.restartBackgroundIndexing()
+	}
+	if reindexNow {
+		// Indexer requests require an active worker. In the normal server flow
+		// this is already started by StartBackgroundIndexing, but tests and
+		// direct library usage may call switch before that.
+		if s.backgroundParentCtx == nil {
+			tmpCtx, cancel := context.WithCancel(context.Background())
+			s.idx.Start(tmpCtx)
+			err := s.idx.IndexAll(ctx)
+			cancel()
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			if err := s.idx.IndexAll(ctx); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return map[string]any{
+		"switched":     true,
+		"previousRoot": prevRoot,
+		"root":         nextRoot,
+		"indexStatus":  s.idx.Status(),
+		"indexDebug":   s.idx.DebugInfo(),
+	}, nil
 }
 
 func touchesGoSemantic(paths []string) bool {
@@ -267,7 +373,7 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		"protocolVersion": protocolVersion,
 		"serverInfo": map[string]any{
 			"name":    "memento-mcp",
-			"version": "0.5.0",
+			"version": "0.6.0",
 		},
 		"capabilities": map[string]any{
 			"tools": map[string]any{},

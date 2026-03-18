@@ -2,14 +2,14 @@
 
 Memento is a local-first MCP server that gives AI agents durable, high-signal memory for your repository: indexed code context, semantic relationships, fast search, and explicit notes that persist across sessions.
 
-This directory collects the main project documentation, including client setup, VS Code usage, architecture decisions, and the technical debt remediation backlog.
+This directory collects the main project documentation, including client setup, VS Code usage, and architecture decisions.
 
 ## Contents
 
 - Getting started: `../README.md`
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
-- Technical debt remediation backlog: `technical-debt-remediation.md`
+- Canonical backlog: `../TODO.md`
 - VS Code extension: `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
 
@@ -20,6 +20,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_search` — substring search across files
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware)
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
+- `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
 - `repo_reindex` — trigger full re-index
 - `repo_clear_index` — delete all indexed chunks and manifest

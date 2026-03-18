@@ -1,8 +1,15 @@
 import * as vscode from "vscode";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
-import { ensureServerInstalled, getServerStatus, resolvePreferredServerPath } from "./installer";
+import {
+  ensureServerSupportsRepoSwitchWorkspace,
+  getServerStatus,
+  resolvePreferredServerPath,
+  sourceBuildReadmeUrl,
+} from "./installer";
 import { buildConfigEntry, buildConfigEntryJson, buildMcpServersConfigJson, buildSnippetMarkdown } from "./mcpConfig";
+
+let lastAutoSwitchedWorkspaceRoot: string | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -12,20 +19,42 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("mementoMcp.installServer", async () => {
       try {
-        const bin = await ensureServerInstalled(context);
-        void vscode.window.showInformationMessage(`memento-mcp installed: ${bin}`);
-        await refreshStatusBar(context, statusBar);
+        const install = await ensureServerSupportsRepoSwitchWorkspace(context);
+        const bin = install.binPath;
 
-        const followUp = await vscode.window.showInformationMessage(
-          "Configure MCP to use the installed server?",
-          "Configure (Workspace)",
-          "Configure (Global)",
-        );
-        if (followUp === "Configure (Workspace)") {
-          await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "workspace" });
-        } else if (followUp === "Configure (Global)") {
-          await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "global" });
+        if (!install.hasRepoSwitchWorkspace) {
+          const cfg = vscode.workspace.getConfiguration("mementoMcp");
+          const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
+          const readmeUrl = sourceBuildReadmeUrl(repo);
+          const action = await vscode.window.showWarningMessage(
+            [
+              "Installed binary still does not expose `repo_switch_workspace`.",
+              "Tried downloading the latest release.",
+              "Build the latest server from source and point `mementoMcp.serverPath` to that binary.",
+            ].join(" "),
+            "Open Build Instructions",
+          );
+          if (action === "Open Build Instructions") {
+            await vscode.env.openExternal(vscode.Uri.parse(readmeUrl));
+          }
+        } else {
+          const suffix = install.installedFromTag
+            ? ` (updated from ${install.installedFromTag})`
+            : "";
+          void vscode.window.showInformationMessage(`memento-mcp installed: ${bin}${suffix}`);
+
+          const followUp = await vscode.window.showInformationMessage(
+            "Configure MCP to use the installed server?",
+            "Configure (Workspace)",
+            "Configure (Global)",
+          );
+          if (followUp === "Configure (Workspace)") {
+            await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "workspace" });
+          } else if (followUp === "Configure (Global)") {
+            await vscode.commands.executeCommand("mementoMcp.configureMcp", { scope: "global" });
+          }
         }
+        await refreshStatusBar(context, statusBar);
       } catch (err) {
         void vscode.window.showErrorMessage(asErrorMessage(err));
       }
@@ -138,16 +167,24 @@ export function activate(context: vscode.ExtensionContext) {
       if (event.affectsConfiguration("mementoMcp")) {
         await refreshStatusBar(context, statusBar);
       }
+      if (
+        event.affectsConfiguration("mementoMcp.autoSwitchWorkspace") ||
+        event.affectsConfiguration("mementoMcp.autoSwitchReindexNow")
+      ) {
+        await maybeAutoSwitchWorkspace();
+      }
     }),
   );
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       await refreshStatusBar(context, statusBar);
+      await maybeAutoSwitchWorkspace();
     }),
   );
 
   void refreshStatusBar(context, statusBar);
+  void maybeAutoSwitchWorkspace();
   void maybeShowOnboarding(context);
 }
 
@@ -455,4 +492,74 @@ async function readDevToolLogTail(): Promise<string | null> {
   const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
   const tail = lines.slice(Math.max(0, lines.length - tailLines)).join("\n");
   return tail.length > 0 ? tail + "\n" : null;
+}
+
+async function maybeAutoSwitchWorkspace(): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const enabled = Boolean(cfg.get("autoSwitchWorkspace", true));
+  if (!enabled) {
+    return;
+  }
+
+  const folders = vscode.workspace.workspaceFolders;
+  const nextRoot = folders?.[0]?.uri.fsPath;
+  if (!nextRoot || nextRoot === lastAutoSwitchedWorkspaceRoot) {
+    return;
+  }
+
+  const lmApi = (vscode as unknown as { lm?: unknown }).lm as
+    | {
+        tools: readonly vscode.LanguageModelToolInformation[];
+        invokeTool: typeof vscode.lm.invokeTool;
+      }
+    | undefined;
+  if (!lmApi || !Array.isArray(lmApi.tools) || typeof lmApi.invokeTool !== "function") {
+    return;
+  }
+
+  const toolName = pickRepoSwitchWorkspaceToolName(lmApi.tools);
+  if (!toolName) {
+    return;
+  }
+
+  const reindexNow = Boolean(cfg.get("autoSwitchReindexNow", false));
+  try {
+    await lmApi.invokeTool(toolName, {
+      toolInvocationToken: undefined,
+      input: {
+        path: nextRoot,
+        reindexNow,
+      },
+    });
+    lastAutoSwitchedWorkspaceRoot = nextRoot;
+  } catch (err) {
+    // Keep this non-disruptive for users; failures here are best-effort.
+    console.warn(`[memento-mcp] auto workspace switch failed: ${asErrorMessage(err)}`);
+  }
+}
+
+function pickRepoSwitchWorkspaceToolName(tools: readonly vscode.LanguageModelToolInformation[]): string | undefined {
+  if (tools.length === 0) {
+    return undefined;
+  }
+  const names = tools.map((t) => t.name);
+
+  if (names.includes("repo_switch_workspace")) {
+    return "repo_switch_workspace";
+  }
+
+  const suffixMatches = names
+    .filter((n) => n.endsWith(".repo_switch_workspace") || n.endsWith("/repo_switch_workspace"))
+    .sort((a, b) => a.length - b.length);
+  if (suffixMatches.length > 0) {
+    return suffixMatches[0];
+  }
+
+  const containsMatches = names
+    .filter((n) => n.includes("repo_switch_workspace"))
+    .sort((a, b) => a.length - b.length);
+  if (containsMatches.length > 0) {
+    return containsMatches[0];
+  }
+  return undefined;
 }

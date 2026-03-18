@@ -9,6 +9,7 @@ This repo includes a companion VS Code extension under `vscode-extension/` that 
 - Download/install a `memento-mcp` binary into VS Code extension storage
 - Generate an MCP config snippet for your `mcp.json`
 - Configure MCP by writing/merging an entry into either a workspace `mcp.json` or a user/global config file
+- Best-effort auto-call `repo_switch_workspace` when workspace folders change (configurable in extension settings)
 
 See `vscode-extension/README.md`.
 
@@ -16,6 +17,7 @@ Defaults:
 
 - GitHub repo: `caiowilson/MCP-memento`
 - Release tag: `server/latest` (server releases are `server/vX.Y.Z`)
+- Install behavior: tries latest release tags first; if `repo_switch_workspace` is still unavailable, the extension opens source-build instructions from README.
 
 ### Build a local binary
 
@@ -75,7 +77,25 @@ printf '%s\n' \
 - Repo context tools (`repo_*`) for listing, reading, and searching files.
 - `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
 - `repo_context` to fetch a single “context window” with intent-aware routing (uses automatic indexing in the background).
+- `repo_switch_workspace` to retarget the server to another repository/workspace root at runtime (no process restart).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
+
+### Switch workspace without restart
+
+Call `repo_switch_workspace` with a new root path:
+
+```json
+{
+  "name": "repo_switch_workspace",
+  "arguments": {
+    "path": "/absolute/path/to/another/repo",
+    "reindexNow": true
+  }
+}
+```
+
+- `path` can be absolute or relative to the current process working directory.
+- `reindexNow: true` blocks until the first full index pass completes.
 
 ### LLM usage recipe
 

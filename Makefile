@@ -13,7 +13,7 @@ WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
 .PHONY: build install install-dev uninstall clean help release release-server release-extension release-both \
-        wave-status wave-validate wave-merge wave-clean
+	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
 	@printf "Targets:\n"
@@ -37,6 +37,7 @@ help:
 	@printf "  wave-validate  Run the correct validation command in each worktree\n"
 	@printf "  wave-merge     Merge each branch into current branch in MERGE_ORDER\n"
 	@printf "  wave-clean     Remove worktrees + branches after successful merge\n"
+	@printf "  wave-run       Run status, validate, merge, then clean\n"
 	@printf "\n"
 	@printf "Wave vars (override as needed):\n"
 	@printf "  WAVE_ROOT=$(WAVE_ROOT)\n"
@@ -193,3 +194,9 @@ wave-clean:
 			echo "  branch $$branch not found, skipping"; \
 		fi; \
 	done
+
+wave-run:
+	@$(MAKE) wave-status
+	@$(MAKE) wave-validate
+	@$(MAKE) wave-merge
+	@$(MAKE) wave-clean
