@@ -8,6 +8,8 @@
 
 A local-first MCP server that gives AI agents durable, high-signal memory for your repository: indexed code context, semantic relationships, fast search, and explicit notes that persist across sessions.
 
+fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/caiowilson/MCP-memento)
+
 ## Languages
 
 - English: `README.md`
