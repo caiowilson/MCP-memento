@@ -34,8 +34,8 @@ A local-first MCP server that gives AI agents durable, high-signal memory for yo
 1. The server starts over stdio JSON-RPC and registers MCP tools.
 2. It builds and updates a local chunk index under `~/.memento-mcp/`.
 3. Change detection is incremental:
-   - Git repos: polls `git status` (fast path)
-   - Non-git repos: filesystem watcher fallback
+   - Default (`auto`): filesystem watcher first, fallback to `git status` polling for git repos if watcher fails
+   - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
    - Indexed chunks and scoring
    - Language-aware relationships (Go, TS/JS, PHP)

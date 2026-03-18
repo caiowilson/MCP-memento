@@ -28,7 +28,7 @@ Memento is a local-first MCP server that gives AI agents durable, high-signal me
 
 ## Automatic indexing
 
-On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. For git repos it prefers `git status` to detect changes; otherwise it falls back to a filesystem watcher. See `docs/adr/ADRs.md`.
+On startup the server builds a best-effort, on-disk index of the repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. By default (`MEMENTO_CHANGE_DETECTOR=auto`) it uses a filesystem watcher to detect changes; if the watcher fails to start and the repo is a git repo, it falls back to `git status` polling. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (git polling first). See `docs/adr/ADRs.md`.
 
 ## LLM usage
 

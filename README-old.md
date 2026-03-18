@@ -14,9 +14,11 @@ Status: experimental / WIP (tooling and behavior may evolve).
 
 - **⚡️ High-Performance Indexing**
   - Automatically indexes your repository into bounded, line-based chunks.
-  - **Smart Polling:**
-    - **Git Repos:** Uses `git status` to detect changes instantly (2s polling by default).
-    - **Standard Folders:** Falls back to efficient filesystem monitoring (debounce support).
+  - **Smart Change Detection (configurable via `MEMENTO_CHANGE_DETECTOR`):**
+    - **Default (`auto`):** Filesystem watcher first; falls back to `git status` polling for git repos if the watcher fails to start.
+    - **`fs`:** Force filesystem watcher first; fallback to git polling if it fails and repo is git.
+    - **`git`:** Force git polling (only for git repos); fallback to filesystem watcher otherwise.
+    - **Standard Folders:** Always uses filesystem monitoring (debounce support) when git polling is unavailable.
   - **Persistence:** Indexes are stored locally in `~/.memento-mcp/`, surviving restarts.
 
 - **🧠 Intelligent Context & Relationships**
@@ -177,13 +179,14 @@ You can configure `memento-mcp` using environment variables.
 
 ### Polling & Watchers
 
-| Variable                     | Default | Description                                        |
-| :--------------------------- | :------ | :------------------------------------------------- |
-| `MEMENTO_INDEX_POLL_SECONDS` | `10`    | Full index scan interval (disabled for Git repos). |
-| `MEMENTO_GIT_POLL_SECONDS`   | `2`     | How often to check `git status` for changes.       |
-| `MEMENTO_GIT_DEBOUNCE_MS`    | `500`   | Wait time (ms) before processing Git changes.      |
-| `MEMENTO_FS_DEBOUNCE_MS`     | `500`   | Wait time (ms) for filesystem events.              |
-| `MEMENTO_MCP_DEV_LOG`        | `0`     | Log tool calls to stderr when set to `1`.          |
+| Variable                       | Default | Description                                                       |
+| :----------------------------- | :------ | :---------------------------------------------------------------- |
+| `MEMENTO_CHANGE_DETECTOR`      | `auto`  | Change detection strategy: `auto` (fs-first), `fs`, or `git`.    |
+| `MEMENTO_INDEX_POLL_SECONDS`   | `10`    | Full index scan interval (disabled for Git repos).                |
+| `MEMENTO_GIT_POLL_SECONDS`     | `2`     | How often to check `git status` for changes.                      |
+| `MEMENTO_GIT_DEBOUNCE_MS`      | `500`   | Wait time (ms) before processing Git changes.                     |
+| `MEMENTO_FS_DEBOUNCE_MS`       | `500`   | Wait time (ms) for filesystem events.                             |
+| `MEMENTO_MCP_DEV_LOG`          | `0`     | Log tool calls to stderr when set to `1`.                         |
 
 ### Included / Excluded Files (Default Behavior)
 

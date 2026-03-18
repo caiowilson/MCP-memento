@@ -8,6 +8,7 @@ import (
 )
 
 var defaultMCPEnv = map[string]string{
+	"MEMENTO_CHANGE_DETECTOR":    "auto",
 	"MEMENTO_INDEX_POLL_SECONDS": "10",
 	"MEMENTO_GIT_POLL_SECONDS":   "2",
 	"MEMENTO_GIT_DEBOUNCE_MS":    "500",

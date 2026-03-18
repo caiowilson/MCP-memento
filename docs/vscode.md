@@ -149,6 +149,7 @@ The server maintains a background code index on disk, but clients can still cont
 
 ### Index tuning (optional)
 
+- `MEMENTO_CHANGE_DETECTOR` (default `auto`) — Change detection strategy: `auto` uses filesystem watcher first with git polling fallback for git repos; `fs` forces filesystem watcher; `git` forces git status polling.
 - `MEMENTO_INDEX_POLL_SECONDS` (default `10`)
 - `MEMENTO_INDEX_MAX_TOTAL_BYTES` (default `20971520`)
 - `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)

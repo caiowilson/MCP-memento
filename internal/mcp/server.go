@@ -114,7 +114,26 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 		go WarmGoSemanticCache(ctx, s.root)
 	}
 
-	if indexing.IsGitRepo(s.root) {
+	startFS := func() bool {
+		monitor := indexing.NewFSChangeMonitor(
+			s.root,
+			s.idx,
+			time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
+			notifySemantic,
+		)
+		if err := monitor.Start(ctx); err != nil {
+			if s.devLog {
+				s.logf("fs watcher start failed, will fallback if possible: %v", err)
+			}
+			return false
+		}
+		return true
+	}
+
+	startGit := func() bool {
+		if !indexing.IsGitRepo(s.root) {
+			return false
+		}
 		monitor := indexing.NewGitChangeMonitor(
 			s.root,
 			s.idx,
@@ -123,16 +142,37 @@ func (s *Server) StartBackgroundIndexing(ctx context.Context) {
 			notifySemantic,
 		)
 		monitor.Start(ctx)
-		return
+		return true
 	}
 
-	monitor := indexing.NewFSChangeMonitor(
-		s.root,
-		s.idx,
-		time.Duration(envInt("MEMENTO_FS_DEBOUNCE_MS", 500))*time.Millisecond,
-		notifySemantic,
-	)
-	_ = monitor.Start(ctx)
+	detector := strings.ToLower(strings.TrimSpace(os.Getenv("MEMENTO_CHANGE_DETECTOR")))
+	switch detector {
+	case "git":
+		if startGit() {
+			return
+		}
+		if s.devLog {
+			s.logf("git polling not available, falling back to fs watcher")
+		}
+		startFS()
+	case "fs":
+		if startFS() {
+			return
+		}
+		if s.devLog {
+			s.logf("fs watcher failed, falling back to git polling")
+		}
+		startGit()
+	default:
+		// "auto" or unknown: fs-first, fallback to git polling
+		if startFS() {
+			return
+		}
+		if s.devLog {
+			s.logf("fs watcher failed, falling back to git polling")
+		}
+		startGit()
+	}
 }
 
 func touchesGoSemantic(paths []string) bool {
