@@ -2,7 +2,7 @@
   "name": "memento-mcp-vscode",
   "displayName": "Memento MCP",
   "description": "Companion VS Code extension that installs the memento-mcp server binary and helps generate MCP config snippets.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "caiowilson",
   "engines": {
     "vscode": "^1.90.0"

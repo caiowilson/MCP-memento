@@ -7,6 +7,8 @@ import { spawn } from "node:child_process";
 
 type GitHubRelease = {
   tag_name: string;
+  draft?: boolean;
+  prerelease?: boolean;
   assets: Array<{
     name: string;
     browser_download_url: string;
@@ -75,12 +77,14 @@ export async function ensureServerSupportsRepoSwitchWorkspace(
   context: vscode.ExtensionContext,
 ): Promise<InstallResult> {
   const cfg = vscode.workspace.getConfiguration("mementoMcp");
+  const repo = String(cfg.get("githubRepo", "caiowilson/MCP-memento"));
   const configuredTag = String(cfg.get("releaseTag", "server/latest")).trim();
   const binPath = getInstalledBinaryPath(context);
+  const latestServerTag = await fetchLatestServerReleaseTag(repo).catch(() => null);
 
   const hadToolBefore = await binaryExposesTool(binPath, "repo_switch_workspace");
 
-  const fallbackTags = uniqueNonEmpty(["server/latest", "latest", configuredTag]);
+  const fallbackTags = uniqueNonEmpty([latestServerTag ?? "", configuredTag, "server/latest", "latest"]);
   for (const tag of fallbackTags) {
     try {
       await ensureServerInstalled(context, { force: true, tagOverride: tag });
@@ -219,6 +223,22 @@ async function fetchRelease(repo: string, tag: string): Promise<GitHubRelease> {
       ].join(" "),
     );
   }
+}
+
+async function fetchLatestServerReleaseTag(repo: string): Promise<string | null> {
+  const releases = await fetchJson<GitHubRelease[]>(
+    `https://api.github.com/repos/${repo}/releases?per_page=30`,
+  );
+  for (const release of releases) {
+    if (release.draft || release.prerelease) {
+      continue;
+    }
+    const tag = String(release.tag_name ?? "").trim();
+    if (tag.startsWith("server/v")) {
+      return tag;
+    }
+  }
+  return null;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
