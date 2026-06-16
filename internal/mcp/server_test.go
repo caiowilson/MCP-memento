@@ -338,6 +338,14 @@ func TestNewServerExplicitRootBeatsClaudeProjectDir(t *testing.T) {
 	}
 }
 
+func TestNewServerClaudeProjectDirNonExistent(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", "/nonexistent/path/that/cannot/exist")
+	_, err := NewServer(Config{childFactory: newLocalChildFactory(t)})
+	if err == nil {
+		t.Fatal("expected error when CLAUDE_PROJECT_DIR points to non-existent path")
+	}
+}
+
 func quoteJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
