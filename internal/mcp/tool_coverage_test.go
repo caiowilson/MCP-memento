@@ -230,8 +230,12 @@ func TestMemoryListTool(t *testing.T) {
 	listTool := newMemoryListTool(store)
 	ctx := context.Background()
 
-	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note1", "text": "first"}))
-	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note2", "text": "second"}))
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note1", "text": "first"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note2", "text": "second"})); err != nil {
+		t.Fatal(err)
+	}
 
 	res, err := listTool.Handler(ctx, rawJSON(t, map[string]any{}))
 	if err != nil {
@@ -254,8 +258,12 @@ func TestMemoryDeleteTool(t *testing.T) {
 	deleteTool := newMemoryDeleteTool(store)
 	ctx := context.Background()
 
-	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "keep", "text": "keep me"}))
-	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "gone", "text": "delete me"}))
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "keep", "text": "keep me"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "gone", "text": "delete me"})); err != nil {
+		t.Fatal(err)
+	}
 
 	res, err := deleteTool.Handler(ctx, rawJSON(t, map[string]any{"key": "gone"}))
 	if err != nil {
