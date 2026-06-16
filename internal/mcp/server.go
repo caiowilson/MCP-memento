@@ -701,7 +701,7 @@ REPO TOOLS (read the codebase):
 - repo_read_file: Read a specific file's content. Use when you know the exact file path.
 - repo_list_files: List files in a directory. Use to explore repo structure.
 - repo_related_files: Find files related to a given file (imports, tests, etc). Use when you need context around a file.
-- repo_index_status: Check indexing status and coverage. Use when search results seem incomplete.
+- repo_index_status: Check indexing status and coverage. Use when search results seem incomplete or on a freshly-started server before running context queries.
 - repo_reindex: Trigger a full re-index of the workspace. Use when the index seems stale or incomplete.
 - repo_clear_index: Remove all indexed chunks and reset the index. Use only when you need a clean slate — this is destructive.
 - repo_index_debug: Return index debug information. Use when diagnosing indexing issues.
@@ -711,7 +711,6 @@ MEMORY TOOLS (persist information across sessions):
 - memory_upsert: save a durable note scoped to this repo. Use to record decisions, gotchas, or context that should persist across sessions.
 - memory_search: retrieve saved notes by query or tag. Use at session start or when recalled context is needed.
 - memory_clear: erase all notes for this repo. Use only when starting fresh — this is destructive.
-- repo_index_status: check if indexing is complete before running context queries on a freshly-started server.
 
 When to reach for memento: use repo tools at the start of any coding task to understand the codebase; use memory tools to record important decisions, patterns, or user preferences so they survive across sessions.`
 
