@@ -187,6 +187,75 @@ func TestRepoIndexMaintenanceTools(t *testing.T) {
 	}
 }
 
+func TestMemoryUpsertDeduplicatesByKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repoRoot := t.TempDir()
+	store, err := NewNoteStore(repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertTool := newMemoryUpsertTool(store)
+	searchTool := newMemorySearchTool(store)
+	ctx := context.Background()
+
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "k1", "text": "version 1"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "k1", "text": "version 2"})); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := searchTool.Handler(ctx, rawJSON(t, map[string]any{"query": "version"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := res.(map[string]any)["notes"].([]Note)
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note after dedup upsert, got %d", len(notes))
+	}
+	if notes[0].Text != "version 2" {
+		t.Fatalf("expected updated text 'version 2', got %q", notes[0].Text)
+	}
+}
+
+func TestNoteStoreListAndDelete(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewNoteStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Upsert(Note{Key: "alpha", Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Upsert(Note{Key: "beta", Text: "second"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// List
+	notes, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("expected 2 notes, got %d", len(notes))
+	}
+
+	// Delete one
+	if err := store.Delete("alpha"); err != nil {
+		t.Fatal(err)
+	}
+	notes, _ = store.List()
+	if len(notes) != 1 || notes[0].Key != "beta" {
+		t.Fatalf("expected only 'beta' after delete, got %v", notes)
+	}
+
+	// Delete nonexistent
+	if err := store.Delete("nonexistent"); err == nil {
+		t.Fatal("expected error deleting nonexistent note")
+	}
+}
+
 func TestMemoryToolsUpsertSearchAndClear(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

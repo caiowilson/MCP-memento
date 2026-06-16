@@ -137,6 +137,36 @@ func (s *NoteStore) Clear() error {
 	return s.saveLocked(f)
 }
 
+// List returns all notes for this repo scope, ordered by insertion.
+func (s *NoteStore) List() ([]Note, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.loadLocked()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Note, len(f.Notes))
+	copy(out, f.Notes)
+	return out, nil
+}
+
+// Delete removes the note with the given key. Returns an error if not found.
+func (s *NoteStore) Delete(key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	for i, n := range f.Notes {
+		if n.Key == key {
+			f.Notes = append(f.Notes[:i], f.Notes[i+1:]...)
+			return s.saveLocked(f)
+		}
+	}
+	return fmt.Errorf("note not found: %q", key)
+}
+
 func (s *NoteStore) loadLocked() (noteFile, error) {
 	b, err := os.ReadFile(s.path)
 	if err != nil {
