@@ -693,6 +693,24 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		protocolVersion = params.ProtocolVersion
 	}
 
+	const instructions = `memento-mcp gives you persistent memory and deep repo awareness. Use these tools:
+
+REPO TOOLS (read the codebase):
+- repo_context: Get rich context about the repo (README, structure, key files). Start here when exploring an unfamiliar codebase.
+- repo_search: Full-text search across indexed files. Use for finding symbols, patterns, or text in the repo.
+- repo_read_file: Read a specific file's content. Use when you know the exact file path.
+- repo_list_files: List files in a directory. Use to explore repo structure.
+- repo_related_files: Find files related to a given file (imports, tests, etc). Use when you need context around a file.
+- repo_index_status: Check indexing status and coverage. Use when search results seem incomplete.
+
+MEMORY TOOLS (persist information across sessions):
+- memory_upsert: Save or update a note by key. Use to store decisions, preferences, context, or findings that should persist.
+- memory_search: Search saved notes by content. Use to recall what was previously stored.
+- memory_list: List all saved note keys. Use to browse what's in memory.
+- memory_delete: Remove a note by key. Use to clean up stale or irrelevant memories.
+
+When to reach for memento: use repo tools at the start of any coding task to understand the codebase; use memory tools to record important decisions, patterns, or user preferences so they survive across sessions.`
+
 	return map[string]any{
 		"protocolVersion": protocolVersion,
 		"serverInfo": map[string]any{
@@ -702,6 +720,7 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		"capabilities": map[string]any{
 			"tools": map[string]any{},
 		},
+		"instructions": instructions,
 	}
 }
 

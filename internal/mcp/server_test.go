@@ -282,6 +282,23 @@ func TestSwitchWorkspaceNoopWhenSameRoot(t *testing.T) {
 	}
 }
 
+func TestInitializeReturnsInstructions(t *testing.T) {
+	root := t.TempDir()
+	s := newBrokerServerForTest(t, root)
+	result := s.initializeResult(json.RawMessage(`{"protocolVersion":"2024-11-05"}`))
+	instructions, ok := result["instructions"]
+	if !ok {
+		t.Fatal("initializeResult missing 'instructions' field")
+	}
+	str, ok := instructions.(string)
+	if !ok || strings.TrimSpace(str) == "" {
+		t.Fatal("instructions must be a non-empty string")
+	}
+	if len(str) > 2048 {
+		t.Fatalf("instructions exceed 2KB limit: %d chars", len(str))
+	}
+}
+
 func quoteJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
