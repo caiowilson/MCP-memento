@@ -152,6 +152,7 @@ func (s *NoteStore) List() ([]Note, error) {
 
 // Delete removes the note with the given key. Returns an error if not found.
 func (s *NoteStore) Delete(key string) error {
+	key = strings.TrimSpace(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f, err := s.loadLocked()

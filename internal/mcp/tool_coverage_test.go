@@ -245,7 +245,10 @@ func TestNoteStoreListAndDelete(t *testing.T) {
 	if err := store.Delete("alpha"); err != nil {
 		t.Fatal(err)
 	}
-	notes, _ = store.List()
+	notes, err = store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(notes) != 1 || notes[0].Key != "beta" {
 		t.Fatalf("expected only 'beta' after delete, got %v", notes)
 	}
