@@ -199,6 +199,8 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 		newRepoIndexDebugTool(idx),
 		newMemoryUpsertTool(mem),
 		newMemorySearchTool(mem),
+		newMemoryListTool(mem),
+		newMemoryDeleteTool(mem),
 		newMemoryClearTool(mem),
 	}
 }
@@ -700,23 +702,25 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 	const instructions = `memento-mcp gives you persistent memory and deep repo awareness. Use these tools:
 
 REPO TOOLS (read the codebase):
-- repo_context: Get rich context about the repo (README, structure, key files). Start here when exploring an unfamiliar codebase.
-- repo_search: Full-text search across indexed files. Use for finding symbols, patterns, or text in the repo.
-- repo_read_file: Read a specific file's content. Use when you know the exact file path.
+- repo_context: Rich context about the repo (README, structure, key files). Start here on unfamiliar codebases.
+- repo_search: Full-text search across indexed files. Use for finding symbols, patterns, or text.
+- repo_read_file: Read a specific file. Use when you know the exact path.
 - repo_list_files: List files in a directory. Use to explore repo structure.
-- repo_related_files: Find files related to a given file (imports, tests, etc). Use when you need context around a file.
-- repo_index_status: Check indexing status and coverage. Use when search results seem incomplete or on a freshly-started server before running context queries.
-- repo_reindex: Trigger a full re-index of the workspace. Use when the index seems stale or incomplete.
-- repo_clear_index: Remove all indexed chunks and reset the index. Use only when you need a clean slate — this is destructive.
-- repo_index_debug: Return index debug information. Use when diagnosing indexing issues.
-- repo_switch_workspace: Switch the active workspace root at runtime. Use when working across multiple repositories in one session.
+- repo_related_files: Find files related to a given file (imports, tests, etc).
+- repo_index_status: Check indexing status. Use when search results seem incomplete.
+- repo_reindex: Trigger a full re-index. Use when the index seems stale.
+- repo_clear_index: Remove all indexed chunks. Destructive — use only for a clean slate.
+- repo_index_debug: Return index debug info. Use when diagnosing indexing issues.
+- repo_switch_workspace: Switch the active workspace root. Use when working across multiple repos.
 
 MEMORY TOOLS (persist information across sessions):
-- memory_upsert: save a durable note scoped to this repo. Use to record decisions, gotchas, or context that should persist across sessions.
-- memory_search: retrieve saved notes by query or tag. Use at session start or when recalled context is needed.
-- memory_clear: erase all notes for this repo. Use only when starting fresh — this is destructive.
+- memory_upsert: Save a durable note scoped to this repo. Use to record decisions or context.
+- memory_search: Retrieve saved notes by query or tag. Use at session start or when context is needed.
+- memory_list: List all saved notes with keys and metadata. Use to enumerate notes or find a key.
+- memory_delete: Delete a note by key. Use memory_list first to confirm the key. Errors if not found.
+- memory_clear: Erase all notes for this repo. Destructive — use only when starting fresh.
 
-When to reach for memento: use repo tools at the start of any coding task to understand the codebase; use memory tools to record important decisions, patterns, or user preferences so they survive across sessions.`
+Tip: use repo tools at the start of any coding task; use memory tools to persist decisions across sessions.`
 
 	return map[string]any{
 		"protocolVersion": protocolVersion,

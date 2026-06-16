@@ -133,6 +133,64 @@ func newMemorySearchTool(store *NoteStore) Tool {
 	}
 }
 
+func newMemoryListTool(store *NoteStore) Tool {
+	return Tool{
+		Name:        "memory_list",
+		Title:       "List Memory Notes",
+		Description: `List all durable notes stored for the current repository scope. Returns every note with its key, text, tags, path, updatedAt, and meta. Use to enumerate saved context or to find a note's key before calling memory_delete.`,
+		Annotations: readOnlyAnnotations(),
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = ctx
+			notes, err := store.List()
+			if err != nil {
+				return nil, err
+			}
+			if notes == nil {
+				notes = []Note{}
+			}
+			return map[string]any{"notes": notes}, nil
+		},
+	}
+}
+
+func newMemoryDeleteTool(store *NoteStore) Tool {
+	return Tool{
+		Name:        "memory_delete",
+		Title:       "Delete Memory Note",
+		Description: `Delete a single durable note by its key. Use memory_list first to find the exact key if unsure. Returns {"deleted": true, "key": "..."} on success; errors if the key does not exist.`,
+		Annotations: destructiveAnnotations(),
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []any{"key"},
+			"properties": map[string]any{
+				"key": map[string]any{
+					"type":        "string",
+					"description": "Exact key of the note to delete.",
+				},
+			},
+		},
+		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = ctx
+			args, err := requireArgs(raw)
+			if err != nil {
+				return nil, err
+			}
+			key, _ := asString(args, "key")
+			if key == "" {
+				return nil, fmt.Errorf("key is required")
+			}
+			if err := store.Delete(key); err != nil {
+				return nil, err
+			}
+			return map[string]any{"deleted": true, "key": key}, nil
+		},
+	}
+}
+
 func newMemoryClearTool(store *NoteStore) Tool {
 	return Tool{
 		Name:        "memory_clear",

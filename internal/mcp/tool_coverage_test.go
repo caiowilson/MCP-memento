@@ -71,6 +71,8 @@ func TestServerExposesExpectedTools(t *testing.T) {
 		"repo_index_debug",
 		"memory_upsert",
 		"memory_search",
+		"memory_list",
+		"memory_delete",
 		"memory_clear",
 	}
 	for _, name := range want {
@@ -215,6 +217,72 @@ func TestMemoryUpsertDeduplicatesByKey(t *testing.T) {
 	}
 	if notes[0].Text != "version 2" {
 		t.Fatalf("expected updated text 'version 2', got %q", notes[0].Text)
+	}
+}
+
+func TestMemoryListTool(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewNoteStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertTool := newMemoryUpsertTool(store)
+	listTool := newMemoryListTool(store)
+	ctx := context.Background()
+
+	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note1", "text": "first"}))
+	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "note2", "text": "second"}))
+
+	res, err := listTool.Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := res.(map[string]any)["notes"].([]Note)
+	if len(listed) != 2 {
+		t.Fatalf("expected 2 notes from memory_list, got %d", len(listed))
+	}
+}
+
+func TestMemoryDeleteTool(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewNoteStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertTool := newMemoryUpsertTool(store)
+	listTool := newMemoryListTool(store)
+	deleteTool := newMemoryDeleteTool(store)
+	ctx := context.Background()
+
+	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "keep", "text": "keep me"}))
+	upsertTool.Handler(ctx, rawJSON(t, map[string]any{"key": "gone", "text": "delete me"}))
+
+	res, err := deleteTool.Handler(ctx, rawJSON(t, map[string]any{"key": "gone"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, _ := res.(map[string]any)["deleted"].(bool)
+	if !deleted {
+		t.Fatal("expected deleted=true in response")
+	}
+
+	listRes, _ := listTool.Handler(ctx, rawJSON(t, map[string]any{}))
+	remaining := listRes.(map[string]any)["notes"].([]Note)
+	if len(remaining) != 1 || remaining[0].Key != "keep" {
+		t.Fatalf("expected only 'keep' to remain, got %v", remaining)
+	}
+}
+
+func TestMemoryDeleteToolNotFound(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewNoteStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteTool := newMemoryDeleteTool(store)
+	_, err = deleteTool.Handler(context.Background(), rawJSON(t, map[string]any{"key": "does-not-exist"}))
+	if err == nil {
+		t.Fatal("expected an error when deleting a nonexistent note")
 	}
 }
 
