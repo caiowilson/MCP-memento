@@ -304,6 +304,40 @@ func TestInitializeReturnsInstructions(t *testing.T) {
 	}
 }
 
+func TestNewServerUsesClaudeProjectDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PROJECT_DIR", dir)
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	s.StartBackgroundIndexing(context.Background())
+	if got := s.root; got != dir {
+		t.Fatalf("expected root %s from CLAUDE_PROJECT_DIR, got %s", dir, got)
+	}
+}
+
+func TestNewServerExplicitRootBeatsClaudeProjectDir(t *testing.T) {
+	explicit := t.TempDir()
+	env := t.TempDir()
+	t.Setenv("CLAUDE_PROJECT_DIR", env)
+	s, err := NewServer(Config{
+		Root:         explicit,
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	s.StartBackgroundIndexing(context.Background())
+	if got := s.root; got != explicit {
+		t.Fatalf("explicit root should win over CLAUDE_PROJECT_DIR; got %s", got)
+	}
+}
+
 func quoteJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

@@ -76,11 +76,15 @@ type Config struct {
 func NewServer(cfg Config) (*Server, error) {
 	root := cfg.Root
 	if root == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return nil, err
+		if envRoot := os.Getenv("CLAUDE_PROJECT_DIR"); envRoot != "" {
+			root = envRoot
+		} else {
+			wd, err := os.Getwd()
+			if err != nil {
+				return nil, err
+			}
+			root = wd
 		}
-		root = wd
 	}
 	absRoot, err := normalizeWorkspaceRoot(root)
 	if err != nil {
