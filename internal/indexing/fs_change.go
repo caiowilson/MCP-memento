@@ -134,6 +134,13 @@ func (m *FSChangeMonitor) flush() {
 	}
 	m.mu.Unlock()
 
+	for _, p := range append(add, del...) {
+		base := filepath.Base(p)
+		if base == ".gitignore" || base == ".mementoignore" {
+			_ = m.idx.ReloadIgnoreRules()
+			break
+		}
+	}
 	if len(del) > 0 {
 		_ = m.idx.RemovePaths(del)
 	}

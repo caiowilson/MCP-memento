@@ -41,9 +41,10 @@ type Status struct {
 }
 
 type Indexer struct {
-	rootAbs string
-	dir     string
-	cfg     Config
+	rootAbs     string
+	dir         string
+	cfg         Config
+	ignoreRules *ignoreRules
 
 	mu       sync.Mutex
 	manifest manifest
@@ -94,10 +95,29 @@ func New(cfg Config) (*Indexer, error) {
 		cfg:     cfg,
 		reqCh:   make(chan request, 8),
 	}
+
+	rules, err := loadIgnoreRules(rootAbs)
+	if err != nil {
+		return nil, err
+	}
+	idx.ignoreRules = rules
+
 	if err := idx.loadManifest(); err != nil {
 		// keep going with empty manifest
 	}
 	return idx, nil
+}
+
+// ReloadIgnoreRules re-reads .gitignore and .mementoignore from the workspace root.
+func (i *Indexer) ReloadIgnoreRules() error {
+	rules, err := loadIgnoreRules(i.rootAbs)
+	if err != nil {
+		return err
+	}
+	i.mu.Lock()
+	i.ignoreRules = rules
+	i.mu.Unlock()
+	return nil
 }
 
 func (i *Indexer) Start(ctx context.Context) {
@@ -458,6 +478,14 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			if shouldIgnoreDir(name, i.cfg.ExtraIgnoreDirs) {
 				return filepath.SkipDir
 			}
+			rel, err := filepath.Rel(i.rootAbs, path)
+			if err != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			if rel != "." && i.ignoreRules.matchesPath(rel+"/") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if shouldIgnoreFile(name, i.cfg.ExtraIgnoreGlobs) {
@@ -475,6 +503,9 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
+		if i.ignoreRules.matchesPath(rel) {
+			return nil
+		}
 		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
 			return nil
 		}
