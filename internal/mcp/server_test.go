@@ -297,6 +297,11 @@ func TestInitializeReturnsInstructions(t *testing.T) {
 	if len(str) > 2048 {
 		t.Fatalf("instructions exceed 2KB limit: %d chars", len(str))
 	}
+	for _, tool := range s.tools {
+		if !strings.Contains(str, tool.Name) {
+			t.Errorf("instructions missing registered tool %q", tool.Name)
+		}
+	}
 }
 
 func quoteJSONString(s string) string {
