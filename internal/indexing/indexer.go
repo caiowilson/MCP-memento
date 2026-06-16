@@ -463,6 +463,10 @@ type candidate struct {
 }
 
 func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
+	i.mu.Lock()
+	rules := i.ignoreRules
+	i.mu.Unlock()
+
 	out := make([]candidate, 0, 256)
 	err := filepath.WalkDir(i.rootAbs, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -483,7 +487,7 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 				return nil
 			}
 			rel = filepath.ToSlash(rel)
-			if rel != "." && i.ignoreRules.matchesPath(rel+"/") {
+			if rel != "." && rules.matchesPath(rel+"/") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -503,7 +507,7 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if i.ignoreRules.matchesPath(rel) {
+		if rules.matchesPath(rel) {
 			return nil
 		}
 		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
