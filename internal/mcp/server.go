@@ -74,17 +74,18 @@ type Config struct {
 }
 
 func NewServer(cfg Config) (*Server, error) {
+	// Resolve the workspace root by priority: explicit config, then the
+	// CLAUDE_PROJECT_DIR hint, then the current working directory.
 	root := cfg.Root
 	if root == "" {
-		if envRoot := os.Getenv("CLAUDE_PROJECT_DIR"); envRoot != "" {
-			root = envRoot
-		} else {
-			wd, err := os.Getwd()
-			if err != nil {
-				return nil, err
-			}
-			root = wd
+		root = os.Getenv("CLAUDE_PROJECT_DIR")
+	}
+	if root == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
 		}
+		root = wd
 	}
 	absRoot, err := normalizeWorkspaceRoot(root)
 	if err != nil {
