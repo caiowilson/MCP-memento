@@ -463,6 +463,8 @@ type candidate struct {
 }
 
 func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
+	// Snapshot the ignore rules under the lock: ReloadIgnoreRules may swap
+	// i.ignoreRules concurrently from the file-watcher goroutine.
 	i.mu.Lock()
 	rules := i.ignoreRules
 	i.mu.Unlock()
@@ -477,16 +479,17 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			return ctx.Err()
 		default:
 		}
+		rel, err := filepath.Rel(i.rootAbs, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+
 		name := d.Name()
 		if d.IsDir() {
 			if shouldIgnoreDir(name, i.cfg.ExtraIgnoreDirs) {
 				return filepath.SkipDir
 			}
-			rel, err := filepath.Rel(i.rootAbs, path)
-			if err != nil {
-				return nil
-			}
-			rel = filepath.ToSlash(rel)
 			if rel != "." && rules.matchesPath(rel+"/") {
 				return filepath.SkipDir
 			}
@@ -495,19 +498,14 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 		if shouldIgnoreFile(name, i.cfg.ExtraIgnoreGlobs) {
 			return nil
 		}
+		if rules.matchesPath(rel) {
+			return nil
+		}
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
 		if info.Size() <= 0 || info.Size() > i.cfg.MaxFileBytes {
-			return nil
-		}
-		rel, err := filepath.Rel(i.rootAbs, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if rules.matchesPath(rel) {
 			return nil
 		}
 		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
