@@ -139,18 +139,12 @@ func newMemoryListTool(store *NoteStore) Tool {
 		Title:       "List Memory Notes",
 		Description: `List all durable notes stored for the current repository scope. Returns every note with its key, text, tags, path, updatedAt, and meta. Use to enumerate saved context or to find a note's key before calling memory_delete.`,
 		Annotations: readOnlyAnnotations(),
-		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
+		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			_ = ctx
 			notes, err := store.List()
 			if err != nil {
 				return nil, err
-			}
-			if notes == nil {
-				notes = []Note{}
 			}
 			return map[string]any{"notes": notes}, nil
 		},
