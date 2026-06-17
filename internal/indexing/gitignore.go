@@ -2,6 +2,7 @@ package indexing
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -19,7 +20,7 @@ func loadIgnoreRules(root string) (*ignoreRules, error) {
 	var allLines []string
 	for _, name := range []string{".gitignore", ".mementoignore"} {
 		lines, err := readIgnoreLines(filepath.Join(root, name))
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {

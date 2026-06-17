@@ -2,6 +2,7 @@ package indexing
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,18 +135,26 @@ func (m *FSChangeMonitor) flush() {
 	}
 	m.mu.Unlock()
 
+	ignoreFileChanged := false
 	for _, p := range append(add, del...) {
 		base := filepath.Base(p)
 		if base == ".gitignore" || base == ".mementoignore" {
-			_ = m.idx.ReloadIgnoreRules()
+			if err := m.idx.ReloadIgnoreRules(); err != nil {
+				m.idx.setError(fmt.Errorf("reload ignore rules: %w", err))
+			}
+			ignoreFileChanged = true
 			break
 		}
 	}
-	if len(del) > 0 {
-		_ = m.idx.RemovePaths(del)
-	}
-	if len(add) > 0 {
-		_ = m.idx.EnsureIndexed(context.Background(), add)
+	if ignoreFileChanged {
+		_ = m.idx.IndexAll(context.Background())
+	} else {
+		if len(del) > 0 {
+			_ = m.idx.RemovePaths(del)
+		}
+		if len(add) > 0 {
+			_ = m.idx.EnsureIndexed(context.Background(), add)
+		}
 	}
 	if m.onChange != nil {
 		m.onChange(add, del)

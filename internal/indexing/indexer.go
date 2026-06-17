@@ -340,6 +340,7 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 
 	i.mu.Lock()
 	totalBytes = i.manifest.TotalBytes
+	rules := i.ignoreRules
 	i.mu.Unlock()
 
 	for _, rel := range relPaths {
@@ -349,6 +350,9 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 		default:
 		}
 
+		if rules.matchesPath(rel) {
+			continue
+		}
 		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
 			continue
 		}
