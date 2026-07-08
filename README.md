@@ -21,6 +21,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 
 - Project docs: [`docs/README.md`](./docs/README.md)
 - Generic MCP clients: [`docs/clients.md`](./docs/clients.md)
+- Claude Code and Claude Desktop setup: [`docs/clients.md#claude-code`](./docs/clients.md#claude-code)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
@@ -77,6 +78,16 @@ make build
 ./bin/memento-mcp print-config
 ./bin/memento-mcp print-guidance
 ```
+
+### Claude Code Quick Start
+
+After building or installing `memento-mcp`, add it to Claude Code as a stdio MCP server:
+
+```bash
+claude mcp add memento-mcp -- /absolute/path/to/memento-mcp
+```
+
+For project-scoped setup and Claude Desktop import notes, see [`docs/clients.md`](./docs/clients.md#claude-code).
 
 ### Run Tests
 
