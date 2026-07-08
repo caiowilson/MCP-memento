@@ -16,6 +16,7 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 ## Documentação
 
 - Docs do projeto: [`docs/README.md`](./docs/README.md)
+- Clientes MCP genéricos, Claude Code e Claude Desktop: [`docs/clients.md`](./docs/clients.md)
 - Uso com VS Code: [`docs/vscode.md`](./docs/vscode.md)
 - Extensão VS Code: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - Guia de ADR: [`docs/adr/README.md`](./docs/adr/README.md)
@@ -64,6 +65,23 @@ git clone https://github.com/caiowilson/MCP-memento.git
 cd MCP-memento
 make build
 ./bin/memento-mcp
+```
+
+### Início Rápido com Claude Code
+
+Depois de compilar ou instalar o `memento-mcp`, adicione-o ao Claude Code como um servidor MCP stdio:
+
+```bash
+claude mcp add memento-mcp -- /caminho/absoluto/para/memento-mcp
+```
+
+Para configuração com escopo de projeto e notas sobre Claude Desktop, veja [`docs/clients.md`](./docs/clients.md#claude-code).
+
+### Onboarding de Clientes Genéricos
+
+```bash
+./bin/memento-mcp print-config
+./bin/memento-mcp print-guidance
 ```
 
 ### Rodar Testes

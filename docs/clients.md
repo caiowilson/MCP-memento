@@ -39,6 +39,77 @@ Show built-in help:
 
 If your MCP client expects a different JSON shape, reuse the same values for `command`, `args`, `cwd`, `env`, and stdio transport.
 
+## Claude Code
+
+After building or installing the server, the fastest global setup is:
+
+```bash
+claude mcp add memento-mcp -- /absolute/path/to/memento-mcp
+```
+
+Then verify it from Claude Code:
+
+```bash
+claude mcp list
+```
+
+You can also use `/mcp` inside Claude Code to inspect connected MCP servers.
+
+### Project-scoped `.mcp.json`
+
+For a project-local setup, commit a `.mcp.json` file at the project root and point `command` at the server binary you want the project to use:
+
+```json
+{
+  "mcpServers": {
+    "memento-mcp": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/bin/memento-mcp",
+      "args": [],
+      "env": {
+        "MEMENTO_CHANGE_DETECTOR": "auto",
+        "MEMENTO_FS_DEBOUNCE_MS": "500",
+        "MEMENTO_GIT_DEBOUNCE_MS": "500",
+        "MEMENTO_GIT_POLL_SECONDS": "2",
+        "MEMENTO_INDEX_POLL_SECONDS": "10"
+      }
+    }
+  }
+}
+```
+
+Project-scoped MCP servers may prompt for approval the first time Claude Code sees them in a workspace. Keep the binary path stable so the approval and config remain useful across sessions.
+
+### Claude Desktop
+
+Claude Desktop uses the same stdio server values in `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "memento-mcp": {
+      "command": "/absolute/path/to/memento-mcp",
+      "args": [],
+      "env": {
+        "MEMENTO_CHANGE_DETECTOR": "auto",
+        "MEMENTO_FS_DEBOUNCE_MS": "500",
+        "MEMENTO_GIT_DEBOUNCE_MS": "500",
+        "MEMENTO_GIT_POLL_SECONDS": "2",
+        "MEMENTO_INDEX_POLL_SECONDS": "10"
+      }
+    }
+  }
+}
+```
+
+On macOS and WSL, Claude Code can import Claude Desktop MCP servers:
+
+```bash
+claude mcp add-from-claude-desktop
+```
+
+Use `./bin/memento-mcp print-config` as the source of truth for the current generic `mcpServers` shape and environment defaults.
+
 ## Recommended LLM guidance
 
 Use the output of `print-guidance` directly, or paste the following into client instructions:
