@@ -7,6 +7,7 @@ This directory collects the main project documentation, including client setup, 
 ## Contents
 
 - Getting started: `../README.md`
+- Claude Code and Claude Desktop setup: `clients.md#claude-code`
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
 - Canonical backlog: `../TODO.md`

@@ -16,10 +16,56 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 ## Documentação
 
 - Docs do projeto: [`docs/README.md`](./docs/README.md)
+- Claude Code, Claude Desktop e outros clientes MCP: [`docs/clients.md`](./docs/clients.md)
 - Uso com VS Code: [`docs/vscode.md`](./docs/vscode.md)
 - Extensão VS Code: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - Guia de ADR: [`docs/adr/README.md`](./docs/adr/README.md)
 - Índice e decisões de ADR: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
+
+## Uso com Claude Code
+
+Depois de compilar o memento, execute este comando no projeto que o Claude Code deve indexar (substitua o caminho do executável):
+
+```bash
+claude mcp add memento -- /caminho/absoluto/para/MCP-memento/bin/memento-mcp
+```
+
+O Claude Code informa o projeto ativo por `CLAUDE_PROJECT_DIR`, então o memento o indexa sem uma chamada manual a `repo_switch_workspace`. Verifique a conexão com `claude mcp list` ou `/mcp` dentro do Claude Code.
+
+Para uma configuração compartilhada e versionável, adicione este `.mcp.json` à raiz do projeto:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+Essa forma exige um executável em `bin/memento-mcp` em cada checkout. O Claude Code pede que cada usuário aprove servidores com escopo de projeto antes do primeiro uso.
+
+### Claude Desktop
+
+Adicione a entrada stdio equivalente ao `claude_desktop_config.json` e reinicie o Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "command": "/caminho/absoluto/para/MCP-memento/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+No macOS ou WSL, `claude mcp add-from-claude-desktop` pode importar esse servidor para o Claude Code. Consulte o [guia de configuração de clientes](./docs/clients.md) para mais detalhes.
 
 ## O Que Faz
 

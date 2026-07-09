@@ -20,11 +20,56 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 ## Documentation
 
 - Project docs: [`docs/README.md`](./docs/README.md)
-- Generic MCP clients: [`docs/clients.md`](./docs/clients.md)
+- Claude Code, Claude Desktop, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
 - ADR index and decisions: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
+
+## Use with Claude Code
+
+After building memento, run this from the project you want Claude Code to index (replace the executable path):
+
+```bash
+claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+```
+
+Claude Code passes the active project through `CLAUDE_PROJECT_DIR`, so memento indexes it without a manual `repo_switch_workspace` call. Verify the connection with `claude mcp list` or `/mcp` inside Claude Code.
+
+For a shared, committable setup, add this `.mcp.json` to the project root:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+This form expects an executable at `bin/memento-mcp` in every checkout. Claude Code asks each user to approve project-scoped servers before first use.
+
+### Claude Desktop
+
+Add the equivalent stdio entry to `claude_desktop_config.json` and restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "command": "/absolute/path/to/MCP-memento/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+On macOS or WSL, `claude mcp add-from-claude-desktop` can import this server into Claude Code. See the [client setup guide](./docs/clients.md) for details.
 
 ## What It Does
 

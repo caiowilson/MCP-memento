@@ -28,6 +28,71 @@ Show built-in help:
 ./bin/memento-mcp help
 ```
 
+## Claude Code
+
+### One-command setup
+
+Build memento, then run the following command from the project you want Claude Code to index. Replace the executable path with the absolute path to your build:
+
+```bash
+claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+```
+
+The command uses Claude Code's default `local` scope, so it applies only to the current project and stays out of version control. Claude Code passes that project's root to the server through `CLAUDE_PROJECT_DIR`; memento indexes it automatically.
+
+### Shared project setup
+
+To share the server configuration with a team, commit this `.mcp.json` at the project root:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+The `${CLAUDE_PROJECT_DIR:-.}` default keeps the command valid while Claude Code prepares the server environment. This portable config expects the memento executable at `bin/memento-mcp` in every checkout, so provide it through the project's build or bootstrap process. If memento is installed elsewhere, replace `command` with its absolute path and keep that machine-specific config local instead of committing it.
+
+Claude Code prompts each user to approve servers loaded from a project `.mcp.json` before first use. To verify either setup:
+
+```bash
+claude mcp list
+```
+
+Use `/mcp` inside Claude Code to inspect the connection or approve a pending project server.
+
+## Claude Desktop
+
+Add this stdio entry to the existing `mcpServers` object in `claude_desktop_config.json`, replacing the executable path, then restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "command": "/absolute/path/to/MCP-memento/bin/memento-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+An empty `env` uses the same built-in indexing defaults shown by `./bin/memento-mcp print-config`. Claude Desktop treats a `command` entry as a local stdio server.
+
+On macOS or WSL, import configured Claude Desktop servers into Claude Code with:
+
+```bash
+claude mcp add-from-claude-desktop
+```
+
+Select `memento` in the interactive importer, then verify it with `claude mcp list`. Desktop import is not available on native Windows or Linux.
+
 ## Recommended client config
 
 `print-config` emits a generic `mcpServers` map that uses:
