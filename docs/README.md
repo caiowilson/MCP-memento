@@ -42,6 +42,16 @@ By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses a filesystem watche
 - Omit `mode` unless you need to force `full`, `outline`, or `summary`.
 - Existing callers that already send `mode` are unchanged.
 
+## Output limits
+
+Defaults are sized to stay below Claude Code's roughly 10k-token MCP result warning in normal use:
+
+- `repo_context` defaults to `maxTotalBytes: 32000`.
+- `repo_read_file` defaults to `maxBytes: 32000`.
+- `repo_search` caps each returned snippet to `maxSnippetBytes: 500`.
+
+Callers can still request larger results with the tool arguments. The `repo_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
+
 Default include/exclude rules (configurable in code):
 
 - Include by extension: `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.php`, `.md`, `.json`, `.yaml`, `.yml`

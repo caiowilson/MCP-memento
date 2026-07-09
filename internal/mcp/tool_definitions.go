@@ -25,6 +25,7 @@ func repoContextToolDefinition() Tool {
 		Title:       "Get Repository Context",
 		Description: "Return context for a file plus related files. Prefer `intent` for higher-level LLM workflows: `navigate` resolves to `outline`, while `implement` and `review` resolve to `auto`. Use explicit `mode` only when you need to force a low-level behavior.",
 		Annotations: readOnlyAnnotations(),
+		Meta:        largeResultToolMeta(),
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"path"},
@@ -33,7 +34,7 @@ func repoContextToolDefinition() Tool {
 				"focus":             map[string]any{"type": "string", "description": "Optional query used to prioritize chunks (e.g. function/type name)."},
 				"maxFiles":          map[string]any{"type": "integer", "description": "Maximum number of files to include (default 10)."},
 				"maxChunksPerFile":  map[string]any{"type": "integer", "description": "Maximum chunks per file (default 2)."},
-				"maxTotalBytes":     map[string]any{"type": "integer", "description": "Maximum total bytes across all returned chunks (default 120000)."},
+				"maxTotalBytes":     map[string]any{"type": "integer", "description": "Maximum total bytes across all returned chunks (default 32000)."},
 				"excludePaths":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Repo-relative paths to exclude from results. Use this to skip files already in your context from prior calls, avoiding duplicate content."},
 				"intent":            map[string]any{"type": "string", "description": "Optional high-level task intent. `navigate` returns a lighter outline view; `implement` and `review` return `auto`. Ignored when explicit `mode` is provided.", "enum": []any{"navigate", "implement", "review"}},
 				"mode":              map[string]any{"type": "string", "description": "Optional low-level output override. `auto` returns full source chunks for the target file and outlines for related files; `full` returns raw source chunks for all files; `outline` returns declaration signatures + doc comments; `summary` returns a compact one-line-per-symbol list with line numbers.", "enum": []any{"full", "auto", "outline", "summary"}},

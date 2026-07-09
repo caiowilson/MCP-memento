@@ -153,6 +153,32 @@ func TestRepoContextExcludePaths(t *testing.T) {
 	}
 }
 
+func TestRepoContextDefaultMaxTotalBytes(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"path":              "pkg/a.go",
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", got)
+	}
+	limits, ok := result["limits"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected limits map, got %#v", result["limits"])
+	}
+	if got, _ := limits["maxTotalBytes"].(int); got != defaultRepoContextMaxTotalBytes {
+		t.Fatalf("expected default maxTotalBytes=%d, got %#v", defaultRepoContextMaxTotalBytes, limits["maxTotalBytes"])
+	}
+}
+
 func TestRepoContextNoDuplicateChunks(t *testing.T) {
 	root, idx := setupContextTestRepo(t)
 	tool := newRepoContextTool(root, idx)

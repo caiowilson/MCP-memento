@@ -498,6 +498,7 @@ func cloneToolDefinition(src Tool) Tool {
 		InputSchema:  deepCopyMap(src.InputSchema),
 		OutputSchema: deepCopyMap(src.OutputSchema),
 		Annotations:  deepCopyMap(src.Annotations),
+		Meta:         deepCopyMap(src.Meta),
 	}
 }
 
@@ -1088,6 +1089,7 @@ type Tool struct {
 	InputSchema  map[string]any `json:"inputSchema"`
 	OutputSchema map[string]any `json:"outputSchema,omitempty"`
 	Annotations  map[string]any `json:"annotations,omitempty"`
+	Meta         map[string]any `json:"_meta,omitempty"`
 	Handler      ToolHandler    `json:"-"`
 }
 

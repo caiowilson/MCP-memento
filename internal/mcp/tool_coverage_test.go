@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,117 @@ func TestRepoListFilesTool(t *testing.T) {
 	}
 	if len(globbedFiles) != 1 || globbedFiles[0] != "sub/beta.go" {
 		t.Fatalf("expected globbed result to contain only sub/beta.go, got %#v", globbedFiles)
+	}
+}
+
+func TestRepoReadFileDefaultMaxBytes(t *testing.T) {
+	root := t.TempDir()
+	content := strings.Repeat("x", defaultRepoReadFileMaxBytes*2)
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoReadFileTool(root)
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{"path": "large.txt"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", got)
+	}
+	read, _ := result["content"].(string)
+	if len(read) > defaultRepoReadFileMaxBytes {
+		t.Fatalf("expected default read size <= %d bytes, got %d", defaultRepoReadFileMaxBytes, len(read))
+	}
+	if len(read) >= len(content) {
+		t.Fatal("expected large file read to be clamped by default maxBytes")
+	}
+}
+
+func TestRepoReadFileLineBoundsSkipLongLine(t *testing.T) {
+	root := t.TempDir()
+	content := strings.Repeat("x", defaultRepoReadFileMaxBytes*2) + "\nsecond\n"
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoReadFileTool(root)
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"path":      "large.txt",
+		"startLine": 2,
+		"endLine":   2,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", got)
+	}
+	if content, _ := result["content"].(string); content != "second\n" {
+		t.Fatalf("expected second line after skipped long line, got %q", content)
+	}
+}
+
+func TestRepoSearchDefaultSnippetBytes(t *testing.T) {
+	root := t.TempDir()
+	line := "needle " + strings.Repeat("x", defaultRepoSearchMaxSnippetBytes*2)
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoSearchTool(root)
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{"query": "needle"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", got)
+	}
+	matches, ok := result["matches"].([]map[string]any)
+	if !ok || len(matches) != 1 {
+		t.Fatalf("expected one match, got %#v", result["matches"])
+	}
+	snippet, _ := matches[0]["snippet"].(string)
+	if len(snippet) > defaultRepoSearchMaxSnippetBytes {
+		t.Fatalf("expected snippet to be clamped around %d bytes, got %d", defaultRepoSearchMaxSnippetBytes, len(snippet))
+	}
+	if truncated, _ := matches[0]["snippetTruncated"].(bool); !truncated {
+		t.Fatalf("expected snippetTruncated=true, got %#v", matches[0])
+	}
+}
+
+func TestRepoSearchTruncatedSnippetKeepsLateMatch(t *testing.T) {
+	root := t.TempDir()
+	line := strings.Repeat("x", defaultRepoSearchMaxSnippetBytes*2) + " needle " + strings.Repeat("y", defaultRepoSearchMaxSnippetBytes*2)
+	if err := os.WriteFile(filepath.Join(root, "late.txt"), []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoSearchTool(root)
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{"query": "needle"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", got)
+	}
+	matches, ok := result["matches"].([]map[string]any)
+	if !ok || len(matches) != 1 {
+		t.Fatalf("expected one match, got %#v", result["matches"])
+	}
+	snippet, _ := matches[0]["snippet"].(string)
+	if len(snippet) > defaultRepoSearchMaxSnippetBytes {
+		t.Fatalf("expected snippet to be clamped around %d bytes, got %d", defaultRepoSearchMaxSnippetBytes, len(snippet))
+	}
+	if !strings.Contains(snippet, "needle") {
+		t.Fatalf("expected truncated snippet to keep late match, got %q", snippet)
+	}
+	if truncated, _ := matches[0]["snippetTruncated"].(bool); !truncated {
+		t.Fatalf("expected snippetTruncated=true, got %#v", matches[0])
 	}
 }
 

@@ -38,6 +38,7 @@ func TestToolsListIncludesMetadata(t *testing.T) {
 			Title        string         `json:"title"`
 			Annotations  map[string]any `json:"annotations"`
 			OutputSchema map[string]any `json:"outputSchema"`
+			Meta         map[string]any `json:"_meta"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(b, &decoded); err != nil {
@@ -59,6 +60,56 @@ func TestToolsListIncludesMetadata(t *testing.T) {
 	}
 	if len(tool.OutputSchema) == 0 {
 		t.Fatal("expected outputSchema in tool metadata")
+	}
+	if got, _ := tool.Meta["anthropic/maxResultSizeChars"].(float64); int(got) != defaultAnthropicMaxResultSizeChars {
+		t.Fatalf("expected anthropic max result size metadata, got %#v", tool.Meta)
+	}
+}
+
+func TestLargeResultToolsAdvertiseAnthropicMaxResultSize(t *testing.T) {
+	root := t.TempDir()
+	s := newBrokerServerForTest(t, root)
+
+	resp := s.handleRPC(context.Background(), rpcRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "tools/list",
+	})
+
+	b, err := json.Marshal(resp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded struct {
+		Tools []struct {
+			Name string         `json:"name"`
+			Meta map[string]any `json:"_meta"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]bool{
+		"repo_context":   false,
+		"repo_read_file": false,
+		"repo_search":    false,
+	}
+	for _, tool := range decoded.Tools {
+		if _, ok := want[tool.Name]; !ok {
+			continue
+		}
+		got, _ := tool.Meta["anthropic/maxResultSizeChars"].(float64)
+		if int(got) != defaultAnthropicMaxResultSizeChars {
+			t.Fatalf("expected %s to advertise max result size %d, got %#v", tool.Name, defaultAnthropicMaxResultSizeChars, tool.Meta)
+		}
+		want[tool.Name] = true
+	}
+	for name, found := range want {
+		if !found {
+			t.Fatalf("expected tool %s in tools/list", name)
+		}
 	}
 }
 

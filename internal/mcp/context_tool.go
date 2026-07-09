@@ -18,6 +18,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 		Title:       "Get Repository Context",
 		Description: "Return context for a file plus related files. Prefer `intent` for higher-level LLM workflows: `navigate` resolves to `outline`, while `implement` and `review` resolve to `auto`. Use explicit `mode` only when you need to force a low-level behavior.",
 		Annotations: readOnlyAnnotations(),
+		Meta:        largeResultToolMeta(),
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"path"},
@@ -40,7 +41,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 				},
 				"maxTotalBytes": map[string]any{
 					"type":        "integer",
-					"description": "Maximum total bytes across all returned chunks (default 120000).",
+					"description": "Maximum total bytes across all returned chunks (default 32000).",
 				},
 				"excludePaths": map[string]any{
 					"type":        "array",
@@ -109,7 +110,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 			if f, ok := asFloat(args, "maxChunksPerFile"); ok && int(f) > 0 {
 				maxChunksPerFile = int(f)
 			}
-			maxTotalBytes := 120_000
+			maxTotalBytes := defaultRepoContextMaxTotalBytes
 			if f, ok := asFloat(args, "maxTotalBytes"); ok && int(f) > 0 {
 				maxTotalBytes = int(f)
 			}

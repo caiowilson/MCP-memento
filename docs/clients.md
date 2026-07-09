@@ -62,6 +62,16 @@ When you change repositories in the same MCP session, call repo_switch_workspace
 Existing explicit mode calls still work, but new callers should prefer intent.
 ```
 
+## Claude Code output limits
+
+`repo_context`, `repo_read_file`, and `repo_search` default to compact responses to avoid Claude Code's MCP result warning near 10k tokens:
+
+- `repo_context`: `maxTotalBytes` defaults to `32000`.
+- `repo_read_file`: `maxBytes` defaults to `32000`.
+- `repo_search`: each snippet is capped by `maxSnippetBytes`, default `500`.
+
+The same three tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` for intentional large reads. Claude Code's own `MAX_MCP_OUTPUT_TOKENS` setting can still be lower than the server-side caps, so tune the tool arguments and the client setting together when you need larger context.
+
 ## Example tool calls
 
 Navigate:
