@@ -85,8 +85,8 @@ func cliHelpText() string {
 	return `memento-mcp
 
 Usage:
-  memento-mcp               Start the MCP stdio server in the current working directory
-  memento-mcp --root DIR    Start the server using DIR as workspace root (default: cwd)
+  memento-mcp               Start the MCP stdio server and auto-detect the workspace root
+  memento-mcp --root DIR    Start the server using DIR as workspace root
   memento-mcp setup         Detect MCP clients and write config (interactive)
   memento-mcp setup --client=vscode --client=cursor
                             Configure specific clients (non-interactive)
@@ -95,5 +95,8 @@ Usage:
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing
-  memento-mcp help          Show this help text`
+  memento-mcp help          Show this help text
+
+Workspace root precedence:
+  --root DIR -> CLAUDE_PROJECT_DIR -> MCP roots/list -> current working directory`
 }

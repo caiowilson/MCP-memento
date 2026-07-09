@@ -36,7 +36,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 ## How It Works
 
 1. The server starts over stdio JSON-RPC and registers MCP tools.
-2. It builds and updates a local chunk index under `~/.memento-mcp/`.
+2. It auto-detects the workspace root (`--root`, `CLAUDE_PROJECT_DIR`, MCP `roots/list`, then cwd) and builds a local chunk index under `~/.memento-mcp/`.
 3. Change detection is incremental:
    - Default (`auto`): filesystem watcher first, fallback to `git status` polling for git repos if watcher fails
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)

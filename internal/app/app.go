@@ -65,15 +65,7 @@ func Run() {
 
 	log.Println("Starting memento-mcp…")
 
-	if root == "" {
-		var err error
-		root, err = os.Getwd()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	srv, err := mcp.NewServer(mcp.Config{Root: root, Child: child})
+	srv, err := mcp.NewServer(serverConfigForServe(root, child))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -84,4 +76,8 @@ func Run() {
 	if err := srv.ServeStdio(ctx, os.Stdin, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func serverConfigForServe(root string, child bool) mcp.Config {
+	return mcp.Config{Root: root, Child: child}
 }

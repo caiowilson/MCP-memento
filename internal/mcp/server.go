@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,6 +28,16 @@ const (
 	serverModeLeaf
 )
 
+type workspaceRootSource string
+
+const (
+	workspaceRootSourceExplicit         workspaceRootSource = "explicit"
+	workspaceRootSourceClaudeProjectDir workspaceRootSource = "CLAUDE_PROJECT_DIR"
+	workspaceRootSourceClientRoots      workspaceRootSource = "roots/list"
+	workspaceRootSourceManual           workspaceRootSource = "repo_switch_workspace"
+	workspaceRootSourceCWD              workspaceRootSource = "cwd"
+)
+
 type workspaceClient interface {
 	CallTool(context.Context, string, json.RawMessage) (toolCallResult, error)
 	ToolDefinitions(context.Context) ([]Tool, error)
@@ -41,12 +52,14 @@ type managedChild struct {
 }
 
 type Server struct {
-	root   string
-	tools  []Tool
-	mem    *NoteStore
-	idx    *indexing.Indexer
-	mode   serverMode
-	devLog bool
+	root                     string
+	rootSource               workspaceRootSource
+	allowClientRootsFallback bool
+	tools                    []Tool
+	mem                      *NoteStore
+	idx                      *indexing.Indexer
+	mode                     serverMode
+	devLog                   bool
 
 	devLogFilePath    string
 	devLogFileErrOnce bool
@@ -74,18 +87,9 @@ type Config struct {
 }
 
 func NewServer(cfg Config) (*Server, error) {
-	// Resolve the workspace root by priority: explicit config, then the
-	// CLAUDE_PROJECT_DIR hint, then the current working directory.
-	root := cfg.Root
-	if root == "" {
-		root = os.Getenv("CLAUDE_PROJECT_DIR")
-	}
-	if root == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		root = wd
+	root, source, allowClientRootsFallback, err := resolveStartupWorkspaceRoot(cfg.Root)
+	if err != nil {
+		return nil, err
 	}
 	absRoot, err := normalizeWorkspaceRoot(root)
 	if err != nil {
@@ -93,9 +97,11 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		devLog: os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
-		mode:   serverModeBroker,
-		root:   absRoot,
+		devLog:                   os.Getenv("MEMENTO_MCP_DEV_LOG") == "1",
+		mode:                     serverModeBroker,
+		root:                     absRoot,
+		rootSource:               source,
+		allowClientRootsFallback: allowClientRootsFallback,
 	}
 
 	if cfg.Child {
@@ -104,6 +110,7 @@ func NewServer(cfg Config) (*Server, error) {
 			return nil, err
 		}
 		s.tools = s.leafToolsetFor(absRoot, s.idx, s.mem)
+		s.logWorkspaceRootSelection()
 		return s, nil
 	}
 
@@ -130,12 +137,32 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	s.children = map[string]*managedChild{}
 
-	defs, err := s.ensureChildToolDefinitions(context.Background(), absRoot)
-	if err != nil {
-		return nil, err
+	var defs []Tool
+	if s.allowClientRootsFallback {
+		defs = leafToolDefinitionsFor(absRoot)
+	} else {
+		defs, err = s.ensureChildToolDefinitions(context.Background(), absRoot)
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.tools = s.brokerToolsetFrom(defs)
+	s.logWorkspaceRootSelection()
 	return s, nil
+}
+
+func resolveStartupWorkspaceRoot(configRoot string) (string, workspaceRootSource, bool, error) {
+	if configRoot != "" {
+		return configRoot, workspaceRootSourceExplicit, false, nil
+	}
+	if envRoot := os.Getenv("CLAUDE_PROJECT_DIR"); strings.TrimSpace(envRoot) != "" {
+		return envRoot, workspaceRootSourceClaudeProjectDir, false, nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", "", false, err
+	}
+	return wd, workspaceRootSourceCWD, true, nil
 }
 
 func (s *Server) StartBackgroundIndexing(ctx context.Context) {
@@ -632,6 +659,7 @@ func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) er
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 1024), 10*1024*1024)
 	enc := json.NewEncoder(out)
+	session := stdioSession{nextServerRequestID: 1}
 
 	for scanner.Scan() {
 		select {
@@ -645,15 +673,42 @@ func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) er
 			continue
 		}
 
-		var req rpcRequest
-		if err := json.Unmarshal(line, &req); err != nil {
+		var msg rpcMessage
+		if err := json.Unmarshal(line, &msg); err != nil {
 			continue
 		}
 
-		if req.ID == nil {
+		if msg.Method == "" {
+			if msg.ID != nil {
+				s.handleClientRPCResponse(ctx, msg, &session)
+			}
 			continue
 		}
 
+		if msg.ID == nil {
+			if err := s.handleRPCNotification(ctx, msg.Method, msg.Params, enc, &session); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if msg.Method == "initialize" {
+			session.clientSupportsRoots = initializeClientSupportsRoots(msg.Params)
+		}
+
+		if s.workspaceDiscoveryPending(msg.Method, &session) {
+			if err := enc.Encode(rpcOK(msg.ID, workspaceDiscoveryPendingResult())); err != nil {
+				return err
+			}
+			continue
+		}
+
+		req := rpcRequest{
+			JSONRPC: msg.JSONRPC,
+			ID:      msg.ID,
+			Method:  msg.Method,
+			Params:  msg.Params,
+		}
 		resp := s.handleRPC(ctx, req)
 		if err := enc.Encode(resp); err != nil {
 			return err
@@ -664,6 +719,116 @@ func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) er
 		return err
 	}
 	return nil
+}
+
+type stdioSession struct {
+	clientSupportsRoots bool
+	rootsRequested      bool
+	pendingRootsID      string
+	nextServerRequestID int
+}
+
+func (s *Server) handleRPCNotification(ctx context.Context, method string, params json.RawMessage, enc *json.Encoder, session *stdioSession) error {
+	_ = params
+
+	switch method {
+	case "notifications/initialized":
+		if err := s.maybeRequestClientRoots(enc, session, false); err != nil {
+			return err
+		}
+		if !session.clientSupportsRoots && s.allowClientRootsFallback {
+			s.ensureCurrentWorkspaceChild(ctx)
+		}
+		return nil
+	case "notifications/roots/list_changed":
+		return s.maybeRequestClientRoots(enc, session, true)
+	default:
+		return nil
+	}
+}
+
+func (s *Server) maybeRequestClientRoots(enc *json.Encoder, session *stdioSession, force bool) error {
+	if !s.allowClientRootsFallback || !session.clientSupportsRoots {
+		return nil
+	}
+	if s.rootSource != workspaceRootSourceCWD && s.rootSource != workspaceRootSourceClientRoots {
+		return nil
+	}
+	if session.pendingRootsID != "" {
+		return nil
+	}
+	if session.rootsRequested && !force {
+		return nil
+	}
+
+	id := session.nextServerRequestID
+	if id <= 0 {
+		id = 1
+	}
+	session.nextServerRequestID = id + 1
+	session.pendingRootsID = rpcIDKey(id)
+	session.rootsRequested = true
+
+	return enc.Encode(rpcRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  "roots/list",
+	})
+}
+
+func (s *Server) handleClientRPCResponse(ctx context.Context, msg rpcMessage, session *stdioSession) {
+	if session.pendingRootsID == "" || rpcIDKey(msg.ID) != session.pendingRootsID {
+		return
+	}
+	session.pendingRootsID = ""
+
+	if msg.Error != nil {
+		s.logf("roots/list failed, keeping workspace root source=%s root=%s: %s", s.rootSource, s.currentRoot(), msg.Error.Message)
+		s.ensureCurrentWorkspaceChild(ctx)
+		return
+	}
+	if s.rootSource != workspaceRootSourceCWD && s.rootSource != workspaceRootSourceClientRoots {
+		s.logf("roots/list response ignored because workspace root source is now %s root=%s", s.rootSource, s.currentRoot())
+		return
+	}
+
+	root, err := workspaceRootFromRootsListResult(msg.Result)
+	if err != nil {
+		s.logf("roots/list did not return a usable workspace root, keeping source=%s root=%s: %v", s.rootSource, s.currentRoot(), err)
+		s.ensureCurrentWorkspaceChild(ctx)
+		return
+	}
+	absRoot, err := normalizeWorkspaceRoot(root)
+	if err != nil {
+		s.logf("roots/list returned invalid workspace root %q, keeping source=%s root=%s: %v", root, s.rootSource, s.currentRoot(), err)
+		s.ensureCurrentWorkspaceChild(ctx)
+		return
+	}
+
+	if _, _, err := s.ensureChild(ctx, absRoot); err != nil {
+		s.logf("roots/list workspace root %q could not be initialized, keeping source=%s root=%s: %v", absRoot, s.rootSource, s.currentRoot(), err)
+		s.ensureCurrentWorkspaceChild(ctx)
+		return
+	}
+	if absRoot != s.currentRoot() {
+		s.setCurrentRoot(absRoot)
+	}
+
+	s.rootSource = workspaceRootSourceClientRoots
+	s.logWorkspaceRootSelection()
+}
+
+func (s *Server) ensureCurrentWorkspaceChild(ctx context.Context) {
+	if s.mode != serverModeBroker {
+		return
+	}
+	root := s.currentRoot()
+	if root == "" {
+		return
+	}
+	if _, _, err := s.ensureChild(ctx, root); err != nil {
+		s.logf("workspace root %q could not be initialized: %v", root, err)
+	}
 }
 
 func (s *Server) handleRPC(ctx context.Context, req rpcRequest) rpcResponse {
@@ -688,6 +853,75 @@ func (s *Server) handleRPC(ctx context.Context, req rpcRequest) rpcResponse {
 	default:
 		return rpcErr(req.ID, -32601, "Method not found", req.Method)
 	}
+}
+
+func (s *Server) workspaceDiscoveryPending(method string, session *stdioSession) bool {
+	if method != "tools/call" || !s.allowClientRootsFallback || !session.clientSupportsRoots {
+		return false
+	}
+	if s.rootSource != workspaceRootSourceCWD {
+		return false
+	}
+	return !session.rootsRequested || session.pendingRootsID != ""
+}
+
+func workspaceDiscoveryPendingResult() toolCallResult {
+	return toolCallResult{
+		Content: []toolContent{{
+			Type: "text",
+			Text: "workspace root discovery is pending; retry after the MCP roots/list response is processed",
+		}},
+		IsError: true,
+	}
+}
+
+func initializeClientSupportsRoots(raw json.RawMessage) bool {
+	var params struct {
+		Capabilities struct {
+			Roots json.RawMessage `json:"roots"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return false
+	}
+	roots := strings.TrimSpace(string(params.Capabilities.Roots))
+	return roots != "" && roots != "null"
+}
+
+func workspaceRootFromRootsListResult(raw json.RawMessage) (string, error) {
+	var result struct {
+		Roots []struct {
+			URI string `json:"uri"`
+		} `json:"roots"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", err
+	}
+	for _, root := range result.Roots {
+		path, ok := workspacePathFromFileURI(root.URI)
+		if ok {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("no file:// roots")
+}
+
+func workspacePathFromFileURI(raw string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "file" {
+		return "", false
+	}
+	if u.Host != "" && u.Host != "localhost" {
+		return "", false
+	}
+	path := u.Path
+	if path == "" {
+		return "", false
+	}
+	if len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	return path, true
 }
 
 func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
@@ -859,6 +1093,15 @@ type Tool struct {
 
 type ToolHandler func(context.Context, json.RawMessage) (any, error)
 
+type rpcMessage struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      any             `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
 func readOnlyAnnotations() map[string]any {
 	return map[string]any{
 		"readOnlyHint": true,
@@ -931,6 +1174,34 @@ var errOutsideRoot = errors.New("path escapes workspace root")
 
 func (s *Server) logf(format string, args ...any) {
 	log.Printf("[mcp] "+format, args...)
+}
+
+func (s *Server) logWorkspaceRootSelection() {
+	s.logf("workspace root selected source=%s root=%s", s.rootSource, s.currentRoot())
+}
+
+func rpcIDKey(id any) string {
+	switch v := id.(type) {
+	case nil:
+		return ""
+	case int:
+		return "number:" + strconv.Itoa(v)
+	case int64:
+		return "number:" + strconv.FormatInt(v, 10)
+	case float64:
+		if v == float64(int64(v)) {
+			return "number:" + strconv.FormatInt(int64(v), 10)
+		}
+		return "number:" + strconv.FormatFloat(v, 'f', -1, 64)
+	case string:
+		return "string:" + v
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%T:%v", v, v)
+		}
+		return fmt.Sprintf("%T:%s", v, string(b))
+	}
 }
 
 func envInt(key string, def int) int {

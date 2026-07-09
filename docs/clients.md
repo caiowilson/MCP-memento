@@ -39,6 +39,17 @@ Show built-in help:
 
 If your MCP client expects a different JSON shape, reuse the same values for `command`, `args`, `cwd`, `env`, and stdio transport.
 
+## Workspace root detection
+
+The server resolves its workspace root in this order:
+
+1. Explicit `--root DIR` or client config
+2. `CLAUDE_PROJECT_DIR` from Claude Code
+3. MCP client `roots/list`, when the client advertises Roots support
+4. Current working directory
+
+Claude Code sessions therefore index the launched project without a manual `repo_switch_workspace` call. Use `repo_switch_workspace` only when you intentionally retarget the same MCP session to another repository.
+
 ## Recommended LLM guidance
 
 Use the output of `print-guidance` directly, or paste the following into client instructions:

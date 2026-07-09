@@ -63,6 +63,8 @@ func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bo
 		}
 	}
 	s.setCurrentRoot(absRoot)
+	s.rootSource = workspaceRootSourceManual
+	s.logWorkspaceRootSelection()
 
 	indexStatus, err := s.callChildTool(ctx, absRoot, "repo_index_status", json.RawMessage([]byte(`{}`)))
 	if err != nil {

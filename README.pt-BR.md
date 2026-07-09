@@ -31,7 +31,7 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 ## Como Funciona
 
 1. O servidor inicia via stdio JSON-RPC e registra as ferramentas MCP.
-2. Ele cria e atualiza um índice local de chunks em `~/.memento-mcp/`.
+2. Ele detecta automaticamente a raiz do workspace (`--root`, `CLAUDE_PROJECT_DIR`, MCP `roots/list` e depois cwd) e cria um índice local de chunks em `~/.memento-mcp/`.
 3. A detecção de mudanças é incremental:
    - Repositórios Git: polling de `git status` (caminho rápido)
    - Repositórios sem Git: fallback com watcher do sistema de arquivos

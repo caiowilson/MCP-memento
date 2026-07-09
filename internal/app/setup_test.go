@@ -86,6 +86,16 @@ func TestExtractServeFlags(t *testing.T) {
 	}
 }
 
+func TestServerConfigForServeLeavesAbsentRootEmpty(t *testing.T) {
+	cfg := serverConfigForServe("", false)
+	if cfg.Root != "" {
+		t.Fatalf("expected absent --root to pass through empty, got %q", cfg.Root)
+	}
+	if cfg.Child {
+		t.Fatal("expected child=false")
+	}
+}
+
 func TestParseSetupFlags(t *testing.T) {
 	opts := parseSetupFlags([]string{"--client=vscode", "--client=cursor", "--print-only"})
 	if !opts.printOnly {

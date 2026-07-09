@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -338,11 +340,250 @@ func TestNewServerExplicitRootBeatsClaudeProjectDir(t *testing.T) {
 	}
 }
 
+func TestNewServerFallsBackToCwd(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	wantRoot, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	s.StartBackgroundIndexing(context.Background())
+
+	if got := s.root; got != wantRoot {
+		t.Fatalf("expected root %s from cwd fallback, got %s", wantRoot, got)
+	}
+	if s.rootSource != workspaceRootSourceCWD {
+		t.Fatalf("expected rootSource=%s, got %s", workspaceRootSourceCWD, s.rootSource)
+	}
+	if !s.allowClientRootsFallback {
+		t.Fatal("cwd fallback should allow roots/list fallback")
+	}
+}
+
 func TestNewServerClaudeProjectDirNonExistent(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", "/nonexistent/path/that/cannot/exist")
 	_, err := NewServer(Config{childFactory: newLocalChildFactory(t)})
 	if err == nil {
 		t.Fatal("expected error when CLAUDE_PROJECT_DIR points to non-existent path")
+	}
+}
+
+func TestServeStdioUsesRootsListFallback(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwdRoot := t.TempDir()
+	rootsRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwdRoot, "alpha.txt"), []byte("from-cwd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootsRoot, "beta.txt"), []byte("from-roots\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwdRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartBackgroundIndexing(context.Background())
+
+	var input bytes.Buffer
+	enc := json.NewEncoder(&input)
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2024-11-05",
+			"capabilities": map[string]any{
+				"roots": map[string]any{"listChanged": true},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"result": map[string]any{
+			"roots": []map[string]any{
+				{
+					"uri":  (&url.URL{Scheme: "file", Path: rootsRoot}).String(),
+					"name": "rootsRoot",
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "repo_read_file",
+			"arguments": map[string]any{
+				"path": "beta.txt",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := s.ServeStdio(context.Background(), &input, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected initialize response, roots/list request, and tool response; got %d lines:\n%s", len(lines), out.String())
+	}
+	var rootsReq rpcMessage
+	if err := json.Unmarshal([]byte(lines[1]), &rootsReq); err != nil {
+		t.Fatal(err)
+	}
+	if rootsReq.Method != "roots/list" {
+		t.Fatalf("expected roots/list request, got %q in %s", rootsReq.Method, lines[1])
+	}
+	if !strings.Contains(lines[2], "from-roots") {
+		t.Fatalf("expected tool response from roots/list root, got %s", lines[2])
+	}
+	if got := s.currentRoot(); got != rootsRoot {
+		t.Fatalf("expected active root from roots/list %s, got %s", rootsRoot, got)
+	}
+	if s.rootSource != workspaceRootSourceClientRoots {
+		t.Fatalf("expected rootSource=%s, got %s", workspaceRootSourceClientRoots, s.rootSource)
+	}
+}
+
+func TestServeStdioRejectsToolCallWhileRootsListPending(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwdRoot := t.TempDir()
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwdRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartBackgroundIndexing(context.Background())
+
+	var input bytes.Buffer
+	enc := json.NewEncoder(&input)
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2024-11-05",
+			"capabilities": map[string]any{
+				"roots": map[string]any{"listChanged": true},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "repo_list_files",
+			"arguments": map[string]any{
+				"max": 1,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := s.ServeStdio(context.Background(), &input, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected initialize response, roots/list request, and pending-error response; got %d lines:\n%s", len(lines), out.String())
+	}
+	var toolResp rpcResponse
+	if err := json.Unmarshal([]byte(lines[2]), &toolResp); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(toolResp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result toolCallResult
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "workspace root discovery is pending") {
+		t.Fatalf("expected pending discovery tool error, got %#v", result)
+	}
+	if got := managedChildCount(s); got != 0 {
+		t.Fatalf("expected no cwd child to spawn while roots/list is pending, got %d", got)
 	}
 }
 
