@@ -15,6 +15,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0003: Multi-language related-file analysis (Accepted, 2026-01-17)
 - ADR 0004: Automatic codebase indexing (“memorization”) (Accepted, 2026-01-17)
 - ADR 0005: Git-first incremental indexing (with filesystem fallback) (Proposed, 2026-01-17)
+- ADR 0006: Opt-in local hybrid retrieval with Ollama (Accepted, 2026-07-10)
 
 ---
 
@@ -424,6 +425,49 @@ Delete all repo-scoped notes.
 - Which git paths are sufficient to watch reliably across platforms (`.git/index` vs refs/HEAD)?
 - Should we include `go.sum` and `.github/workflows/*` in the default whitelist, or keep them configurable?
 - How do we expose “index freshness” to tools (timestamps, indexed file count, partial indexing reason)?
+
+---
+
+## ADR 0006: Opt-in local hybrid retrieval with Ollama
+
+- Status: Accepted
+- Date: 2026-07-10
+
+### Context
+
+The persisted chunk index uses exact substring scoring. It is fast and predictable, but it misses conceptually related code that does not share query tokens. Adding embeddings must preserve the project's local-first guarantee, avoid making the default installation substantially larger, and leave the server useful when no model runtime is available.
+
+### Decision
+
+- Keep lexical retrieval as the default and gate semantic retrieval behind `MEMENTO_SEMANTIC_ENABLED`.
+- Use a separately installed local Ollama process through its `/api/embed` endpoint. Accept only loopback HTTP URLs and reject redirects.
+- Default to the explicitly tagged `nomic-embed-text:v1.5` model. Memento does not install Ollama or pull models.
+- Prefer this compact general-purpose model over a larger code-specific model for the initial release; use retrieval fixtures to justify any future default change.
+- Embed redacted chunks in batches and store normalized float32 vectors as binary `.vec` sidecars beside the JSONL chunk files.
+- Fingerprint the embedding input format and model. Remove incompatible sidecars and re-embed unchanged chunks when the fingerprint changes.
+- Rank with a configurable weighted combination of normalized lexical score and cosine similarity. Preserve the previous lexical score and ordering when semantic retrieval is disabled or unavailable.
+- Apply hybrid focus retrieval to `repo_context`; retain literal substring semantics for `repo_search`.
+- Treat embedding failures as degradations: record the error, fall back to lexical retrieval, and use a short retry backoff.
+
+### Consequences
+
+- The Memento binary and default startup remain model-free; enabling the feature adds the separately managed Ollama runtime and an approximately 274 MB default model.
+- Source chunks and queries stay on the machine. Redaction occurs before document embedding.
+- Vector storage grows with chunk count and embedding dimension, and semantic queries scan the local sidecars linearly in this first implementation.
+- Model upgrades require vector regeneration but do not require rebuilding or deleting the chunk index.
+- Retrieval gains can be measured with the existing fixture harness by running it once lexically and once with semantic retrieval enabled.
+
+### Alternatives considered
+
+- Bundle an ONNX or fastembed runtime and model: tighter process integration, but materially increases binary/distribution complexity and makes model lifecycle Memento's responsibility.
+- Use a hosted embedding API: simpler local setup, but violates the local-first source handling guarantee.
+- Replace lexical scoring entirely: discards exact-match strength and makes provider outages disruptive.
+
+### References
+
+- [Ollama embedding API](https://docs.ollama.com/api/embed)
+- [Ollama embedding guidance](https://docs.ollama.com/capabilities/embeddings)
+- [nomic-embed-text model](https://registry.ollama.com/library/nomic-embed-text)
 
 ---
 

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/indexing"
 	"memento-mcp/internal/redact"
 )
@@ -62,6 +63,7 @@ type Server struct {
 	mode                     serverMode
 	devLog                   bool
 	redactor                 *redact.Redactor
+	semantic                 embedding.RuntimeConfig
 
 	devLogFilePath    string
 	devLogFileErrOnce bool
@@ -93,6 +95,10 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	semantic, err := embedding.FromEnv()
+	if err != nil {
+		return nil, err
+	}
 	root, source, allowClientRootsFallback, err := resolveStartupWorkspaceRoot(cfg.Root)
 	if err != nil {
 		return nil, err
@@ -109,6 +115,7 @@ func NewServer(cfg Config) (*Server, error) {
 		rootSource:               source,
 		allowClientRootsFallback: allowClientRootsFallback,
 		redactor:                 redactor,
+		semantic:                 semantic,
 	}
 
 	if cfg.Child {
@@ -214,11 +221,14 @@ func (s *Server) indexerConfig(rootAbs string) indexing.Config {
 		pollSeconds = 0
 	}
 	return indexing.Config{
-		RootAbs:       rootAbs,
-		PollInterval:  time.Duration(pollSeconds) * time.Second,
-		MaxTotalBytes: int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
-		MaxFileBytes:  int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
-		Redactor:      s.redactor,
+		RootAbs:            rootAbs,
+		PollInterval:       time.Duration(pollSeconds) * time.Second,
+		MaxTotalBytes:      int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
+		MaxFileBytes:       int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
+		Redactor:           s.redactor,
+		Embedder:           s.semantic.Embedder,
+		SemanticWeight:     s.semantic.SemanticWeight,
+		EmbeddingBatchSize: s.semantic.BatchSize,
 	}
 }
 

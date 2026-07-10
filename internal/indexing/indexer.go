@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,23 +17,27 @@ import (
 	"sync"
 	"time"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/redact"
 )
 
 type Config struct {
-	RootAbs          string
-	StoreDir         string
-	MaxTotalBytes    int64
-	MaxFileBytes     int64
-	MaxChunkBytes    int
-	MaxChunkLines    int
-	PollInterval     time.Duration
-	PreferredExts    []string
-	AllowGlobs       []string
-	DenyGlobs        []string
-	ExtraIgnoreDirs  []string
-	ExtraIgnoreGlobs []string
-	Redactor         *redact.Redactor
+	RootAbs            string
+	StoreDir           string
+	MaxTotalBytes      int64
+	MaxFileBytes       int64
+	MaxChunkBytes      int
+	MaxChunkLines      int
+	PollInterval       time.Duration
+	PreferredExts      []string
+	AllowGlobs         []string
+	DenyGlobs          []string
+	ExtraIgnoreDirs    []string
+	ExtraIgnoreGlobs   []string
+	Redactor           *redact.Redactor
+	Embedder           embedding.Embedder
+	SemanticWeight     float64
+	EmbeddingBatchSize int
 }
 
 type Status struct {
@@ -49,10 +55,12 @@ type Indexer struct {
 	cfg         Config
 	ignoreRules *ignoreRules
 	redactor    *redact.Redactor
+	embedder    embedding.Embedder
 
-	mu       sync.Mutex
-	manifest manifest
-	status   Status
+	mu                    sync.Mutex
+	manifest              manifest
+	status                Status
+	embeddingBackoffUntil time.Time
 
 	reqCh chan request
 }
@@ -63,6 +71,8 @@ type request struct {
 	full  bool
 	done  chan error
 }
+
+var errEmbeddingBackoff = errors.New("embedding runtime is in retry backoff")
 
 func New(cfg Config) (*Indexer, error) {
 	if cfg.RootAbs == "" {
@@ -101,6 +111,7 @@ func New(cfg Config) (*Indexer, error) {
 		dir:      dir,
 		cfg:      cfg,
 		redactor: cfg.Redactor,
+		embedder: cfg.Embedder,
 		reqCh:    make(chan request, 8),
 	}
 
@@ -112,6 +123,10 @@ func New(cfg Config) (*Indexer, error) {
 
 	if err := idx.loadManifest(); err != nil || idx.manifest.RedactionFingerprint != idx.redactor.Fingerprint() {
 		if err := idx.resetIndexFiles(); err != nil {
+			return nil, err
+		}
+	} else if idx.manifest.EmbeddingFingerprint != idx.embeddingFingerprint() {
+		if err := idx.resetVectorFiles(); err != nil {
 			return nil, err
 		}
 	}
@@ -161,6 +176,7 @@ func (i *Indexer) RemovePaths(relPaths []string) error {
 			continue
 		}
 		_ = os.Remove(i.chunkFilePath(ent.ID))
+		i.removeVectorFile(ent.ID)
 		i.manifest.TotalBytes -= ent.Size
 		delete(i.manifest.Files, rel)
 	}
@@ -184,6 +200,10 @@ type DebugInfo struct {
 	DenyGlobs        []string `json:"denyGlobs"`
 	ExtraIgnoreDirs  []string `json:"extraIgnoreDirs"`
 	ExtraIgnoreGlobs []string `json:"extraIgnoreGlobs"`
+	SemanticEnabled  bool     `json:"semanticEnabled"`
+	EmbeddingModel   string   `json:"embeddingModel,omitempty"`
+	SemanticWeight   float64  `json:"semanticWeight,omitempty"`
+	VectorsIndexed   int      `json:"vectorsIndexed"`
 	LastError        string   `json:"lastError,omitempty"`
 }
 
@@ -200,7 +220,11 @@ func (i *Indexer) FileChunks(relPath string) ([]Chunk, error) {
 func (i *Indexer) DebugInfo() DebugInfo {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return DebugInfo{
+	vectorsIndexed := 0
+	for _, entry := range i.manifest.Files {
+		vectorsIndexed += entry.Vectors
+	}
+	info := DebugInfo{
 		RootAbs:          i.rootAbs,
 		StoreDir:         i.dir,
 		FilesIndexed:     len(i.manifest.Files),
@@ -210,8 +234,19 @@ func (i *Indexer) DebugInfo() DebugInfo {
 		DenyGlobs:        append([]string{}, i.cfg.DenyGlobs...),
 		ExtraIgnoreDirs:  append([]string{}, i.cfg.ExtraIgnoreDirs...),
 		ExtraIgnoreGlobs: append([]string{}, i.cfg.ExtraIgnoreGlobs...),
+		SemanticEnabled:  i.embedder != nil,
+		VectorsIndexed:   vectorsIndexed,
 		LastError:        i.status.Error,
 	}
+	if i.embedder != nil {
+		info.EmbeddingModel = i.embedder.Name()
+		info.SemanticWeight = i.cfg.SemanticWeight
+	}
+	return info
+}
+
+func (i *Indexer) SemanticEnabled() bool {
+	return i.embedder != nil
 }
 
 func (i *Indexer) Clear() error {
@@ -226,11 +261,19 @@ func (i *Indexer) Clear() error {
 
 	for _, id := range ids {
 		_ = os.Remove(i.chunkFilePath(id))
+		i.removeVectorFile(id)
 	}
 	return i.saveManifest()
 }
 
 func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
+	return i.SearchContext(context.Background(), query, maxResults, restrictPaths)
+}
+
+func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, errors.New("query is required")
@@ -250,46 +293,132 @@ func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) (
 	}
 
 	i.mu.Lock()
+	entries := make(map[string]fileEntry, len(i.manifest.Files))
 	paths := make([]string, 0, len(i.manifest.Files))
-	for p := range i.manifest.Files {
+	for p, entry := range i.manifest.Files {
 		if len(restrict) > 0 {
 			if _, ok := restrict[p]; !ok {
 				continue
 			}
 		}
 		paths = append(paths, p)
+		entries[p] = entry
 	}
 	i.mu.Unlock()
 
 	sort.Strings(paths)
 
-	type scored struct {
-		chunk Chunk
-		score int
+	var queryVector []float32
+	if i.embedder != nil && i.embeddingRetryReady() {
+		vectors, err := i.embedder.Embed(ctx, embedding.TaskQuery, []string{q})
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			i.recordEmbeddingFailure()
+			i.setError(fmt.Errorf("embed search query: %w", err))
+		} else if len(vectors) == 1 {
+			queryVector = append([]float32(nil), vectors[0]...)
+			if err := normalizeVector(queryVector); err != nil {
+				i.recordEmbeddingFailure()
+				i.setError(fmt.Errorf("normalize search query embedding: %w", err))
+				queryVector = nil
+			} else {
+				i.recordEmbeddingSuccess()
+			}
+		} else {
+			i.recordEmbeddingFailure()
+			i.setError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
+		}
 	}
-	results := make([]scored, 0, min(maxResults, 32))
+
+	type scored struct {
+		chunk    Chunk
+		lexical  int
+		semantic float64
+		hybrid   float64
+	}
+	results := make([]scored, 0, min(maxResults, 128))
+	maxLexical := 0
+	semanticUsed := false
 
 	for _, p := range paths {
-		chunks, err := i.FileChunks(p)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entry := entries[p]
+		chunks, err := i.readChunksFile(entry.ID)
 		if err != nil {
 			continue
 		}
+		vectorByLine := map[[2]int][]float32{}
+		if len(queryVector) > 0 && entry.Vectors > 0 {
+			vectors, err := i.readVectorsFile(entry.ID)
+			if err != nil {
+				i.markVectorsStale(p, entry, fmt.Errorf("read vectors: %w", err))
+			} else if len(vectors) != len(chunks) {
+				i.markVectorsStale(p, entry, fmt.Errorf("vector count %d does not match chunk count %d", len(vectors), len(chunks)))
+			} else if len(vectors) > 0 && len(vectors[0].Values) != len(queryVector) {
+				i.markVectorsStale(p, entry, fmt.Errorf("vector dimension %d does not match query dimension %d", len(vectors[0].Values), len(queryVector)))
+			} else {
+				for _, vector := range vectors {
+					vectorByLine[[2]int{vector.StartLine, vector.EndLine}] = vector.Values
+				}
+				mappingMatches := len(vectorByLine) == len(chunks)
+				for _, chunk := range chunks {
+					if _, ok := vectorByLine[[2]int{chunk.StartLine, chunk.EndLine}]; !ok {
+						mappingMatches = false
+						break
+					}
+				}
+				if !mappingMatches {
+					i.markVectorsStale(p, entry, errors.New("vector chunk ranges do not match indexed chunks"))
+					vectorByLine = map[[2]int][]float32{}
+				}
+			}
+		}
 		for _, ch := range chunks {
-			hay := strings.ToLower(ch.Content)
-			if !strings.Contains(hay, qLower) {
+			lexical := lexicalChunkScore(ch, qLower)
+			if lexical > maxLexical {
+				maxLexical = lexical
+			}
+			semantic := 0.0
+			hasVector := false
+			if values, ok := vectorByLine[[2]int{ch.StartLine, ch.EndLine}]; ok && len(values) == len(queryVector) {
+				semantic = dotProduct(queryVector, values)
+				if semantic < 0 {
+					semantic = 0
+				} else if semantic > 1 {
+					semantic = 1
+				}
+				hasVector = true
+				semanticUsed = true
+			}
+			if lexical == 0 && (!hasVector || semantic == 0) {
 				continue
 			}
-			score := 10 + strings.Count(hay, qLower)
-			if strings.Contains(strings.ToLower(ch.Path), qLower) {
-				score += 5
+			results = append(results, scored{chunk: ch, lexical: lexical, semantic: semantic})
+		}
+	}
+
+	if semanticUsed {
+		semanticWeight := i.cfg.SemanticWeight
+		lexicalWeight := 1 - semanticWeight
+		for index := range results {
+			lexicalNormalized := 0.0
+			if maxLexical > 0 {
+				lexicalNormalized = float64(results[index].lexical) / float64(maxLexical)
 			}
-			results = append(results, scored{chunk: ch, score: score})
+			results[index].hybrid = lexicalWeight*lexicalNormalized + semanticWeight*results[index].semantic
 		}
 	}
 
 	sort.Slice(results, func(a, b int) bool {
-		if results[a].score != results[b].score {
-			return results[a].score > results[b].score
+		if semanticUsed && results[a].hybrid != results[b].hybrid {
+			return results[a].hybrid > results[b].hybrid
+		}
+		if results[a].lexical != results[b].lexical {
+			return results[a].lexical > results[b].lexical
 		}
 		if results[a].chunk.Path != results[b].chunk.Path {
 			return results[a].chunk.Path < results[b].chunk.Path
@@ -303,10 +432,34 @@ func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) (
 	out := make([]Chunk, 0, len(results))
 	for _, r := range results {
 		ch := r.chunk
-		ch.Score = r.score
+		if semanticUsed {
+			ch.Score = int(math.Round(r.hybrid * 10_000))
+		} else {
+			ch.Score = r.lexical
+		}
 		out = append(out, ch)
 	}
 	return out, nil
+}
+
+func lexicalChunkScore(chunk Chunk, queryLower string) int {
+	hay := strings.ToLower(chunk.Content)
+	if !strings.Contains(hay, queryLower) {
+		return 0
+	}
+	score := 10 + strings.Count(hay, queryLower)
+	if strings.Contains(strings.ToLower(chunk.Path), queryLower) {
+		score += 5
+	}
+	return score
+}
+
+func dotProduct(a, b []float32) float64 {
+	var sum float64
+	for index := range a {
+		sum += float64(a[index]) * float64(b[index])
+	}
+	return sum
 }
 
 func (i *Indexer) worker(ctx context.Context) {
@@ -344,6 +497,7 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 	if len(relPaths) == 0 {
 		return nil
 	}
+	i.beginIndexPass()
 
 	changed := false
 	var totalBytes int64
@@ -377,11 +531,12 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 		if info.Size() > i.cfg.MaxFileBytes {
 			continue
 		}
-		if totalBytes+info.Size() > i.cfg.MaxTotalBytes {
+		existingSize := i.indexedFileSize(rel)
+		if totalBytes-existingSize+info.Size() > i.cfg.MaxTotalBytes {
 			continue
 		}
 
-		ok, delta, err := i.indexOne(abs, rel, info)
+		ok, delta, err := i.indexOne(ctx, abs, rel, info)
 		if err != nil {
 			i.setError(err)
 			continue
@@ -399,6 +554,7 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 }
 
 func (i *Indexer) indexAll(ctx context.Context) error {
+	i.beginIndexPass()
 	candidates, err := i.listCandidates(ctx)
 	if err != nil {
 		i.setError(err)
@@ -416,6 +572,8 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 			continue
 		}
 		_ = os.Remove(i.chunkFilePath(ent.ID))
+		i.removeVectorFile(ent.ID)
+		i.manifest.TotalBytes -= ent.Size
 		delete(i.manifest.Files, rel)
 	}
 	i.mu.Unlock()
@@ -436,11 +594,12 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		default:
 		}
 
-		if totalBytes+c.Size > i.cfg.MaxTotalBytes {
+		existingSize := i.indexedFileSize(c.Rel)
+		if totalBytes-existingSize+c.Size > i.cfg.MaxTotalBytes {
 			partial = true
 			continue
 		}
-		ok, delta, err := i.indexOne(c.Abs, c.Rel, c.Info)
+		ok, delta, err := i.indexOne(ctx, c.Abs, c.Rel, c.Info)
 		if err != nil {
 			i.setError(err)
 			continue
@@ -458,12 +617,14 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 	}
 
 	i.mu.Lock()
+	lastError := i.status.Error
 	i.status = Status{
 		Ready:         true,
 		LastIndexedAt: time.Now().UTC().Format(time.RFC3339),
 		FilesIndexed:  filesIndexed,
 		BytesIndexed:  bytesIndexed,
 		Partial:       partial,
+		Error:         lastError,
 	}
 	i.mu.Unlock()
 	return nil
@@ -547,7 +708,7 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 	return out, nil
 }
 
-func (i *Indexer) indexOne(abs, rel string, info os.FileInfo) (changed bool, deltaBytes int64, err error) {
+func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInfo) (changed bool, deltaBytes int64, err error) {
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	if rel == "" || rel == "." {
 		return false, 0, nil
@@ -558,7 +719,15 @@ func (i *Indexer) indexOne(abs, rel string, info os.FileInfo) (changed bool, del
 	i.mu.Unlock()
 
 	mod := info.ModTime().UnixNano()
-	if ok && ent.Size == info.Size() && ent.ModTime == mod {
+	needsVectors := false
+	if i.embedder != nil && ok {
+		needsVectors = ent.Vectors != ent.Chunks
+		if !needsVectors {
+			_, statErr := os.Stat(i.vectorFilePath(ent.ID))
+			needsVectors = statErr != nil
+		}
+	}
+	if ok && ent.Size == info.Size() && ent.ModTime == mod && !needsVectors {
 		return false, 0, nil
 	}
 
@@ -575,6 +744,23 @@ func (i *Indexer) indexOne(abs, rel string, info os.FileInfo) (changed bool, del
 	if err := i.writeChunksFile(id, chunks); err != nil {
 		return false, 0, err
 	}
+	vectorCount := 0
+	if i.embedder != nil && len(chunks) > 0 {
+		vectors, embedErr := i.embedChunks(ctx, chunks)
+		if embedErr != nil {
+			i.removeVectorFile(id)
+			if !errors.Is(embedErr, errEmbeddingBackoff) {
+				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
+			}
+		} else if err := i.writeVectorsFile(id, i.embeddingFingerprint(), vectors); err != nil {
+			i.removeVectorFile(id)
+			i.setError(fmt.Errorf("persist vectors for %s: %w", rel, err))
+		} else {
+			vectorCount = len(vectors)
+		}
+	} else {
+		i.removeVectorFile(id)
+	}
 
 	newEntry := fileEntry{
 		ID:       id,
@@ -583,6 +769,7 @@ func (i *Indexer) indexOne(abs, rel string, info os.FileInfo) (changed bool, del
 		Hash:     hash,
 		Language: guessLanguage(rel),
 		Chunks:   len(chunks),
+		Vectors:  vectorCount,
 	}
 
 	i.mu.Lock()
@@ -604,6 +791,109 @@ func (i *Indexer) setError(err error) {
 	i.mu.Lock()
 	i.status.Error = err.Error()
 	i.mu.Unlock()
+}
+
+func (i *Indexer) indexedFileSize(rel string) int64 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.manifest.Files[rel].Size
+}
+
+func (i *Indexer) markVectorsStale(rel string, snapshot fileEntry, cause error) {
+	i.mu.Lock()
+	current, ok := i.manifest.Files[rel]
+	if !ok || current.ID != snapshot.ID || current.Hash != snapshot.Hash || current.ModTime != snapshot.ModTime {
+		i.mu.Unlock()
+		return
+	}
+	current.Vectors = 0
+	i.manifest.Files[rel] = current
+	i.status.Error = fmt.Sprintf("semantic vectors for %s are stale: %v", rel, cause)
+	i.mu.Unlock()
+}
+
+func (i *Indexer) beginIndexPass() {
+	i.mu.Lock()
+	if i.embedder == nil || !time.Now().Before(i.embeddingBackoffUntil) {
+		i.status.Error = ""
+	}
+	i.mu.Unlock()
+}
+
+func (i *Indexer) embedChunks(ctx context.Context, chunks []Chunk) ([]chunkVector, error) {
+	if !i.embeddingRetryReady() {
+		return nil, errEmbeddingBackoff
+	}
+	out := make([]chunkVector, 0, len(chunks))
+	batchSize := i.cfg.EmbeddingBatchSize
+	for start := 0; start < len(chunks); start += batchSize {
+		end := min(start+batchSize, len(chunks))
+		inputs := make([]string, 0, end-start)
+		for _, chunk := range chunks[start:end] {
+			inputs = append(inputs, fmt.Sprintf("path: %s\nlanguage: %s\n%s", chunk.Path, chunk.Language, chunk.Content))
+		}
+		vectors, err := i.embedder.Embed(ctx, embedding.TaskDocument, inputs)
+		if err != nil {
+			if ctx.Err() == nil {
+				i.recordEmbeddingFailure()
+			}
+			return nil, err
+		}
+		if len(vectors) != len(inputs) {
+			i.recordEmbeddingFailure()
+			return nil, fmt.Errorf("embedder returned %d vectors for %d chunks", len(vectors), len(inputs))
+		}
+		for offset, values := range vectors {
+			values = append([]float32(nil), values...)
+			if err := normalizeVector(values); err != nil {
+				i.recordEmbeddingFailure()
+				return nil, fmt.Errorf("chunk %d: %w", start+offset, err)
+			}
+			chunk := chunks[start+offset]
+			out = append(out, chunkVector{StartLine: chunk.StartLine, EndLine: chunk.EndLine, Values: values})
+		}
+	}
+	i.recordEmbeddingSuccess()
+	return out, nil
+}
+
+func (i *Indexer) embeddingRetryReady() bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return !time.Now().Before(i.embeddingBackoffUntil)
+}
+
+func (i *Indexer) recordEmbeddingFailure() {
+	i.mu.Lock()
+	i.embeddingBackoffUntil = time.Now().Add(30 * time.Second)
+	i.mu.Unlock()
+}
+
+func (i *Indexer) recordEmbeddingSuccess() {
+	i.mu.Lock()
+	i.embeddingBackoffUntil = time.Time{}
+	i.mu.Unlock()
+}
+
+func normalizeVector(vector []float32) error {
+	if len(vector) == 0 || len(vector) > maxVectorDimension {
+		return fmt.Errorf("invalid vector dimension %d", len(vector))
+	}
+	var normSquared float64
+	for _, value := range vector {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return errors.New("vector contains a non-finite value")
+		}
+		normSquared += float64(value) * float64(value)
+	}
+	if normSquared == 0 {
+		return errors.New("vector has zero magnitude")
+	}
+	inverseNorm := 1 / math.Sqrt(normSquared)
+	for index := range vector {
+		vector[index] = float32(float64(vector[index]) * inverseNorm)
+	}
+	return nil
 }
 
 func (i *Indexer) loadManifest() error {
@@ -629,6 +919,7 @@ func (i *Indexer) saveManifest() error {
 	i.manifest.Version = 1
 	i.manifest.Root = i.rootAbs
 	i.manifest.RedactionFingerprint = i.redactor.Fingerprint()
+	i.manifest.EmbeddingFingerprint = i.embeddingFingerprint()
 	i.manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	b, err := json.MarshalIndent(i.manifest, "", "  ")
 	i.mu.Unlock()
@@ -694,6 +985,7 @@ type manifest struct {
 	Root                 string               `json:"root"`
 	UpdatedAt            string               `json:"updatedAt"`
 	RedactionFingerprint string               `json:"redactionFingerprint"`
+	EmbeddingFingerprint string               `json:"embeddingFingerprint"`
 	TotalBytes           int64                `json:"totalBytes"`
 	Files                map[string]fileEntry `json:"files"`
 }
@@ -713,6 +1005,7 @@ func (i *Indexer) resetIndexFiles() error {
 	}
 	i.manifest = manifest{
 		RedactionFingerprint: i.redactor.Fingerprint(),
+		EmbeddingFingerprint: i.embeddingFingerprint(),
 		Files:                map[string]fileEntry{},
 	}
 	return nil
@@ -725,6 +1018,14 @@ type fileEntry struct {
 	Hash     string `json:"hash"`
 	Language string `json:"language"`
 	Chunks   int    `json:"chunks"`
+	Vectors  int    `json:"vectors,omitempty"`
+}
+
+func (i *Indexer) embeddingFingerprint() string {
+	if i.embedder == nil {
+		return "disabled"
+	}
+	return i.embedder.Fingerprint()
 }
 
 func repoIndexDir(rootAbs string) (string, error) {
@@ -841,6 +1142,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.MaxChunkLines <= 0 {
 		cfg.MaxChunkLines = 200
+	}
+	if math.IsNaN(cfg.SemanticWeight) || math.IsInf(cfg.SemanticWeight, 0) || cfg.SemanticWeight <= 0 || cfg.SemanticWeight > 1 {
+		cfg.SemanticWeight = embedding.DefaultSemanticWeight
+	}
+	if cfg.EmbeddingBatchSize <= 0 {
+		cfg.EmbeddingBatchSize = embedding.DefaultBatchSize
 	}
 	if len(cfg.PreferredExts) == 0 {
 		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".php", ".md", ".json", ".yaml", ".yml"}

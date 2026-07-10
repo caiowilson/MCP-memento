@@ -24,7 +24,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
 - `repo_reindex` — trigger full re-index
-- `repo_clear_index` — delete all indexed chunks and manifest
+- `repo_clear_index` — delete all indexed chunks, vectors, and manifest
 - `repo_index_debug` — index debug info (filters, counts, last error)
 - `memory_upsert` — store/update repo-scoped notes
 - `memory_search` — search repo-scoped notes
@@ -35,6 +35,32 @@ This directory collects the main project documentation, including client setup, 
 On startup the server resolves the workspace root in this order: explicit `--root`/config, `CLAUDE_PROJECT_DIR` (set by Claude Code), MCP client `roots/list`, then the current working directory. It then builds a best-effort, on-disk index of that repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. `repo_switch_workspace` remains available as a manual override during a session.
 
 By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses a filesystem watcher to detect changes; if the watcher fails to start and the repo is a git repo, it falls back to `git status` polling. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (git polling first). See `docs/adr/ADRs.md`.
+
+## Optional semantic retrieval
+
+Semantic retrieval is opt-in. The default remains deterministic substring scoring and does not require a model runtime. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines lexical and cosine scores. A focused `repo_context` call can then include conceptually related chunks even when they do not share the query text. `repo_search` remains a literal substring search.
+
+Memento defaults to `nomic-embed-text:v1.5`, a roughly 274 MB general-purpose embedding model with enough context for the current 8 KiB chunk ceiling. Install Ollama separately and pull the model explicitly:
+
+```bash
+ollama pull nomic-embed-text:v1.5
+MEMENTO_SEMANTIC_ENABLED=true ./bin/memento-mcp
+```
+
+Memento never downloads a model. Ollama owns its model cache; after the explicit pull, retrieval works offline. Memento accepts only unauthenticated loopback HTTP endpoints and does not follow redirects, so indexed source is not sent to a remote embedding service. Embeddings are created from already-redacted chunk content.
+
+Configuration:
+
+- `MEMENTO_SEMANTIC_ENABLED` (default `false`)
+- `MEMENTO_EMBEDDING_MODEL` (default `nomic-embed-text:v1.5`)
+- `MEMENTO_OLLAMA_URL` (default `http://127.0.0.1:11434`; loopback HTTP only)
+- `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (default `0.65`; greater than `0` and at most `1`)
+- `MEMENTO_EMBEDDING_BATCH_SIZE` (default `32`)
+- `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (default `30`)
+
+Vector sidecars live under `~/.memento-mcp/repos/<repo-id>/index/v1/files/*.vec`. The embedding fingerprint is recorded in the manifest; changing the model removes incompatible vectors and re-embeds unchanged chunks during the next index pass. Prefer explicit model tags so cache invalidation is predictable.
+
+If Ollama is stopped or the model is absent, indexing and queries fall back to lexical retrieval. `repo_index_status` and `repo_index_debug` expose the embedding error, and Memento waits 30 seconds before retrying the unavailable runtime. Chunk indexing and all non-semantic tools continue to work.
 
 ## Secret redaction
 
@@ -79,7 +105,9 @@ Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` 
 
 ## Retrieval evaluation
 
-Run `make retrieval-eval` to index this repository and print macro-averaged precision@k, recall@k, MRR, and nDCG@k. `make test` runs the Go suite and then prints the same report. The initial CI job is non-blocking so ranking changes are visible before metric thresholds are established.
+Run `make retrieval-eval` to index this repository and print macro-averaged precision@k, recall@k, MRR, and nDCG@k. `make test` runs the Go suite and then prints the same lexical report. The initial CI job is non-blocking so ranking changes are visible before metric thresholds are established.
+
+After pulling the configured Ollama model, run `MEMENTO_SEMANTIC_ENABLED=true make retrieval-eval` to measure hybrid retrieval against the same fixtures. Compare it with the default command to separate semantic gains from fixture or scoring changes. Unlike the production server's lexical fallback, the semantic evaluator fails when vector creation or query embedding is unavailable so it cannot mislabel fallback metrics as hybrid results.
 
 Fixtures live in `evaluation/fixtures/retrieval.json`. The top-level `k` is the ranking cutoff, and each query contains a stable `id`, the exact query text, and one or more relevance judgments:
 

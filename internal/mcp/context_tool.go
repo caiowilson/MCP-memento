@@ -13,6 +13,11 @@ import (
 	"memento-mcp/internal/redact"
 )
 
+type contextChunkKey struct {
+	path      string
+	startLine int
+}
+
 func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact.Redactor) Tool {
 	redactor := toolRedactor(redactors)
 	return Tool{
@@ -210,9 +215,36 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 			for _, r := range related {
 				reasonByPath[r.Path] = r.Reasons
 			}
+			focusResults := []indexing.Chunk(nil)
+			focusBonus := map[contextChunkKey]int{}
+			if focusLower != "" && idx.SemanticEnabled() {
+				focusLimit := maxFiles * maxChunksPerFile
+				if focusLimit < maxFiles {
+					focusLimit = maxFiles
+				}
+				if focusLimit > 100 {
+					focusLimit = 100
+				}
+				focusResults, _ = idx.SearchContext(ctx, focus, focusLimit, nil)
+				seenFocusPath := map[string]struct{}{}
+				for rank, chunk := range focusResults {
+					bonus := 12 - rank
+					if bonus < 1 {
+						bonus = 1
+					}
+					focusBonus[contextChunkKey{path: chunk.Path, startLine: chunk.StartLine}] = bonus
+					if _, seen := seenFocusPath[chunk.Path]; !seen {
+						reasonByPath[chunk.Path] = append(reasonByPath[chunk.Path], "hybrid_focus")
+						seenFocusPath[chunk.Path] = struct{}{}
+					}
+				}
+			}
 
 			paths := make([]string, 0, 1+len(related))
 			paths = append(paths, rel)
+			for _, chunk := range focusResults {
+				paths = append(paths, chunk.Path)
+			}
 			for _, r := range related {
 				paths = append(paths, r.Path)
 			}
@@ -403,10 +435,11 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				}
 				for _, ch := range selected {
 					score := chScore(ch, focusLower)
+					retrievalBonus := focusBonus[contextChunkKey{path: p, startLine: ch.StartLine}]
 					candidates = append(candidates, candidate{
 						path:   p,
 						chunk:  ch,
-						signal: score*weight + relationBonus,
+						signal: score*weight + relationBonus + retrievalBonus,
 						tokens: estimateTokens(ch.Content),
 					})
 				}

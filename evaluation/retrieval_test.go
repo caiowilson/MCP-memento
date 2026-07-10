@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -9,8 +10,36 @@ import (
 	"strings"
 	"testing"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/indexing"
 )
+
+type evaluationEmbedder struct{}
+
+func (evaluationEmbedder) Embed(_ context.Context, task embedding.Task, inputs []string) ([][]float32, error) {
+	out := make([][]float32, 0, len(inputs))
+	for _, input := range inputs {
+		lower := strings.ToLower(input)
+		if task == embedding.TaskQuery || strings.Contains(lower, "auth.go") {
+			out = append(out, []float32{1, 0})
+		} else {
+			out = append(out, []float32{0, 1})
+		}
+	}
+	return out, nil
+}
+
+func (evaluationEmbedder) Fingerprint() string { return "evaluation-semantic-v1" }
+func (evaluationEmbedder) Name() string        { return "test/evaluation-semantic" }
+
+type unavailableEvaluationEmbedder struct{}
+
+func (unavailableEvaluationEmbedder) Embed(context.Context, embedding.Task, []string) ([][]float32, error) {
+	return nil, errors.New("model unavailable")
+}
+
+func (unavailableEvaluationEmbedder) Fingerprint() string { return "evaluation-unavailable-v1" }
+func (unavailableEvaluationEmbedder) Name() string        { return "test/evaluation-unavailable" }
 
 func TestEvaluateMetrics(t *testing.T) {
 	fixture := QueryFixture{
@@ -67,6 +96,62 @@ func TestExecuteIsDeterministic(t *testing.T) {
 	}
 	if first.Metrics.Recall != 1 || first.Metrics.MRR != 1 {
 		t.Fatalf("unexpected deterministic report metrics: %#v", first.Metrics)
+	}
+}
+
+func TestExecuteWithConfigMeasuresSemanticRetrieval(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "auth.go"), "package fixture\n\n// Guard validates sessions.\nfunc Guard() {}\n")
+	mustWrite(t, filepath.Join(root, "database.go"), "package fixture\n\n// Migrate updates schemas.\nfunc Migrate() {}\n")
+	fixturePath := filepath.Join(t.TempDir(), "retrieval.json")
+	mustWrite(t, fixturePath, `{
+  "version": 1,
+  "k": 1,
+  "queries": [{
+    "id": "conceptual-auth",
+    "query": "login security",
+    "relevant": [{"path": "auth.go"}]
+  }]
+}`)
+
+	lexical, err := Execute(context.Background(), root, fixturePath, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	semantic, err := ExecuteWithConfig(context.Background(), root, fixturePath, t.TempDir(), ExecuteConfig{
+		Embedder:       evaluationEmbedder{},
+		SemanticWeight: 0.65,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lexical.Metrics.Recall != 0 {
+		t.Fatalf("expected lexical baseline to miss conceptual query, got %#v", lexical.Metrics)
+	}
+	if semantic.Metrics.Recall != 1 || semantic.Metrics.MRR != 1 {
+		t.Fatalf("expected semantic retrieval to find auth.go, got %#v", semantic.Metrics)
+	}
+}
+
+func TestExecuteWithConfigRejectsSemanticFallbackMetrics(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "auth.go"), "package fixture\n\nfunc Guard() {}\n")
+	fixturePath := filepath.Join(t.TempDir(), "retrieval.json")
+	mustWrite(t, fixturePath, `{
+  "version": 1,
+  "k": 1,
+  "queries": [{
+    "id": "auth",
+    "query": "auth",
+    "relevant": [{"path": "auth.go"}]
+  }]
+}`)
+
+	_, err := ExecuteWithConfig(context.Background(), root, fixturePath, t.TempDir(), ExecuteConfig{
+		Embedder: unavailableEvaluationEmbedder{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "semantic evaluation could not build vectors") {
+		t.Fatalf("expected semantic evaluator to reject fallback metrics, got %v", err)
 	}
 }
 

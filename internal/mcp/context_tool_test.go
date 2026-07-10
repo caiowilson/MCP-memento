@@ -8,8 +8,27 @@ import (
 	"strings"
 	"testing"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/indexing"
 )
+
+type contextSemanticEmbedder struct{}
+
+func (contextSemanticEmbedder) Embed(_ context.Context, task embedding.Task, inputs []string) ([][]float32, error) {
+	vectors := make([][]float32, 0, len(inputs))
+	for _, input := range inputs {
+		lower := strings.ToLower(input)
+		if task == embedding.TaskQuery || strings.Contains(lower, "security/auth.go") {
+			vectors = append(vectors, []float32{1, 0})
+		} else {
+			vectors = append(vectors, []float32{0, 1})
+		}
+	}
+	return vectors, nil
+}
+
+func (contextSemanticEmbedder) Fingerprint() string { return "context-semantic-v1" }
+func (contextSemanticEmbedder) Name() string        { return "test/context-semantic" }
 
 func setupContextTestRepo(t *testing.T) (string, *indexing.Indexer) {
 	t.Helper()
@@ -49,6 +68,61 @@ func setupContextTestRepo(t *testing.T) (string, *indexing.Indexer) {
 		t.Fatal(err)
 	}
 	return root, idx
+}
+
+func TestRepoContextFocusAddsSemanticMatchOutsideRelationshipGraph(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/test\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for rel, content := range map[string]string{
+		"pkg/active.go":    "package pkg\n\nfunc Active() {}\n",
+		"security/auth.go": "package security\n\n// Guard validates sessions.\nfunc Guard() {}\n",
+	} {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir(), Embedder: contextSemanticEmbedder{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newRepoContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{
+		"path":              "pkg/active.go",
+		"focus":             "login security",
+		"mode":              "full",
+		"includeSameDir":    false,
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := contextResultFiles(t, result)
+	if !containsPath(paths, "security/auth.go") {
+		t.Fatalf("expected semantic focus match outside relationship graph, got %v", paths)
+	}
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, path := range paths {
+		if path == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRepoContextOutlineRedactsSecrets(t *testing.T) {

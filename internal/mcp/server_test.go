@@ -73,6 +73,29 @@ func TestNewServerRejectsInvalidRedactionConfiguration(t *testing.T) {
 	}
 }
 
+func TestNewServerRejectsNonLocalSemanticEndpoint(t *testing.T) {
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "true")
+	t.Setenv("MEMENTO_OLLAMA_URL", "https://example.com")
+	if _, err := NewServer(Config{Root: t.TempDir(), Child: true}); err == nil {
+		t.Fatal("expected non-loopback semantic endpoint to fail server startup")
+	}
+}
+
+func TestNewServerWiresSemanticIndexerConfiguration(t *testing.T) {
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "true")
+	t.Setenv("MEMENTO_OLLAMA_URL", "http://127.0.0.1:11434")
+	t.Setenv("MEMENTO_EMBEDDING_MODEL", "nomic-embed-text:v1.5")
+	t.Setenv("MEMENTO_HYBRID_SEMANTIC_WEIGHT", "0.7")
+	server, err := NewServer(Config{Root: t.TempDir(), Child: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	debug := server.idx.DebugInfo()
+	if !debug.SemanticEnabled || debug.EmbeddingModel != "ollama/nomic-embed-text:v1.5" || debug.SemanticWeight != 0.7 {
+		t.Fatalf("unexpected semantic indexer config: %#v", debug)
+	}
+}
+
 func TestLargeResultToolsAdvertiseAnthropicMaxResultSize(t *testing.T) {
 	root := t.TempDir()
 	s := newBrokerServerForTest(t, root)

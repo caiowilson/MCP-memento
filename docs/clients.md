@@ -115,6 +115,20 @@ The server resolves its workspace root in this order:
 
 Claude Code sessions therefore index the launched project without a manual `repo_switch_workspace` call. Use `repo_switch_workspace` only when you intentionally retarget the same MCP session to another repository.
 
+## Optional semantic retrieval
+
+Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to enable local hybrid retrieval:
+
+```json
+{
+  "env": {
+    "MEMENTO_SEMANTIC_ENABLED": "true"
+  }
+}
+```
+
+The MCP client must launch Memento in an environment that can reach the local Ollama process at `http://127.0.0.1:11434`. See `README.md#optional-semantic-retrieval` for model caching, fallback behavior, and tuning variables.
+
 ## Recommended LLM guidance
 
 Use the output of `print-guidance` directly, or paste the following into client instructions:

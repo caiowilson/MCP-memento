@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/indexing"
 )
 
@@ -54,6 +55,12 @@ type Report struct {
 	K       int           `json:"k"`
 	Queries []QueryResult `json:"queries"`
 	Metrics Metrics       `json:"metrics"`
+}
+
+type ExecuteConfig struct {
+	Embedder           embedding.Embedder
+	SemanticWeight     float64
+	EmbeddingBatchSize int
 }
 
 func LoadFixtures(r io.Reader) (FixtureSet, error) {
@@ -119,15 +126,23 @@ func (f FixtureSet) validate() error {
 // Execute indexes root into storeDir and evaluates the fixture file against the
 // same deterministic lexical search implementation used by the MCP server.
 func Execute(ctx context.Context, root, fixturePath, storeDir string) (Report, error) {
+	return ExecuteWithConfig(ctx, root, fixturePath, storeDir, ExecuteConfig{})
+}
+
+// ExecuteWithConfig runs the same evaluation with optional semantic retrieval.
+func ExecuteWithConfig(ctx context.Context, root, fixturePath, storeDir string, cfg ExecuteConfig) (Report, error) {
 	fixtures, err := LoadFixtureFile(fixturePath)
 	if err != nil {
 		return Report{}, err
 	}
 	idx, err := indexing.New(indexing.Config{
-		RootAbs:         root,
-		StoreDir:        storeDir,
-		PollInterval:    0,
-		ExtraIgnoreDirs: []string{"evaluation"},
+		RootAbs:            root,
+		StoreDir:           storeDir,
+		PollInterval:       0,
+		ExtraIgnoreDirs:    []string{"evaluation"},
+		Embedder:           cfg.Embedder,
+		SemanticWeight:     cfg.SemanticWeight,
+		EmbeddingBatchSize: cfg.EmbeddingBatchSize,
 	})
 	if err != nil {
 		return Report{}, err
@@ -138,12 +153,26 @@ func Execute(ctx context.Context, root, fixturePath, storeDir string) (Report, e
 	if err := idx.IndexAll(ctx); err != nil {
 		return Report{}, fmt.Errorf("index corpus: %w", err)
 	}
+	if cfg.Embedder != nil {
+		debug := idx.DebugInfo()
+		if debug.LastError != "" {
+			return Report{}, fmt.Errorf("semantic evaluation could not build vectors: %s", debug.LastError)
+		}
+		if debug.VectorsIndexed == 0 {
+			return Report{}, errors.New("semantic evaluation did not build any vectors")
+		}
+	}
 
 	report := Report{K: fixtures.K, Queries: make([]QueryResult, 0, len(fixtures.Queries))}
 	for _, fixture := range fixtures.Queries {
-		retrieved, err := idx.Search(fixture.Query, fixtures.K, nil)
+		retrieved, err := idx.SearchContext(ctx, fixture.Query, fixtures.K, nil)
 		if err != nil {
 			return Report{}, fmt.Errorf("search query %q: %w", fixture.ID, err)
+		}
+		if cfg.Embedder != nil {
+			if semanticErr := idx.Status().Error; semanticErr != "" {
+				return Report{}, fmt.Errorf("semantic evaluation query %q failed: %s", fixture.ID, semanticErr)
+			}
 		}
 		result := Evaluate(fixture, retrieved, fixtures.K)
 		report.Queries = append(report.Queries, result)

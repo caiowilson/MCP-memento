@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"memento-mcp/evaluation"
+	"memento-mcp/internal/embedding"
 )
 
 func main() {
@@ -29,9 +30,22 @@ func main() {
 	}
 	defer os.RemoveAll(storeDir)
 
-	report, err := evaluation.Execute(context.Background(), rootAbs, fixturePath, storeDir)
+	semantic, err := embedding.FromEnv()
 	if err != nil {
 		fatal(err)
+	}
+	report, err := evaluation.ExecuteWithConfig(context.Background(), rootAbs, fixturePath, storeDir, evaluation.ExecuteConfig{
+		Embedder:           semantic.Embedder,
+		SemanticWeight:     semantic.SemanticWeight,
+		EmbeddingBatchSize: semantic.BatchSize,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	if semantic.Enabled {
+		fmt.Printf("MODE hybrid model=%s semantic-weight=%.2f\n", semantic.Embedder.Name(), semantic.SemanticWeight)
+	} else {
+		fmt.Println("MODE lexical")
 	}
 	for _, result := range report.Queries {
 		fmt.Printf("%-28s precision@%d=%.3f recall@%d=%.3f MRR=%.3f nDCG@%d=%.3f\n",
