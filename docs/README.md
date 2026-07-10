@@ -53,6 +53,25 @@ Defaults are sized to stay below Claude Code's roughly 10k-token MCP result warn
 
 Callers can still request larger results with the tool arguments. The `repo_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
 
+## Retrieval evaluation
+
+Run `make retrieval-eval` to index this repository and print macro-averaged precision@k, recall@k, MRR, and nDCG@k. `make test` runs the Go suite and then prints the same report. The initial CI job is non-blocking so ranking changes are visible before metric thresholds are established.
+
+Fixtures live in `evaluation/fixtures/retrieval.json`. The top-level `k` is the ranking cutoff, and each query contains a stable `id`, the exact query text, and one or more relevance judgments:
+
+```json
+{
+  "id": "descriptive-id",
+  "query": "exact search text",
+  "relevant": [
+    { "path": "path/to/file.go" },
+    { "path": "path/to/other.go", "startLine": 40, "endLine": 55 }
+  ]
+}
+```
+
+A path-only judgment matches the first retrieved chunk from that file. A line-bounded judgment matches a retrieved chunk whose line range overlaps it. Keep queries representative of real repository navigation, use repo-relative slash-separated paths, and prefer narrow ranges around the relevant symbol or passage. Each judgment can match only once, so duplicate chunks do not inflate recall. After adding or changing a fixture, run `go test ./evaluation -count=1` for fixture/metric coverage and `make retrieval-eval` to inspect the ranking report.
+
 Default include/exclude rules (configurable in code):
 
 - Include by extension: `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.php`, `.md`, `.json`, `.yaml`, `.yml`

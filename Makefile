@@ -12,12 +12,14 @@ WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test retrieval-eval install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
 	@printf "Targets:\n"
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
+	@printf "  test      Run Go tests and the retrieval evaluation report\n"
+	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  install   Install to $(PREFIX)/bin/$(BIN_NAME)\n"
 	@printf "  install-dev Install to $$HOME/.local/bin/$(BIN_NAME)\n"
 	@printf "  uninstall Remove $(PREFIX)/bin/$(BIN_NAME)\n"
@@ -47,6 +49,13 @@ help:
 build:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/$(BIN_NAME) ./cmd/server
+
+test:
+	go test ./...
+	$(MAKE) retrieval-eval
+
+retrieval-eval:
+	go run ./cmd/retrieval-eval
 
 install: build
 	@install -d $(PREFIX)/bin

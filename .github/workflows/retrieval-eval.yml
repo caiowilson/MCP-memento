@@ -1,0 +1,57 @@
+name: Retrieval Evaluation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  retrieval-evaluation:
+    name: Retrieval metrics (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run retrieval evaluation
+        shell: bash
+        run: |
+          set -o pipefail
+          make retrieval-eval | tee retrieval-eval.txt
+
+      - name: Publish metrics summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Retrieval evaluation'
+            echo
+            echo '```text'
+            if [ -f retrieval-eval.txt ]; then
+              cat retrieval-eval.txt
+            else
+              echo 'The retrieval evaluation did not produce a report.'
+            fi
+            echo '```'
+            echo
+            echo 'This job is initially non-blocking; no metric threshold is enforced.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload retrieval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-evaluation
+          path: retrieval-eval.txt
+          if-no-files-found: ignore

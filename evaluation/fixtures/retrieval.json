@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "k": 5,
+  "queries": [
+    {
+      "id": "ignore-rule-reload",
+      "query": "ReloadIgnoreRules",
+      "relevant": [
+        { "path": "internal/indexing/indexer.go", "startLine": 111, "endLine": 112 },
+        { "path": "internal/indexing/indexer.go", "startLine": 470, "endLine": 470 },
+        { "path": "internal/indexing/fs_change.go", "startLine": 142, "endLine": 142 }
+      ]
+    },
+    {
+      "id": "match-centered-truncation",
+      "query": "truncateStringAroundBytes",
+      "relevant": [
+        { "path": "internal/mcp/output_limits.go", "startLine": 33, "endLine": 33 },
+        { "path": "internal/mcp/output_limits_test.go", "startLine": 35, "endLine": 35 },
+        { "path": "internal/mcp/repo_tools.go", "startLine": 400, "endLine": 400 }
+      ]
+    },
+    {
+      "id": "anthropic-result-limit",
+      "query": "defaultAnthropicMaxResultSizeChars",
+      "relevant": [
+        { "path": "internal/mcp/output_limits.go", "startLine": 4, "endLine": 15 },
+        { "path": "internal/mcp/server_test.go", "startLine": 64, "endLine": 105 }
+      ]
+    },
+    {
+      "id": "client-output-budget",
+      "query": "MAX_MCP_OUTPUT_TOKENS",
+      "relevant": [
+        { "path": "docs/README.md", "startLine": 54, "endLine": 54 },
+        { "path": "docs/clients.md", "startLine": 138, "endLine": 138 }
+      ]
+    }
+  ]
+}
