@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"memento-mcp/internal/redact"
 )
 
 func newRepoListFilesTool(root string) Tool {
@@ -88,7 +90,8 @@ func newRepoListFilesTool(root string) Tool {
 	}
 }
 
-func newRepoReadFileTool(root string) Tool {
+func newRepoReadFileTool(root string, redactors ...*redact.Redactor) Tool {
+	redactor := toolRedactor(redactors)
 	return Tool{
 		Name:        "repo_read_file",
 		Title:       "Read Repository File",
@@ -152,10 +155,11 @@ func newRepoReadFileTool(root string) Tool {
 			}
 			defer fh.Close()
 
-			content, err := readFileContent(ctx, fh, startLine, endLine, maxBytes)
+			content, err := readFileContent(ctx, fh, startLine, endLine, maxBytes+64*1024)
 			if err != nil {
 				return nil, err
 			}
+			content = prefixStringBytes(redactor.Redact(content), maxBytes)
 
 			return map[string]any{
 				"path":      filepath.ToSlash(filepath.Clean(rel)),
@@ -235,7 +239,8 @@ func readFileContent(ctx context.Context, r io.Reader, startLine, endLine, maxBy
 	return b.String(), nil
 }
 
-func newRepoSearchTool(root string) Tool {
+func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
+	redactor := toolRedactor(redactors)
 	return Tool{
 		Name:        "repo_search",
 		Title:       "Search Repository",
@@ -399,6 +404,7 @@ func newRepoSearchTool(root string) Tool {
 					}
 					snippet, snippetTruncated := truncateStringAroundBytes(snippet, matchStart, len(query), maxSnippetBytes)
 
+					snippet = redactor.Redact(snippet)
 					matches = append(matches, match{
 						Path:             rel,
 						Line:             lineNo,
@@ -433,7 +439,7 @@ func newRepoSearchTool(root string) Tool {
 				out = append(out, item)
 			}
 			return map[string]any{
-				"query":   query,
+				"query":   redactor.Redact(query),
 				"matches": out,
 			}, nil
 		},
@@ -482,7 +488,17 @@ func shouldIgnoreFile(name string) bool {
 	if name == "server" {
 		return true
 	}
+	if strings.HasPrefix(strings.ToLower(name), ".env") {
+		return true
+	}
 	return false
+}
+
+func toolRedactor(redactors []*redact.Redactor) *redact.Redactor {
+	if len(redactors) > 0 && redactors[0] != nil {
+		return redactors[0]
+	}
+	return redact.Default()
 }
 
 func min(a, b int) int {

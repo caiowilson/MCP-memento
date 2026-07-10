@@ -13,6 +13,7 @@ var defaultMCPEnv = map[string]string{
 	"MEMENTO_GIT_POLL_SECONDS":   "2",
 	"MEMENTO_GIT_DEBOUNCE_MS":    "500",
 	"MEMENTO_FS_DEBOUNCE_MS":     "500",
+	"MEMENTO_REDACTION_ENABLED":  "true",
 }
 
 func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {

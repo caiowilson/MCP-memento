@@ -17,8 +17,8 @@ This directory collects the main project documentation, including client setup, 
 ## MCP tools (current)
 
 - `repo_list_files` — list files under workspace root
-- `repo_read_file` — read file content (optionally line-bounded)
-- `repo_search` — substring search across files
+- `repo_read_file` — read redacted file content (optionally line-bounded)
+- `repo_search` — substring search across files with redacted snippets
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware)
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
@@ -35,6 +35,26 @@ This directory collects the main project documentation, including client setup, 
 On startup the server resolves the workspace root in this order: explicit `--root`/config, `CLAUDE_PROJECT_DIR` (set by Claude Code), MCP client `roots/list`, then the current working directory. It then builds a best-effort, on-disk index of that repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. `repo_switch_workspace` remains available as a manual override during a session.
 
 By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses a filesystem watcher to detect changes; if the watcher fails to start and the repo is a git repo, it falls back to `git status` polling. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (git polling first). See `docs/adr/ADRs.md`.
+
+## Secret redaction
+
+Memento redacts likely credentials before writing indexed chunks and before returning source content from `repo_read_file`, `repo_search`, and `repo_context`. Detection combines common credential patterns with high-entropy token detection. Private-key files and `.env*` files are excluded from indexing by default; `.env*` files are also omitted from listing and search, while an explicit `repo_read_file` call returns redacted content.
+
+Redaction is a defense-in-depth safeguard, not a replacement for keeping credentials out of repositories. Provider token formats can change, and entropy detection can produce false positives.
+
+Configuration:
+
+- `MEMENTO_REDACTION_ENABLED` (default `true`; set to `false` to opt out)
+- `MEMENTO_REDACTION_ENTROPY_ENABLED` (default `true`)
+- `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (default `4.3`)
+- `MEMENTO_REDACTION_HEX_ENTROPY_THRESHOLD` (default `3.5`)
+- `MEMENTO_REDACTION_MIN_TOKEN_LENGTH` (default `24`)
+- `MEMENTO_REDACTION_ADDITIONAL_PATTERNS` (JSON array of Go regular expressions to redact)
+- `MEMENTO_REDACTION_ALLOW_PATTERNS` (JSON array of Go regular expressions exempted from redaction for known fixtures or placeholders)
+
+Example: `MEMENTO_REDACTION_ADDITIONAL_PATTERNS='["INTERNAL-[A-Z0-9]{16}"]'`. Invalid JSON or regular expressions fail server startup rather than silently weakening protection.
+
+The redaction configuration is fingerprinted in the index manifest. On the first startup after this feature is installed, or whenever these settings change, Memento automatically removes the old chunk index and rebuilds it so previously persisted unredacted chunks are not retained. Explicit memory notes are unaffected.
 
 ## LLM usage
 
@@ -76,7 +96,7 @@ Default include/exclude rules (configurable in code):
 
 - Include by extension: `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.php`, `.md`, `.json`, `.yaml`, `.yml`
 - Include by high-signal path: `go.mod`, `go.sum`, `README*`, `Makefile`, `Dockerfile`, `.github/workflows/*`, `Taskfile.yml`
-- Exclude by pattern: `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.crt`, `*.der`, `*.ppk`, `id_rsa`, `id_ed25519`, `*.sqlite`, `*.db`, `*.bin`, `*.exe`
+- Exclude by pattern: `.env*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.crt`, `*.der`, `*.ppk`, `id_rsa`, `id_ed25519`, `*.sqlite`, `*.db`, `*.bin`, `*.exe`
 
 ## Repository layout (current)
 

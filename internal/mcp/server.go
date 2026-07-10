@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"memento-mcp/internal/indexing"
+	"memento-mcp/internal/redact"
 )
 
 type serverMode int
@@ -60,6 +61,7 @@ type Server struct {
 	idx                      *indexing.Indexer
 	mode                     serverMode
 	devLog                   bool
+	redactor                 *redact.Redactor
 
 	devLogFilePath    string
 	devLogFileErrOnce bool
@@ -87,6 +89,10 @@ type Config struct {
 }
 
 func NewServer(cfg Config) (*Server, error) {
+	redactor, err := redact.FromEnv()
+	if err != nil {
+		return nil, err
+	}
 	root, source, allowClientRootsFallback, err := resolveStartupWorkspaceRoot(cfg.Root)
 	if err != nil {
 		return nil, err
@@ -102,6 +108,7 @@ func NewServer(cfg Config) (*Server, error) {
 		root:                     absRoot,
 		rootSource:               source,
 		allowClientRootsFallback: allowClientRootsFallback,
+		redactor:                 redactor,
 	}
 
 	if cfg.Child {
@@ -211,16 +218,17 @@ func (s *Server) indexerConfig(rootAbs string) indexing.Config {
 		PollInterval:  time.Duration(pollSeconds) * time.Second,
 		MaxTotalBytes: int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
 		MaxFileBytes:  int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
+		Redactor:      s.redactor,
 	}
 }
 
 func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteStore) []Tool {
 	return []Tool{
 		newRepoListFilesTool(root),
-		newRepoReadFileTool(root),
-		newRepoSearchTool(root),
+		newRepoReadFileTool(root, s.redactor),
+		newRepoSearchTool(root, s.redactor),
 		newRepoRelatedFilesTool(root),
-		newRepoContextTool(root, idx),
+		newRepoContextTool(root, idx, s.redactor),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),
 		newRepoClearIndexTool(idx),

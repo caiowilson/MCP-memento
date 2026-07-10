@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"memento-mcp/internal/redact"
 )
 
 func TestIndexerIndexesAndSearches(t *testing.T) {
@@ -52,6 +55,84 @@ func TestIndexerIndexesAndSearches(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected a.go in results: %#v", res)
+	}
+}
+
+func TestIndexerRedactsPersistedChunksAndIgnoresEnvFiles(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	secret := "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+	if err := os.WriteFile(filepath.Join(root, "config.go"), []byte("package config\nconst API_KEY = \""+secret+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".env.local"), []byte("TOKEN="+secret+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := New(Config{RootAbs: root, StoreDir: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, err := idx.FileChunks("config.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 || !strings.Contains(chunks[0].Content, redact.Marker) || strings.Contains(chunks[0].Content, secret) {
+		t.Fatalf("expected persisted chunks to contain only a marker, got %#v", chunks)
+	}
+	if _, err := idx.FileChunks(".env.local"); err == nil {
+		t.Fatal("expected .env* files to be ignored by default")
+	}
+	persisted, err := os.ReadFile(idx.chunkFilePath(fileID("config.go")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(persisted), secret) {
+		t.Fatal("secret was written to the on-disk chunk file")
+	}
+}
+
+func TestIndexerPurgesChunksWhenRedactionConfigurationChanges(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.go"), []byte("package config\nconst password = \"legacy-secret\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := redact.New(redact.Config{Disabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := New(Config{RootAbs: root, StoreDir: store, Redactor: disabled})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	legacy.Start(ctx)
+	if err := legacy.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	chunkPath := legacy.chunkFilePath(fileID("config.go"))
+	if _, err := os.Stat(chunkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := New(Config{RootAbs: root, StoreDir: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(chunkPath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale chunk file to be purged, got %v", err)
+	}
+	if _, err := current.FileChunks("config.go"); !os.IsNotExist(err) {
+		t.Fatalf("expected stale manifest entries to be reset, got %v", err)
 	}
 }
 

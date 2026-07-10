@@ -66,6 +66,13 @@ func TestToolsListIncludesMetadata(t *testing.T) {
 	}
 }
 
+func TestNewServerRejectsInvalidRedactionConfiguration(t *testing.T) {
+	t.Setenv("MEMENTO_REDACTION_ADDITIONAL_PATTERNS", `["["]`)
+	if _, err := NewServer(Config{Root: t.TempDir(), Child: true}); err == nil {
+		t.Fatal("expected invalid redaction pattern to fail server startup")
+	}
+}
+
 func TestLargeResultToolsAdvertiseAnthropicMaxResultSize(t *testing.T) {
 	root := t.TempDir()
 	s := newBrokerServerForTest(t, root)

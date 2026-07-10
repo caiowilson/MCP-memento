@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"memento-mcp/internal/redact"
 )
 
 type Config struct {
@@ -29,6 +31,7 @@ type Config struct {
 	DenyGlobs        []string
 	ExtraIgnoreDirs  []string
 	ExtraIgnoreGlobs []string
+	Redactor         *redact.Redactor
 }
 
 type Status struct {
@@ -45,6 +48,7 @@ type Indexer struct {
 	dir         string
 	cfg         Config
 	ignoreRules *ignoreRules
+	redactor    *redact.Redactor
 
 	mu       sync.Mutex
 	manifest manifest
@@ -70,6 +74,9 @@ func New(cfg Config) (*Indexer, error) {
 	}
 	cfg.RootAbs = rootAbs
 	applyDefaults(&cfg)
+	if cfg.Redactor == nil {
+		cfg.Redactor = redact.Default()
+	}
 
 	dir := cfg.StoreDir
 	if dir == "" {
@@ -90,10 +97,11 @@ func New(cfg Config) (*Indexer, error) {
 	}
 
 	idx := &Indexer{
-		rootAbs: rootAbs,
-		dir:     dir,
-		cfg:     cfg,
-		reqCh:   make(chan request, 8),
+		rootAbs:  rootAbs,
+		dir:      dir,
+		cfg:      cfg,
+		redactor: cfg.Redactor,
+		reqCh:    make(chan request, 8),
 	}
 
 	rules, err := loadIgnoreRules(rootAbs)
@@ -102,8 +110,10 @@ func New(cfg Config) (*Indexer, error) {
 	}
 	idx.ignoreRules = rules
 
-	if err := idx.loadManifest(); err != nil {
-		// keep going with empty manifest
+	if err := idx.loadManifest(); err != nil || idx.manifest.RedactionFingerprint != idx.redactor.Fingerprint() {
+		if err := idx.resetIndexFiles(); err != nil {
+			return nil, err
+		}
 	}
 	return idx, nil
 }
@@ -560,7 +570,8 @@ func (i *Indexer) indexOne(abs, rel string, info os.FileInfo) (changed bool, del
 	hash := hex.EncodeToString(sum[:16])
 
 	id := fileID(rel)
-	chunks := ChunkFile(rel, guessLanguage(rel), string(b), i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
+	content := i.redactor.Redact(string(b))
+	chunks := ChunkFile(rel, guessLanguage(rel), content, i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
 	if err := i.writeChunksFile(id, chunks); err != nil {
 		return false, 0, err
 	}
@@ -617,6 +628,7 @@ func (i *Indexer) saveManifest() error {
 	i.mu.Lock()
 	i.manifest.Version = 1
 	i.manifest.Root = i.rootAbs
+	i.manifest.RedactionFingerprint = i.redactor.Fingerprint()
 	i.manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	b, err := json.MarshalIndent(i.manifest, "", "  ")
 	i.mu.Unlock()
@@ -678,11 +690,32 @@ func (i *Indexer) readChunksFile(id string) ([]Chunk, error) {
 }
 
 type manifest struct {
-	Version    int                  `json:"version"`
-	Root       string               `json:"root"`
-	UpdatedAt  string               `json:"updatedAt"`
-	TotalBytes int64                `json:"totalBytes"`
-	Files      map[string]fileEntry `json:"files"`
+	Version              int                  `json:"version"`
+	Root                 string               `json:"root"`
+	UpdatedAt            string               `json:"updatedAt"`
+	RedactionFingerprint string               `json:"redactionFingerprint"`
+	TotalBytes           int64                `json:"totalBytes"`
+	Files                map[string]fileEntry `json:"files"`
+}
+
+func (i *Indexer) resetIndexFiles() error {
+	filesDir := filepath.Join(i.dir, "files")
+	if err := os.RemoveAll(filesDir); err != nil {
+		return err
+	}
+	for _, name := range []string{"manifest.json", "manifest.json.tmp"} {
+		if err := os.Remove(filepath.Join(i.dir, name)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		return err
+	}
+	i.manifest = manifest{
+		RedactionFingerprint: i.redactor.Fingerprint(),
+		Files:                map[string]fileEntry{},
+	}
+	return nil
 }
 
 type fileEntry struct {
@@ -826,6 +859,7 @@ func applyDefaults(cfg *Config) {
 	}
 	if len(cfg.DenyGlobs) == 0 {
 		cfg.DenyGlobs = []string{
+			".env*",
 			"*.key",
 			"*.pem",
 			"*.p12",

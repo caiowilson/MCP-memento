@@ -10,9 +10,11 @@ import (
 	"strings"
 
 	"memento-mcp/internal/indexing"
+	"memento-mcp/internal/redact"
 )
 
-func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
+func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact.Redactor) Tool {
+	redactor := toolRedactor(redactors)
 	return Tool{
 		Name:        "repo_context",
 		Title:       "Get Repository Context",
@@ -242,6 +244,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					if oerr != nil || content == "" {
 						continue
 					}
+					content = redactor.Redact(content)
 					if maxTotalBytes > 0 && totalOutlineBytes+len(content) > maxTotalBytes {
 						outlineClamped = true
 						break
@@ -317,6 +320,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer) Tool {
 					if oerr != nil || outline == "" {
 						continue
 					}
+					outline = redactor.Redact(outline)
 					if maxTotalBytes > 0 && totalAutoBytes+len(outline) > maxTotalBytes {
 						autoClamped = true
 						break

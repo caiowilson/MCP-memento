@@ -194,6 +194,44 @@ func TestRepoReadFileLineBoundsSkipLongLine(t *testing.T) {
 	}
 }
 
+func TestRepoReadFileRedactsSecrets(t *testing.T) {
+	root := t.TempDir()
+	secret := "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+	if err := os.WriteFile(filepath.Join(root, "config.txt"), []byte("API_KEY="+secret+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := newRepoReadFileTool(root).Handler(context.Background(), rawJSON(t, map[string]any{"path": "config.txt"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := got.(map[string]any)
+	content := result["content"].(string)
+	if strings.Contains(content, secret) || !strings.Contains(content, "[REDACTED]") {
+		t.Fatalf("expected file content to be redacted, got %q", content)
+	}
+}
+
+func TestRepoReadFileRedactsQuotedSecretBeyondLookahead(t *testing.T) {
+	root := t.TempDir()
+	secret := strings.Repeat("a", 128*1024)
+	if err := os.WriteFile(filepath.Join(root, "config.txt"), []byte(`DATABASE_PASSWORD="`+secret+`"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := newRepoReadFileTool(root).Handler(context.Background(), rawJSON(t, map[string]any{
+		"path":     "config.txt",
+		"maxBytes": 128,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := got.(map[string]any)["content"].(string)
+	if strings.Contains(content, strings.Repeat("a", 20)) || !strings.Contains(content, "[REDACTED]") {
+		t.Fatalf("expected bounded read to redact an incomplete quoted value, got %q", content)
+	}
+}
+
 func TestRepoSearchDefaultSnippetBytes(t *testing.T) {
 	root := t.TempDir()
 	line := "needle " + strings.Repeat("x", defaultRepoSearchMaxSnippetBytes*2)
@@ -252,6 +290,57 @@ func TestRepoSearchTruncatedSnippetKeepsLateMatch(t *testing.T) {
 	}
 	if truncated, _ := matches[0]["snippetTruncated"].(bool); !truncated {
 		t.Fatalf("expected snippetTruncated=true, got %#v", matches[0])
+	}
+}
+
+func TestRepoSearchRedactsSecretsAndSkipsEnvFiles(t *testing.T) {
+	root := t.TempDir()
+	secret := "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+	for name, content := range map[string]string{
+		"config.go":  "package config\n// API_KEY=" + secret + "\n",
+		".env.local": "API_KEY=" + secret + "\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := newRepoSearchTool(root).Handler(context.Background(), rawJSON(t, map[string]any{"query": "API_KEY"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := got.(map[string]any)
+	matches := result["matches"].([]map[string]any)
+	if len(matches) != 1 || matches[0]["path"] != "config.go" {
+		t.Fatalf("expected only the source file match, got %#v", matches)
+	}
+	snippet := matches[0]["snippet"].(string)
+	if strings.Contains(snippet, secret) || !strings.Contains(snippet, "[REDACTED]") {
+		t.Fatalf("expected search snippet to be redacted, got %q", snippet)
+	}
+}
+
+func TestRepoSearchRedactsTruncatedQuotedSecret(t *testing.T) {
+	root := t.TempDir()
+	line := `DATABASE_PASSWORD="` + strings.Repeat("a", 2000) + `"`
+	if err := os.WriteFile(filepath.Join(root, "config.go"), []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := newRepoSearchTool(root).Handler(context.Background(), rawJSON(t, map[string]any{
+		"query":           "DATABASE_PASSWORD",
+		"maxSnippetBytes": 100,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := got.(map[string]any)["matches"].([]map[string]any)
+	if len(matches) != 1 {
+		t.Fatalf("expected one match, got %#v", matches)
+	}
+	snippet := matches[0]["snippet"].(string)
+	if strings.Contains(snippet, strings.Repeat("a", 20)) || !strings.Contains(snippet, "[REDACTED]") {
+		t.Fatalf("expected truncated search snippet to be redacted, got %q", snippet)
 	}
 }
 

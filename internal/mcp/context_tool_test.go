@@ -51,6 +51,29 @@ func setupContextTestRepo(t *testing.T) (string, *indexing.Indexer) {
 	return root, idx
 }
 
+func TestRepoContextOutlineRedactsSecrets(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	secret := "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+	if err := os.WriteFile(filepath.Join(root, "secret.ts"), []byte("export const API_KEY = \""+secret+"\";\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newRepoContextTool(root, idx).Handler(context.Background(), rawJSON(t, map[string]any{
+		"path": "secret.ts",
+		"mode": "outline",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), secret) || !strings.Contains(string(b), "[REDACTED]") {
+		t.Fatalf("expected outline response to be redacted, got %s", b)
+	}
+}
+
 // contextResultFiles extracts file paths from a repo_context result via JSON round-trip.
 func contextResultFiles(t *testing.T, result any) []string {
 	t.Helper()
