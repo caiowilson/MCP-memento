@@ -67,11 +67,15 @@ The redaction configuration is fingerprinted in the index manifest. On the first
 
 Defaults are sized to stay below Claude Code's roughly 10k-token MCP result warning in normal use:
 
-- `repo_context` defaults to `maxTotalBytes: 32000`.
+- `repo_context` defaults to `maxTokens: 7000`, using a conservative `ceil(UTF-8 bytes / 4)` estimate, with `maxTotalBytes: 32000` retained as a hard ceiling.
 - `repo_read_file` defaults to `maxBytes: 32000`.
 - `repo_search` caps each returned snippet to `maxSnippetBytes: 500`.
 
-Callers can still request larger results with the tool arguments. The `repo_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
+Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the server default, or pass `maxTokens` on an individual `repo_context` call. The token budget is the primary packing constraint; full-mode candidates are ordered by weighted relevance per estimated token, and an oversized chunk is skipped so smaller later candidates can still fit. Callers can still change the hard byte ceiling with `maxTotalBytes`.
+
+The `repo_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
+
+Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
 
 ## Retrieval evaluation
 

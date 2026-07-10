@@ -173,6 +173,7 @@ The server maintains a background code index on disk, but clients can still cont
 - `MEMENTO_INDEX_POLL_SECONDS` (default `10`)
 - `MEMENTO_INDEX_MAX_TOTAL_BYTES` (default `20971520`)
 - `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)
+- `MEMENTO_CONTEXT_MAX_TOKENS` (default `7000`; approximate primary budget for `repo_context`)
 - `MEMENTO_REDACTION_ENABLED` (default `true`; set to `false` to opt out)
 - `MEMENTO_REDACTION_ENTROPY_ENABLED` (default `true`)
 - `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (default `4.3`)

@@ -34,6 +34,7 @@ func repoContextToolDefinition() Tool {
 				"focus":             map[string]any{"type": "string", "description": "Optional query used to prioritize chunks (e.g. function/type name)."},
 				"maxFiles":          map[string]any{"type": "integer", "description": "Maximum number of files to include (default 10)."},
 				"maxChunksPerFile":  map[string]any{"type": "integer", "description": "Maximum chunks per file (default 2)."},
+				"maxTokens":         map[string]any{"type": "integer", "description": "Approximate content-token budget (default 7000, configurable with MEMENTO_CONTEXT_MAX_TOKENS)."},
 				"maxTotalBytes":     map[string]any{"type": "integer", "description": "Maximum total bytes across all returned chunks (default 32000)."},
 				"excludePaths":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Repo-relative paths to exclude from results. Use this to skip files already in your context from prior calls, avoiding duplicate content."},
 				"intent":            map[string]any{"type": "string", "description": "Optional high-level task intent. `navigate` returns a lighter outline view; `implement` and `review` return `auto`. Ignored when explicit `mode` is provided.", "enum": []any{"navigate", "implement", "review"}},

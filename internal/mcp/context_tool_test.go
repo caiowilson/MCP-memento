@@ -200,6 +200,41 @@ func TestRepoContextDefaultMaxTotalBytes(t *testing.T) {
 	if got, _ := limits["maxTotalBytes"].(int); got != defaultRepoContextMaxTotalBytes {
 		t.Fatalf("expected default maxTotalBytes=%d, got %#v", defaultRepoContextMaxTotalBytes, limits["maxTotalBytes"])
 	}
+	if got, _ := limits["maxTokens"].(int); got != defaultRepoContextMaxTokens {
+		t.Fatalf("expected default maxTokens=%d, got %#v", defaultRepoContextMaxTokens, limits["maxTokens"])
+	}
+	if got, _ := limits["usedTokens"].(int); got <= 0 || got > defaultRepoContextMaxTokens {
+		t.Fatalf("expected positive usedTokens within budget, got %#v", limits["usedTokens"])
+	}
+}
+
+func TestRepoContextFullModePacksSmallerCandidateAfterOversizedTarget(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	tool := newRepoContextTool(root, idx)
+
+	got, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"path":              "pkg/a.go",
+		"mode":              "full",
+		"maxTokens":         7,
+		"maxTotalBytes":     1_000_000,
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := contextResultFiles(t, got)
+	if len(paths) == 0 {
+		t.Fatal("expected a smaller related chunk to be packed after the target was rejected")
+	}
+	if paths[0] == "pkg/a.go" {
+		t.Fatalf("expected oversized target chunk to be rejected, got paths %v", paths)
+	}
+	limits := got.(map[string]any)["limits"].(map[string]any)
+	if clamped, _ := limits["clamped"].(bool); !clamped {
+		t.Fatalf("expected rejected target to set clamped=true: %#v", limits)
+	}
 }
 
 func TestRepoContextNoDuplicateChunks(t *testing.T) {

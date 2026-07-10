@@ -41,6 +41,10 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					"type":        "integer",
 					"description": "Maximum chunks per file (default 2).",
 				},
+				"maxTokens": map[string]any{
+					"type":        "integer",
+					"description": "Approximate content-token budget (default 7000, configurable with MEMENTO_CONTEXT_MAX_TOKENS).",
+				},
 				"maxTotalBytes": map[string]any{
 					"type":        "integer",
 					"description": "Maximum total bytes across all returned chunks (default 32000).",
@@ -111,6 +115,13 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 			maxChunksPerFile := 2
 			if f, ok := asFloat(args, "maxChunksPerFile"); ok && int(f) > 0 {
 				maxChunksPerFile = int(f)
+			}
+			maxTokens := envInt("MEMENTO_CONTEXT_MAX_TOKENS", defaultRepoContextMaxTokens)
+			if maxTokens <= 0 {
+				maxTokens = defaultRepoContextMaxTokens
+			}
+			if f, ok := asFloat(args, "maxTokens"); ok && int(f) > 0 {
+				maxTokens = int(f)
 			}
 			maxTotalBytes := defaultRepoContextMaxTotalBytes
 			if f, ok := asFloat(args, "maxTotalBytes"); ok && int(f) > 0 {
@@ -230,8 +241,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					Mode    string `json:"mode"`
 				}
 				entries := make([]outlineEntry, 0, len(paths))
-				totalOutlineBytes := 0
-				outlineClamped := false
+				budget := newContextBudget(maxTokens, maxTotalBytes)
 				for _, p := range paths {
 					ap := filepath.Join(root, p)
 					var content string
@@ -245,11 +255,9 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 						continue
 					}
 					content = redactor.Redact(content)
-					if maxTotalBytes > 0 && totalOutlineBytes+len(content) > maxTotalBytes {
-						outlineClamped = true
-						break
+					if !budget.tryAdd(content) {
+						continue
 					}
-					totalOutlineBytes += len(content)
 					entries = append(entries, outlineEntry{Path: p, Outline: content, Mode: resolvedMode})
 				}
 				out := map[string]any{
@@ -259,12 +267,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					"mode":     resolvedMode,
 					"resolved": resolved,
 					"files":    entries,
-					"limits": map[string]any{
-						"maxFiles":      maxFiles,
-						"maxTotalBytes": maxTotalBytes,
-						"usedBytes":     totalOutlineBytes,
-						"clamped":       outlineClamped,
-					},
+					"limits":   budget.limits(maxFiles, 0),
 				}
 				relatedPaths := make([]string, 0, len(entries))
 				for _, entry := range entries {
@@ -287,8 +290,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					Outline string           `json:"outline,omitempty"`
 				}
 				entries := make([]autoFileEntry, 0, len(paths))
-				totalAutoBytes := 0
-				autoClamped := false
+				budget := newContextBudget(maxTokens, maxTotalBytes)
 
 				// Target file: full chunks
 				for _, p := range paths {
@@ -299,14 +301,23 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					if cerr != nil || len(chunks) == 0 {
 						continue
 					}
-					selected := selectChunks(chunks, focusLower, maxChunksPerFile)
+					selected := selectChunks(chunks, focusLower, len(chunks))
+					packed := make([]indexing.Chunk, 0, len(selected))
 					for _, ch := range selected {
-						totalAutoBytes += len(ch.Content)
+						if len(packed) >= maxChunksPerFile {
+							break
+						}
+						if budget.tryAdd(ch.Content) {
+							packed = append(packed, ch)
+						}
+					}
+					if len(packed) == 0 {
+						continue
 					}
 					entries = append(entries, autoFileEntry{
 						Path:   p,
 						Mode:   "full",
-						Chunks: selected,
+						Chunks: packed,
 					})
 				}
 
@@ -321,11 +332,9 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 						continue
 					}
 					outline = redactor.Redact(outline)
-					if maxTotalBytes > 0 && totalAutoBytes+len(outline) > maxTotalBytes {
-						autoClamped = true
-						break
+					if !budget.tryAdd(outline) {
+						continue
 					}
-					totalAutoBytes += len(outline)
 					entries = append(entries, autoFileEntry{
 						Path:    p,
 						Mode:    "outline",
@@ -340,13 +349,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					"mode":     "auto",
 					"resolved": resolved,
 					"files":    entries,
-					"limits": map[string]any{
-						"maxFiles":         maxFiles,
-						"maxChunksPerFile": maxChunksPerFile,
-						"maxTotalBytes":    maxTotalBytes,
-						"usedBytes":        totalAutoBytes,
-						"clamped":          autoClamped,
-					},
+					"limits":   budget.limits(maxFiles, maxChunksPerFile),
 				}
 				relatedPaths := make([]string, 0, len(entries))
 				for _, entry := range entries {
@@ -366,8 +369,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 			}
 
 			files := make([]fileCtx, 0, len(paths))
-			totalBytes := 0
-			clamped := false
+			budget := newContextBudget(maxTokens, maxTotalBytes)
 
 			targetChunkWeight := 4
 			if focusLower != "" {
@@ -377,9 +379,8 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 			type candidate struct {
 				path   string
 				chunk  indexing.Chunk
-				score  int
-				weight int
-				bonus  int
+				signal int
+				tokens int
 			}
 
 			candidates := make([]candidate, 0, len(paths)*maxChunksPerFile)
@@ -388,7 +389,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				if err != nil {
 					continue
 				}
-				selected := selectChunks(chunks, focusLower, maxChunksPerFile)
+				selected := selectChunks(chunks, focusLower, len(chunks))
 				if len(selected) == 0 {
 					continue
 				}
@@ -405,18 +406,15 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					candidates = append(candidates, candidate{
 						path:   p,
 						chunk:  ch,
-						score:  score,
-						weight: weight,
-						bonus:  relationBonus,
+						signal: score*weight + relationBonus,
+						tokens: estimateTokens(ch.Content),
 					})
 				}
 			}
 
 			sort.Slice(candidates, func(i, j int) bool {
-				si := candidates[i].score*candidates[i].weight + candidates[i].bonus
-				sj := candidates[j].score*candidates[j].weight + candidates[j].bonus
-				if si != sj {
-					return si > sj
+				if cmp := compareSignalDensity(candidates[i].signal, candidates[i].tokens, candidates[j].signal, candidates[j].tokens); cmp != 0 {
+					return cmp > 0
 				}
 				if candidates[i].path != candidates[j].path {
 					return candidates[i].path < candidates[j].path
@@ -438,12 +436,9 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				if _, dup := emitted[ck]; dup {
 					continue
 				}
-				chBytes := len(c.chunk.Content)
-				if maxTotalBytes > 0 && totalBytes+chBytes > maxTotalBytes {
-					clamped = true
-					break
+				if !budget.tryAdd(c.chunk.Content) {
+					continue
 				}
-				totalBytes += chBytes
 				emitted[ck] = struct{}{}
 				perFile[c.path] = append(perFile[c.path], c.chunk)
 			}
@@ -467,13 +462,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				"mode":     resolvedMode,
 				"resolved": resolved,
 				"files":    files,
-				"limits": map[string]any{
-					"maxFiles":         maxFiles,
-					"maxChunksPerFile": maxChunksPerFile,
-					"maxTotalBytes":    maxTotalBytes,
-					"usedBytes":        totalBytes,
-					"clamped":          clamped,
-				},
+				"limits":   budget.limits(maxFiles, maxChunksPerFile),
 			}, nil
 		},
 	}
@@ -650,11 +639,14 @@ func repoContextOutputSchema() map[string]any {
 				"properties": map[string]any{
 					"maxFiles":         map[string]any{"type": "integer"},
 					"maxChunksPerFile": map[string]any{"type": "integer"},
+					"maxTokens":        map[string]any{"type": "integer"},
+					"usedTokens":       map[string]any{"type": "integer"},
+					"tokenEstimator":   map[string]any{"type": "string"},
 					"maxTotalBytes":    map[string]any{"type": "integer"},
 					"usedBytes":        map[string]any{"type": "integer"},
 					"clamped":          map[string]any{"type": "boolean"},
 				},
-				"required": []any{"maxFiles", "maxTotalBytes", "usedBytes", "clamped"},
+				"required": []any{"maxFiles", "maxTokens", "usedTokens", "tokenEstimator", "maxTotalBytes", "usedBytes", "clamped"},
 			},
 			"suggestedNextCall": map[string]any{
 				"type": []any{"object", "null"},

@@ -3,6 +3,7 @@ package mcp
 const (
 	defaultAnthropicMaxResultSizeChars = 500_000
 
+	defaultRepoContextMaxTokens      = 7_000
 	defaultRepoContextMaxTotalBytes  = 32_000
 	defaultRepoReadFileMaxBytes      = 32_000
 	defaultRepoSearchMaxSnippetBytes = 500
