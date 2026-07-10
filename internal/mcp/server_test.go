@@ -113,6 +113,26 @@ func TestLargeResultToolsAdvertiseAnthropicMaxResultSize(t *testing.T) {
 	}
 }
 
+func TestToolDescriptionsFitToolSearchLimit(t *testing.T) {
+	root := t.TempDir()
+	s := newBrokerServerForTest(t, root)
+
+	if len(s.tools) == 0 {
+		t.Fatal("expected registered tools")
+	}
+	for _, tool := range s.tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			description := tool.Description
+			if strings.TrimSpace(description) == "" {
+				t.Fatal("tool description must not be empty")
+			}
+			if len(description) > toolSearchDescriptionLimitBytes {
+				t.Fatalf("tool description exceeds %d-byte Tool Search limit: %d bytes", toolSearchDescriptionLimitBytes, len(description))
+			}
+		})
+	}
+}
+
 func TestCallToolReturnsStructuredContent(t *testing.T) {
 	root, idx := setupContextTestRepo(t)
 	s := &Server{
@@ -335,7 +355,7 @@ func TestSwitchWorkspaceNoopWhenSameRoot(t *testing.T) {
 	}
 }
 
-func TestInitializeReturnsInstructions(t *testing.T) {
+func TestInitializeReturnsToolSearchInstructions(t *testing.T) {
 	root := t.TempDir()
 	s := newBrokerServerForTest(t, root)
 	result := s.initializeResult(json.RawMessage(`{"protocolVersion":"2024-11-05"}`))
@@ -347,13 +367,44 @@ func TestInitializeReturnsInstructions(t *testing.T) {
 	if !ok || strings.TrimSpace(str) == "" {
 		t.Fatal("instructions must be a non-empty string")
 	}
-	if len(str) > 2048 {
-		t.Fatalf("instructions exceed 2KB limit: %d chars", len(str))
+	if !strings.HasPrefix(str, "Use when ") {
+		t.Fatalf("instructions must lead with use-when guidance, got %q", str)
+	}
+	if len([]byte(str)) >= toolSearchDescriptionLimitBytes {
+		t.Fatalf("instructions must stay under %d bytes: %d bytes", toolSearchDescriptionLimitBytes, len([]byte(str)))
+	}
+	for _, category := range []string{"Repository context:", "Durable repo-scoped memory:"} {
+		if !strings.Contains(str, category) {
+			t.Errorf("instructions missing task category %q", category)
+		}
 	}
 	for _, tool := range s.tools {
 		if !strings.Contains(str, tool.Name) {
 			t.Errorf("instructions missing registered tool %q", tool.Name)
 		}
+	}
+}
+
+func TestServeStdioInitializeIncludesToolSearchInstructions(t *testing.T) {
+	root := t.TempDir()
+	s := newBrokerServerForTest(t, root)
+	input := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}` + "\n")
+
+	var out bytes.Buffer
+	if err := s.ServeStdio(context.Background(), input, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	var response struct {
+		Result struct {
+			Instructions string `json:"instructions"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Result.Instructions != serverInstructions {
+		t.Fatalf("wire initialize instructions mismatch:\n%s", response.Result.Instructions)
 	}
 }
 

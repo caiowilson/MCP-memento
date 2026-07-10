@@ -925,6 +925,23 @@ func workspacePathFromFileURI(raw string) (string, bool) {
 	return path, true
 }
 
+const toolSearchDescriptionLimitBytes = 2 * 1024
+
+const serverInstructions = `Use when a coding task needs repository-specific context or when durable repo knowledge should carry across sessions.
+
+Repository context:
+- Start with repo_context for an active file; set intent to navigate, implement, or review.
+- Use repo_search to find text or symbols across workspace files, repo_read_file for an exact path, repo_list_files to map structure, and repo_related_files for imports, importers, same-directory files, and semantic references.
+- If context looks stale or incomplete, use repo_index_status, repo_reindex, or repo_index_debug. repo_clear_index is destructive.
+- repo_switch_workspace retargets the session only when you intentionally move to another repository. Most clients select the workspace automatically.
+
+Durable repo-scoped memory:
+- Use memory_search when prior decisions or handoffs may matter; use memory_list to enumerate notes.
+- Use memory_upsert to preserve durable decisions, conventions, findings, and handoffs.
+- Use memory_delete for one confirmed key. memory_clear is destructive and erases all notes for the repository.
+
+Prefer repo_context over broad file reads when beginning implementation or review. Save only information that should remain useful in future sessions.`
+
 func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 	protocolVersion := "2024-11-05"
 
@@ -935,29 +952,6 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		protocolVersion = params.ProtocolVersion
 	}
 
-	const instructions = `memento-mcp gives you persistent memory and deep repo awareness. Use these tools:
-
-REPO TOOLS (read the codebase):
-- repo_context: Rich context about the repo (README, structure, key files). Start here on unfamiliar codebases.
-- repo_search: Full-text search across indexed files. Use for finding symbols, patterns, or text.
-- repo_read_file: Read a specific file. Use when you know the exact path.
-- repo_list_files: List files in a directory. Use to explore repo structure.
-- repo_related_files: Find files related to a given file (imports, tests, etc).
-- repo_index_status: Check indexing status. Use when search results seem incomplete.
-- repo_reindex: Trigger a full re-index. Use when the index seems stale.
-- repo_clear_index: Remove all indexed chunks. Destructive — use only for a clean slate.
-- repo_index_debug: Return index debug info. Use when diagnosing indexing issues.
-- repo_switch_workspace: Switch the active workspace root. Use when working across multiple repos.
-
-MEMORY TOOLS (persist information across sessions):
-- memory_upsert: Save a durable note scoped to this repo. Use to record decisions or context.
-- memory_search: Retrieve saved notes by query or tag. Use at session start or when context is needed.
-- memory_list: List all saved notes with keys and metadata. Use to enumerate notes or find a key.
-- memory_delete: Delete a note by key. Use memory_list first to confirm the key. Errors if not found.
-- memory_clear: Erase all notes for this repo. Destructive — use only when starting fresh.
-
-Tip: use repo tools at the start of any coding task; use memory tools to persist decisions across sessions.`
-
 	return map[string]any{
 		"protocolVersion": protocolVersion,
 		"serverInfo": map[string]any{
@@ -967,7 +961,7 @@ Tip: use repo tools at the start of any coding task; use memory tools to persist
 		"capabilities": map[string]any{
 			"tools": map[string]any{},
 		},
-		"instructions": instructions,
+		"instructions": serverInstructions,
 	}
 }
 
