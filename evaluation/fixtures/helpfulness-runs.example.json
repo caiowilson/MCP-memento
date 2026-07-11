@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "observations": [
+    {
+      "taskID": "discover-workspace-resolution",
+      "condition": "baseline",
+      "outcome": "failure",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget",
+      "configurationFingerprint": "sha256:example-baseline-tools",
+      "modelFingerprint": "sha256:example-model-settings",
+      "metrics": {"elapsedTimeMs": 1200, "turns": 4, "tokens": {"input": 1000, "output": 200, "total": 1200}, "toolContext": {"toolCalls": 5, "contextReads": 3, "contextBytes": 9000}}
+    },
+    {
+      "taskID": "discover-workspace-resolution",
+      "condition": "memento",
+      "outcome": "success",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget",
+      "configurationFingerprint": "sha256:example-memento-tools",
+      "modelFingerprint": "sha256:example-model-settings",
+      "metrics": {"elapsedTimeMs": 900, "turns": 2, "tokens": {"input": 700, "output": 180, "total": 880}, "toolContext": {"toolCalls": 3, "contextReads": 2, "contextBytes": 5000}}
+    },
+    {
+      "taskID": "onboard-local-validation",
+      "condition": "baseline",
+      "outcome": "success",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget-2",
+      "configurationFingerprint": "sha256:example-baseline-tools",
+      "modelFingerprint": "sha256:example-model-settings",
+      "metrics": {"elapsedTimeMs": 300, "turns": 1, "tokens": {}, "toolContext": {"toolCalls": 1, "contextReads": 1, "contextBytes": 1000}}
+    },
+    {
+      "taskID": "onboard-local-validation",
+      "condition": "memento",
+      "outcome": "success",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget-2",
+      "configurationFingerprint": "sha256:example-memento-tools",
+      "modelFingerprint": "sha256:example-model-settings",
+      "metrics": {"elapsedTimeMs": 300, "turns": 1, "tokens": {}, "toolContext": {"toolCalls": 1, "contextReads": 1, "contextBytes": 1000}}
+    }
+  ]
+}

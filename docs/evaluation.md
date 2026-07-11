@@ -13,7 +13,7 @@ Run every task twice against the same checkout:
 
 Keep the prompt, starting state, model, model settings, tokenizer configuration, budgets, and validation rubric identical. Do not compare runs across a model or fixture revision without clearly recording that change.
 
-The contract currently describes tasks; it does not execute agents. The automated runner will consume the same fixture format and write the reports used by CI.
+The local runner consumes the same fixture format. It runs every selected task in baseline then Memento order through a `TaskExecutor`, applies local command/evidence validators to each condition's private workspace, and writes deterministic JSON plus Markdown. A real adapter must prepare isolated but revision-matched workspaces for its two conditions. The included `RecordedExecutor` accepts locally captured agent telemetry so the runner is deterministic in CI and does not need credentials or network access; a client can implement `TaskExecutor` to execute an actual local agent.
 
 ## Task fixtures
 
@@ -44,9 +44,21 @@ Aggregate token savings from paired total-token deltas, not an average of per-ta
 
 ## Privacy and review
 
-The benchmark is local and fixture-backed. It must not upload source code, paths, prompts, queries, notes, or memory contents. Any future user feedback remains opt-in and aggregate-only.
+The benchmark is local and fixture-backed. It makes no network calls and reports only fingerprints, outcomes, usage telemetry, and validator statuses: never source code, paths, prompts, queries, notes, memory, command output, or agent responses. Any future user feedback remains opt-in and aggregate-only.
 
-For qualitative tasks, export only the response and declared rubric to a blinded reviewer. The reviewer must not know whether the response came from the baseline or Memento condition.
+For qualitative tasks, `NewBlindedReviewItem` provides a local, condition-free export shape with an opaque review ID, rubric, and caller-supplied redacted response. The reviewer must not know whether the response came from the baseline or Memento condition. The runner neither writes these exports nor transmits them; the caller is responsible for redaction and any later review channel.
+
+## Run a selected local fixture set
+
+Capture local paired observations using your client adapter, then run this deterministic example fixture set:
+
+```bash
+make helpfulness-eval HELPFULNESS_ARGS='-tasks discover-workspace-resolution,onboard-local-validation -runs evaluation/fixtures/helpfulness-runs.example.json -out /tmp/memento-helpfulness-report'
+```
+
+The command writes `helpfulness-report.json` and `helpfulness-report.md` under the selected output directory and also prints the Markdown summary. Every observation must provide a task ID, condition, success/failure/invalid outcome, a matched-run fingerprint (model, prompt, budgets, and starting state), a condition configuration fingerprint, elapsed milliseconds, turns, and aggregate tool/context counters. Input, output, and total token fields are optional; omitted fields remain explicitly `unavailable` in the report.
+
+Invalid pairs (including a mismatched matched-run fingerprint) are retained in the per-task JSON but excluded from aggregate deltas. Successful and failed matched runs count in outcome deltas. Aggregate paired deltas include a deterministic normal-approximation 95% confidence interval when at least five pairs supply a metric.
 
 ## Validate the contract
 

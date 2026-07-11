@@ -13,7 +13,7 @@ WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test plugin-test retrieval-eval install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test plugin-test retrieval-eval helpfulness-eval install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
@@ -22,6 +22,7 @@ help:
 	@printf "  test      Run Go tests and the retrieval evaluation report\n"
 	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
+	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
 	@printf "  install   Install to $(PREFIX)/bin/$(BIN_NAME)\n"
 	@printf "  install-dev Install to $$HOME/.local/bin/$(BIN_NAME)\n"
 	@printf "  uninstall Remove $(PREFIX)/bin/$(BIN_NAME)\n"
@@ -63,6 +64,9 @@ plugin-test:
 
 retrieval-eval:
 	go run ./cmd/retrieval-eval
+
+helpfulness-eval:
+	go run ./cmd/helpfulness-eval $(HELPFULNESS_ARGS)
 
 install: build
 	@install -d $(PREFIX)/bin
