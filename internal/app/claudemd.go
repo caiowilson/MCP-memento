@@ -19,23 +19,34 @@ const (
 // between them is replaced in place and everything outside the markers is
 // left untouched. Otherwise the block is appended, separated from any
 // existing content by exactly one blank line.
-func upsertClaudeLocalMD(existing []byte, block string) []byte {
+//
+// If the file contains an unpaired marker — a start marker with no end
+// marker after it, or an end marker with no start marker at all — this
+// returns an error instead of writing anything, since guessing at intent
+// risks silently dropping user content or duplicating the block forever.
+func upsertClaudeLocalMD(existing []byte, block string) ([]byte, error) {
 	block = strings.TrimRight(block, "\n") + "\n"
 	content := string(existing)
 
 	start := strings.Index(content, claudeMDMarkerStart)
-	end := strings.Index(content, claudeMDMarkerEnd)
-
-	if start >= 0 && end >= start {
-		end += len(claudeMDMarkerEnd)
-		return []byte(content[:start] + block + strings.TrimPrefix(content[end:], "\n"))
+	if start < 0 {
+		if strings.Contains(content, claudeMDMarkerEnd) {
+			return nil, fmt.Errorf("%s contains an unpaired memento-mcp marker; fix or remove the marker line, then rerun", claudeLocalMDFileName)
+		}
+		prefix := strings.TrimRight(content, "\n")
+		if prefix == "" {
+			return []byte(block), nil
+		}
+		return []byte(prefix + "\n\n" + block), nil
 	}
 
-	prefix := strings.TrimRight(content, "\n")
-	if prefix == "" {
-		return []byte(block)
+	relEnd := strings.Index(content[start+len(claudeMDMarkerStart):], claudeMDMarkerEnd)
+	if relEnd < 0 {
+		return nil, fmt.Errorf("%s contains an unpaired memento-mcp marker; fix or remove the marker line, then rerun", claudeLocalMDFileName)
 	}
-	return []byte(prefix + "\n\n" + block)
+	end := start + len(claudeMDMarkerStart) + relEnd + len(claudeMDMarkerEnd)
+
+	return []byte(content[:start] + block + strings.TrimPrefix(content[end:], "\n")), nil
 }
 
 const claudeLocalMDFileName = "CLAUDE.local.md"
@@ -77,7 +88,10 @@ func runClaudeMD(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 
-	updated := upsertClaudeLocalMD(existing, recommendedWorkflowBlock)
+	updated, err := upsertClaudeLocalMD(existing, recommendedWorkflowBlock)
+	if err != nil {
+		return err
+	}
 
 	if err := os.WriteFile(path, updated, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
