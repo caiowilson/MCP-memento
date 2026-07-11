@@ -51,10 +51,11 @@ jobs:
           cd dist
           sha256sum "$(basename "$asset")" > "$(basename "$asset").sha256"
 
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: dist/*
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
 
   package-deb:
     runs-on: ubuntu-latest
@@ -111,10 +112,11 @@ jobs:
           mkdir -p dist
           dpkg-deb --build "$PKG_ROOT" "dist/memento-mcp_${VERSION}_linux_${DEB_ARCH}.deb"
 
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: dist/*.deb
+          name: deb-${{ matrix.goarch }}
+          path: dist/*.deb
 
   package-macos-pkg:
     runs-on: macos-latest
@@ -163,7 +165,24 @@ jobs:
             --install-location "/" \
             "dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
 
-      - name: Upload release asset
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.goarch }}
+          path: dist/*.pkg
+
+  publish:
+    needs: [build-binaries, package-deb, package-macos-pkg]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.pkg
+          files: dist/*
