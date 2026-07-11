@@ -1,6 +1,12 @@
 package app
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestUpsertClaudeLocalMD(t *testing.T) {
 	tests := []struct {
@@ -48,5 +54,75 @@ func TestUpsertClaudeLocalMD(t *testing.T) {
 				t.Errorf("upsertClaudeLocalMD() = %q, want %q", string(got), tt.want)
 			}
 		})
+	}
+}
+
+func TestRunClaudeMDPrintOnly(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := runClaudeMD([]string{"--print-only"}, &stdout, &stderr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+	if stdout.String() != recommendedWorkflowBlock {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), recommendedWorkflowBlock)
+	}
+}
+
+func TestRunClaudeMDWritesFile(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+
+	var stdout, stderr bytes.Buffer
+	if err := runClaudeMD(nil, &stdout, &stderr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "CLAUDE.local.md"))
+	if err != nil {
+		t.Fatalf("expected file to be written: %v", err)
+	}
+	if string(got) != recommendedWorkflowBlock {
+		t.Fatalf("file contents = %q, want %q", string(got), recommendedWorkflowBlock)
+	}
+	if !strings.Contains(stdout.String(), "CLAUDE.local.md") {
+		t.Fatalf("expected confirmation message, got %q", stdout.String())
+	}
+}
+
+func TestRunClaudeMDIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+
+	var stdout, stderr bytes.Buffer
+	if err := runClaudeMD(nil, &stdout, &stderr); err != nil {
+		t.Fatalf("unexpected error on first run: %v", err)
+	}
+	stdout.Reset()
+	if err := runClaudeMD(nil, &stdout, &stderr); err != nil {
+		t.Fatalf("unexpected error on second run: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "CLAUDE.local.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != recommendedWorkflowBlock {
+		t.Fatalf("file contents after rerun = %q, want %q (no duplication)", string(got), recommendedWorkflowBlock)
 	}
 }

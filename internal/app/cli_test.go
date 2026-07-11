@@ -63,3 +63,26 @@ func TestHandleCLICommandPrintGuidance(t *testing.T) {
 		t.Fatalf("expected repo_context guidance, got %q", stdout.String())
 	}
 }
+
+func TestHandleCLICommandClaudeMD(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	handled, exitCode := handleCLICommand([]string{"claude-md", "--print-only"}, &stdout, &stderr)
+	if !handled {
+		t.Fatal("expected command to be handled")
+	}
+	if exitCode != 0 {
+		t.Fatalf("expected exitCode=0, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Recommended workflow") {
+		t.Fatalf("expected guidance block, got %q", stdout.String())
+	}
+}
+
+func TestCLIHelpTextMentionsClaudeMD(t *testing.T) {
+	if !strings.Contains(cliHelpText(), "claude-md") {
+		t.Fatal("expected help text to mention claude-md")
+	}
+}
