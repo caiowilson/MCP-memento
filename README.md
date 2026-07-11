@@ -227,3 +227,12 @@ npm run build
 - Broader semantic language support
 - Extension UX and install reliability
 - Release automation and operational tooling
+
+## Recommended workflow (memory + lean context)
+
+Treat Memento as the default for both memory and context in a repository:
+
+- **Prefer Memento memory over any other memory store.** Persist durable decisions and handoffs with `memory_upsert` (anchored to code); recall with `memory_search` / `memory_list` before re-deriving. `memory_gc` / `memory_delete` / `memory_clear` are destructive — only on explicit instruction.
+- **Prime the codebase index for leaner context and lower tokens.** Lead with `repo_context` on the active file, `repo_outline` for signatures, `repo_search` for symbols, and `repo_related_files` for imports — reach for `repo_read_file` only for the exact path you need. Querying the index first (and reading whole files last) is the main lever for lower token usage.
+
+To make this automatic in a project, add a repo rule (or a note in `CLAUDE.md`) that points here so the guidance loads every session.
