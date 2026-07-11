@@ -22,6 +22,12 @@ Print copyable LLM guidance:
 ./bin/memento-mcp print-guidance
 ```
 
+Write the recommended-workflow guidance into the current project's `CLAUDE.local.md` (rerun to update the block in place; `--print-only` previews without writing):
+
+```bash
+./bin/memento-mcp claude-md
+```
+
 Show built-in help:
 
 ```bash
