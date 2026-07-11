@@ -29,6 +29,12 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 			return true, 1
 		}
 		return true, 0
+	case "claude-md":
+		if err := runClaudeMD(args[1:], stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "claude-md: %v\n", err)
+			return true, 1
+		}
+		return true, 0
 	case "print-config":
 		exe, err := os.Executable()
 		if err != nil {
@@ -97,6 +103,9 @@ Usage:
                             Configure specific clients (non-interactive)
   memento-mcp setup --print-only
                             Print config to stdout without writing files
+  memento-mcp claude-md     Write or update Memento guidance in ./CLAUDE.local.md
+  memento-mcp claude-md --print-only
+                            Print the guidance block without writing
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing
