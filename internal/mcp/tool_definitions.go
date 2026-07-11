@@ -6,6 +6,7 @@ func leafToolDefinitionsFor(root string) []Tool {
 		cloneToolDefinition(newRepoReadFileTool(root)),
 		cloneToolDefinition(newRepoSearchTool(root)),
 		cloneToolDefinition(newRepoRelatedFilesTool(root)),
+		repoOutlineToolDefinition(),
 		repoContextToolDefinition(),
 		repoIndexStatusToolDefinition(),
 		repoReindexToolDefinition(),

@@ -64,6 +64,7 @@ func TestServerExposesExpectedTools(t *testing.T) {
 		"repo_read_file",
 		"repo_search",
 		"repo_related_files",
+		"repo_outline",
 		"repo_context",
 		"repo_switch_workspace",
 		"repo_index_status",

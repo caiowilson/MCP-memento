@@ -59,7 +59,7 @@ func TestHandleCLICommandPrintGuidance(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "repo_context") || !strings.Contains(stdout.String(), "intent") {
+	if !strings.Contains(stdout.String(), "repo_context") || !strings.Contains(stdout.String(), "repo_outline") || !strings.Contains(stdout.String(), "intent") {
 		t.Fatalf("expected repo_context guidance, got %q", stdout.String())
 	}
 }

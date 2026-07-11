@@ -20,6 +20,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_read_file` — read redacted file content (optionally line-bounded)
 - `repo_search` — substring search across files with redacted snippets
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware)
+- `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
@@ -84,10 +85,27 @@ The redaction configuration is fingerprinted in the index manifest. On the first
 
 ## LLM usage
 
+- Use `repo_outline` when you need a file's structure before deciding which source ranges to read.
 - Prefer `repo_context` with `intent` for normal workflows.
 - Use `intent: "navigate"` for lighter outlines and `intent: "implement"` or `intent: "review"` for mixed full+outline context.
 - Omit `mode` unless you need to force `full`, `outline`, or `summary`.
 - Existing callers that already send `mode` are unchanged.
+
+## Extractive outlines
+
+`repo_outline` is the discoverable, low-cost structural view. It returns package/module metadata and an ordered `symbols` array. Each symbol includes `name`, `kind`, `signature`, `startLine`, `endLine`, and optional `documentation` and `container`. Function and method bodies are never returned.
+
+Go outlines use the standard Go parser and include complete function, method, struct, interface, type, constant, and variable declarations. TypeScript/JavaScript and PHP use local structural scanners that preserve multiline signatures, class methods, properties, documentation, imports/includes, and namespaces without evaluating code. Other languages return a bounded header plus recognizable declaration lines with `fallback: true`; unsupported syntax does not fail the call.
+
+Input options:
+
+- `includeDocumentation` (default `true`)
+- `includeImports` (default `true`)
+- `maxSymbols` (default `200`, maximum `1000`; preserves source order)
+
+The response reports `sourceBytes` and `outlineBytes` so clients and tests can verify the structural view is materially smaller than the source. Individual documentation fields are capped at 2048 bytes, source files default to a 1 MiB safety limit configurable through `MEMENTO_OUTLINE_MAX_FILE_BYTES`, and all returned text passes through the same redactor as repository reads.
+
+Cross-file edges intentionally remain in `repo_related_files`; use that tool to choose neighboring files, then call `repo_outline` on the files whose shape you need. Use `repo_read_file` or `repo_context` with full content only after the outline identifies the relevant symbols.
 
 ## Output limits
 

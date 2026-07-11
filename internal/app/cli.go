@@ -77,6 +77,7 @@ func buildMCPServersConfigJSON(command string) (string, error) {
 
 func clientGuidanceText() string {
 	return `When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+Use repo_outline when you need signatures and file structure without implementation bodies.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
 If repo_context returns suggestedNextCall, prefer following it for a deeper read without repeating context.
 When you change repositories in the same MCP session, call repo_switch_workspace with the new root path instead of restarting.

@@ -16,6 +16,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0004: Automatic codebase indexing (“memorization”) (Accepted, 2026-01-17)
 - ADR 0005: Git-first incremental indexing (with filesystem fallback) (Proposed, 2026-01-17)
 - ADR 0006: Opt-in local hybrid retrieval with Ollama (Accepted, 2026-07-10)
+- ADR 0007: Standalone extractive repository outlines (Accepted, 2026-07-10)
 
 ---
 
@@ -468,6 +469,40 @@ The persisted chunk index uses exact substring scoring. It is fast and predictab
 - [Ollama embedding API](https://docs.ollama.com/api/embed)
 - [Ollama embedding guidance](https://docs.ollama.com/capabilities/embeddings)
 - [nomic-embed-text model](https://registry.ollama.com/library/nomic-embed-text)
+
+---
+
+## ADR 0007: Standalone extractive repository outlines
+
+- Status: Accepted
+- Date: 2026-07-10
+
+### Context
+
+Agents often need a file's declarations and signatures before they need implementation bodies. `repo_context` already has string-based outline modes, but those modes are hidden behind an enum and mix structural navigation with related-file context assembly. Tool Search works best when the capability is named directly, and callers need stable structured fields to follow line references programmatically.
+
+### Decision
+
+- Add a standalone read-only `repo_outline` tool for one repository file.
+- Return package/module metadata, imports, bounded headers, and structured symbols containing name, kind, signature, documentation, container, and line range.
+- Parse Go with `go/ast`; use local comment/string-aware structural scanning for TypeScript/JavaScript and PHP; degrade to bounded headers and declaration heuristics for other languages.
+- Exclude function and method bodies in every supported parser and sanitize fallback declaration/header lines.
+- Preserve source order, cap symbol and documentation output, report source/outline byte counts, and apply repository redaction to every returned text field.
+- Keep cross-file relationship edges in `repo_related_files`. Callers compose relationship discovery with per-file outlines instead of receiving a second graph representation.
+- Keep existing `repo_context` outline and summary modes for compatibility.
+
+### Consequences
+
+- Tool Search can surface structural retrieval directly, and callers can inspect signatures without spending a full context budget.
+- The output is machine-readable and line-addressable instead of a single language-specific string.
+- TypeScript/JavaScript and PHP extraction remains intentionally conservative and dependency-free; unusual syntax degrades by omitting a symbol rather than risking implementation-body leakage.
+- A new tool and schema must be kept synchronized across leaf and broker registrations and server instructions.
+
+### Alternatives considered
+
+- Add only a `granularity` flag to `repo_context`: smaller API surface, but poor Tool Search discoverability and continued coupling to relationship assembly.
+- Replace existing context outline modes: cleaner long term, but breaks established callers without improving the standalone tool.
+- Add tree-sitter: richer cross-language parsing, but adds native/runtime distribution complexity that is disproportionate to extractive signatures.
 
 ---
 

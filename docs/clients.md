@@ -135,6 +135,7 @@ Use the output of `print-guidance` directly, or paste the following into client 
 
 ```text
 When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+Use repo_outline when you need signatures and file structure without implementation bodies.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
 If repo_context returns suggestedNextCall, prefer following it for a deeper read without repeating context.
 When you change repositories in the same MCP session, call repo_switch_workspace with the new root path instead of restarting.
@@ -154,6 +155,17 @@ The same three tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` 
 Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the default token budget, or pass `maxTokens` to one `repo_context` call. Responses report `usedTokens`, `usedBytes`, and the estimator name under `limits`.
 
 ## Example tool calls
+
+Inspect a file's structure without reading its bodies:
+
+```json
+{
+  "name": "repo_outline",
+  "arguments": {
+    "path": "internal/mcp/context_tool.go"
+  }
+}
+```
 
 Navigate:
 

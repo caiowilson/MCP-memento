@@ -47,6 +47,7 @@ export function buildSnippetMarkdown(serverPath: string, extraEnv: Record<string
   const asMcpServersMap = JSON.stringify({ mcpServers: { "memento-mcp": entry } }, null, 2);
   const llmGuidance = [
     "When using `memento-mcp`, start with `repo_context` and set `intent` to `navigate`, `implement`, or `review`.",
+    "Use `repo_outline` when you need signatures and file structure without implementation bodies.",
     "Omit `mode` unless you need to force a low-level output shape such as `full`, `outline`, or `summary`.",
     "If the tool returns `suggestedNextCall`, prefer following it for a deeper read without repeating context."
   ].join(" ");

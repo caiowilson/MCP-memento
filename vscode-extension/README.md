@@ -8,7 +8,7 @@ What it does:
 - Generates an MCP server config snippet you can paste into your VS Code `mcp.json`.
 - Configures MCP for your workspace or globally by writing/merging an MCP config entry.
 - Shows a status bar item with the resolved server path and install state.
-- Includes copyable LLM guidance that recommends `repo_context` with `intent` for new callers.
+- Includes copyable LLM guidance that recommends `repo_outline` for structure and `repo_context` with `intent` for broader context.
 
 ## Development
 

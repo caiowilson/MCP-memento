@@ -76,6 +76,7 @@ printf '%s\n' \
 
 - Repo context tools (`repo_*`) for listing, reading, and searching files.
 - `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
+- `repo_outline` to inspect symbols, signatures, documentation, and line ranges without function bodies.
 - `repo_context` to fetch a single “context window” with intent-aware routing (uses automatic indexing in the background).
 - `repo_switch_workspace` to retarget the server to another repository/workspace root at runtime (no process restart).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
@@ -100,6 +101,8 @@ Call `repo_switch_workspace` with a new root path:
 ### LLM usage recipe
 
 Prefer `repo_context` with `intent` for new callers. Keep explicit `mode` only for advanced overrides.
+
+Use `repo_outline` first when the caller only needs the shape of one file. Follow its line ranges with `repo_read_file`, or switch to `repo_context` when related-file context is needed.
 
 Navigate or explain:
 
@@ -174,6 +177,7 @@ The server maintains a background code index on disk, but clients can still cont
 - `MEMENTO_INDEX_MAX_TOTAL_BYTES` (default `20971520`)
 - `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)
 - `MEMENTO_CONTEXT_MAX_TOKENS` (default `7000`; approximate primary budget for `repo_context`)
+- `MEMENTO_OUTLINE_MAX_FILE_BYTES` (default `1048576`; source file safety limit for `repo_outline`)
 - `MEMENTO_SEMANTIC_ENABLED` (default `false`; requires a separately installed local Ollama runtime)
 - `MEMENTO_EMBEDDING_MODEL` (default `nomic-embed-text:v1.5`; pull it with Ollama before enabling)
 - `MEMENTO_OLLAMA_URL` (default `http://127.0.0.1:11434`; loopback HTTP only)
