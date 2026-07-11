@@ -37,24 +37,6 @@ A single MCP server instance is effectively shared across projects, which risks 
 
 Delivered by `99438fc`, `28baf3f`, and the broker isolation tests in `internal/mcp/broker_test.go`.
 
-### Slice 10 — Signed macOS packaging + notarization
-
-- Status: blocked
-- Owner: @caiowilson
-- Difficulty: hard
-- Scope: release workflows, Apple signing assets, notarization pipeline
-- Priority: P0
-
-Blocked on Apple Developer ID Installer credentials, notarization credentials, and GitHub Actions secrets. Unsigned macOS binaries and packages continue to ship alongside the credential-free Claude Code marketplace/plugin.
-
-#### Steps
-
-- [ ] Add Developer ID signing for macOS `.pkg` in release workflows (status: todo)
-- [ ] Add notarization submit + staple steps for generated `.pkg` assets (status: todo)
-- [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
-- [ ] Add CI verification (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
-- [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)
-
 ## P1 — Quality and Safety
 
 ### Slice 20 — Chunk boundary regression fixtures
@@ -305,6 +287,24 @@ Delivered by `8c7865b` in `internal/mcp/py_semantic.go` and `internal/mcp/relate
 - [ ] Choose one canonical guidance page for config + LLM usage (status: todo)
 - [ ] Shorten duplicated sections in other docs and replace with links (status: todo)
 - [ ] Verify examples match current tool names and arguments (status: todo)
+
+### Slice 10 — Signed macOS packaging + notarization
+
+- Status: blocked
+- Owner: @caiowilson
+- Difficulty: hard
+- Scope: release workflows, Apple signing assets, notarization pipeline
+- Priority: P3
+
+This is distribution polish for Finder-based installation and managed environments, not a prerequisite for Memento's terminal, Codex, or Claude Code MCP/plugin paths. It remains blocked on Apple Developer ID Installer credentials, notarization credentials, and GitHub Actions secrets.
+
+#### Steps
+
+- [ ] Add Developer ID signing for macOS `.pkg` in release workflows (status: todo)
+- [ ] Add notarization submit + staple steps for generated `.pkg` assets (status: todo)
+- [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
+- [ ] Add CI verification (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
+- [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)
 
 ## P4 — Long-term Architecture
 
