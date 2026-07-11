@@ -26,9 +26,9 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
 - ADR index and decisions: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
 
-## Use with Claude Code
+## Installation
 
-### Plugin installation (recommended)
+### Claude Code plugin (recommended)
 
 Add this repository as a Claude Code marketplace, install Memento, then reload active plugins:
 
@@ -41,14 +41,43 @@ Add this repository as a Claude Code marketplace, install Memento, then reload a
 
 The enabled plugin starts Memento automatically for each Claude Code project. On first start it downloads the version-pinned prebuilt binary for x64 or arm64 macOS, Linux, or Windows, verifies the release SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory. The first start requires GitHub access; later starts verify the cache and work offline.
 
-Update with `/plugin marketplace update memento-mcp` followed by `/plugin update memento@memento-mcp` and `/reload-plugins`. Plugin MCP names are scoped: for example, the prime prompt is `/mcp__plugin_memento_memento__prime`. See the [client setup guide](./docs/clients.md#plugin-installation-recommended) for lifecycle and troubleshooting details.
+### Standalone binary
 
-### Manual installation
-
-After building Memento, run this from the project you want Claude Code to index (replace the executable path):
+Install the latest prebuilt server to `~/.local/bin`:
 
 ```bash
-claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+curl -fsSL https://raw.githubusercontent.com/caiowilson/MCP-memento/main/install.sh | sh
+```
+
+Set `MEMENTO_INSTALL_DIR` to choose another directory. The installer supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
+
+```bash
+memento-mcp help
+```
+
+### Build from source
+
+Building requires Go 1.25.5 or newer:
+
+```bash
+git clone https://github.com/caiowilson/MCP-memento.git
+cd MCP-memento
+make build
+./bin/memento-mcp help
+```
+
+## Use with Claude Code
+
+Plugin users need no separate MCP configuration. Verify the automatically started server with `/mcp`. Update with `/plugin marketplace update memento-mcp`, followed by `/plugin update memento@memento-mcp` and `/reload-plugins`.
+
+Plugin MCP names are scoped: for example, the prime prompt is `/mcp__plugin_memento_memento__prime`. See the [client setup guide](./docs/clients.md#plugin-installation-recommended) for lifecycle and troubleshooting details.
+
+### Manual MCP setup
+
+If you installed the standalone binary or built from source, run this from the project you want Claude Code to index. Replace the executable path when it is not available on `PATH`:
+
+```bash
+claude mcp add memento -- memento-mcp
 ```
 
 Claude Code passes the active project through `CLAUDE_PROJECT_DIR`, so memento indexes it without a manual `repo_switch_workspace` call. Verify the connection with `claude mcp list` or `/mcp` inside Claude Code.
