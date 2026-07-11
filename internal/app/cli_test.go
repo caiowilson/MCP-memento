@@ -43,6 +43,9 @@ func TestBuildMCPServersConfigJSON(t *testing.T) {
 	if entry.Env["MEMENTO_CONTEXT_MAX_TOKENS"] != "7000" {
 		t.Fatalf("expected MEMENTO_CONTEXT_MAX_TOKENS=7000, got %#v", entry.Env)
 	}
+	if entry.Env["MEMENTO_FEEDBACK_ENABLED"] != "false" {
+		t.Fatalf("expected feedback to be explicitly disabled, got %#v", entry.Env)
+	}
 }
 
 func TestHandleCLICommandPrintGuidance(t *testing.T) {

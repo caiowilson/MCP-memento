@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"memento-mcp/internal/embedding"
+	"memento-mcp/internal/feedback"
 	"memento-mcp/internal/indexing"
 	"memento-mcp/internal/redact"
 )
@@ -66,6 +67,8 @@ type Server struct {
 	devLog                   bool
 	redactor                 *redact.Redactor
 	semantic                 embedding.RuntimeConfig
+	feedbackEnabled          bool
+	feedbackRecorder         feedback.Recorder
 
 	devLogFilePath    string
 	devLogFileErrOnce bool
@@ -89,7 +92,9 @@ type Config struct {
 	ChildIdleTimeout  time.Duration
 	ChildReapInterval time.Duration
 
-	childFactory childFactory
+	childFactory            childFactory
+	feedbackRecorder        feedback.Recorder
+	feedbackEnabledOverride *bool
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -100,6 +105,23 @@ func NewServer(cfg Config) (*Server, error) {
 	semantic, err := embedding.FromEnv()
 	if err != nil {
 		return nil, err
+	}
+	feedbackConfig := feedback.ConfigFromEnv()
+	feedbackEnabled := feedbackConfig.Enabled
+	feedbackRecorder := cfg.feedbackRecorder
+	if cfg.feedbackEnabledOverride != nil {
+		feedbackEnabled = *cfg.feedbackEnabledOverride
+	}
+	if feedbackRecorder == nil {
+		store, storeErr := feedback.NewStore(feedbackConfig)
+		if storeErr != nil {
+			if feedbackEnabled {
+				log.Printf("aggregate feedback storage is unavailable; MCP will continue without recording")
+			}
+			feedbackEnabled = false
+		} else {
+			feedbackRecorder = store
+		}
 	}
 	root, source, allowClientRootsFallback, err := resolveStartupWorkspaceRoot(cfg.Root)
 	if err != nil {
@@ -118,6 +140,8 @@ func NewServer(cfg Config) (*Server, error) {
 		allowClientRootsFallback: allowClientRootsFallback,
 		redactor:                 redactor,
 		semantic:                 semantic,
+		feedbackEnabled:          feedbackEnabled,
+		feedbackRecorder:         feedbackRecorder,
 	}
 
 	if cfg.Child {
@@ -155,7 +179,7 @@ func NewServer(cfg Config) (*Server, error) {
 
 	var defs []Tool
 	if s.allowClientRootsFallback {
-		defs = leafToolDefinitionsFor(absRoot)
+		defs = leafToolDefinitionsFor(absRoot, s.feedbackEnabled)
 	} else {
 		defs, err = s.ensureChildToolDefinitions(context.Background(), absRoot)
 		if err != nil {
@@ -235,7 +259,7 @@ func (s *Server) indexerConfig(rootAbs string) indexing.Config {
 }
 
 func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteStore) []Tool {
-	return []Tool{
+	tools := []Tool{
 		newRepoListFilesTool(root),
 		newRepoReadFileTool(root, s.redactor),
 		newRepoSearchTool(root, s.redactor),
@@ -256,6 +280,10 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 		newMemoryDeleteTool(mem),
 		newMemoryClearTool(mem),
 	}
+	if s.feedbackEnabled && s.feedbackRecorder != nil {
+		tools = append(tools, newFeedbackSubmitTool(s.feedbackRecorder))
+	}
+	return tools
 }
 
 func (s *Server) rebindWorkspace(rootAbs string) error {
@@ -291,8 +319,12 @@ func (s *Server) brokerToolsetFrom(defs []Tool) []Tool {
 			continue
 		}
 		tool := cloneToolDefinition(def)
-		tool.InputSchema = augmentInputSchemaWithRoot(tool.InputSchema)
-		tool.Handler = s.proxyToolHandler(tool.Name)
+		if def.Name == "feedback_submit" {
+			tool.Handler = s.feedbackProxyToolHandler()
+		} else {
+			tool.InputSchema = augmentInputSchemaWithRoot(tool.InputSchema)
+			tool.Handler = s.proxyToolHandler(tool.Name)
+		}
 		tools = append(tools, tool)
 		if def.Name == "repo_context" && !insertedSwitch {
 			tools = append(tools, newRepoSwitchWorkspaceTool(s))
@@ -574,6 +606,27 @@ func (s *Server) proxyToolHandler(name string) ToolHandler {
 			return nil, err
 		}
 		res, err := s.callChildTool(ctx, targetRoot, name, forwarded)
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
+}
+
+func (s *Server) feedbackProxyToolHandler() ToolHandler {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
+		args, err := requireArgs(raw)
+		if err != nil {
+			return nil, err
+		}
+		if err := rejectUnknownFeedbackArgs(args); err != nil {
+			return nil, err
+		}
+		targetRoot := s.currentRoot()
+		if targetRoot == "" {
+			return nil, fmt.Errorf("workspace root is required")
+		}
+		res, err := s.callChildTool(ctx, targetRoot, "feedback_submit", raw)
 		if err != nil {
 			return nil, err
 		}
@@ -1027,7 +1080,31 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 	}
 }
 
-func (s *Server) callTool(ctx context.Context, params toolCallParams) (toolCallResult, error) {
+func (s *Server) callTool(ctx context.Context, params toolCallParams) (result toolCallResult, resultErr error) {
+	started := time.Now()
+	if s.mode == serverModeLeaf && s.feedbackEnabled && s.feedbackRecorder != nil && params.Name != "feedback_submit" {
+		defer func() {
+			failure := feedback.ClassifyFailure(resultErr)
+			resultSize := feedback.ResultUnavailable
+			if resultErr == nil {
+				if result.IsError {
+					failure = feedback.FailureTool
+				}
+				if data, err := json.Marshal(result); err == nil {
+					resultSize = feedback.BucketResultSize(len(data))
+				}
+			}
+			event := feedback.Event{
+				ToolCategory:     feedback.CategoryForTool(params.Name),
+				DurationBucket:   feedback.BucketDuration(time.Since(started)),
+				ResultSizeBucket: resultSize,
+				FailureClass:     failure,
+			}
+			if err := s.feedbackRecorder.Record(event); err != nil {
+				s.logf("aggregate feedback record failed; MCP request result is unaffected")
+			}
+		}()
+	}
 	var tool *Tool
 	for i := range s.tools {
 		if s.tools[i].Name == params.Name {

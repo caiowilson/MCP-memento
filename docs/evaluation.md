@@ -70,7 +70,13 @@ make helpfulness-visualize HELPFULNESS_VISUAL_ARGS='-report /tmp/memento-helpful
 
 The visual report makes the three regression decisions explicit: task success, paired token efficiency, and retrieval quality. It includes category-grouped paired dumbbell charts for total tokens and elapsed time, task-success Wilson intervals, retrieval small multiples, a committed-baseline trend, and opt-in aggregate-only feedback. Every value remains traceable to the report version and fingerprints; no prompts, paths, source code, raw feedback, notes, or memory are rendered.
 
-The optional supplement is strict versioned JSON for aggregate retrieval snapshots, committed trend points, and aggregate opted-in feedback. It never accepts raw events. A usage record can include its `usageSource` and `tokenizerFingerprint`; otherwise the visual marks those labels `unavailable`. Token savings are calculated from summed paired totals, never by averaging task percentages. Invalid pairs and token-unavailable pairs remain visibly separate from task-success samples and token aggregates.
+The optional supplement is strict versioned JSON for aggregate retrieval snapshots, committed trend points, and aggregate opted-in feedback. It never accepts raw events. When local feedback is enabled, generate a compatible feedback-only supplement without network access:
+
+```bash
+./bin/memento-mcp feedback export --evaluation > /tmp/memento-feedback-supplement.json
+```
+
+Pass that file through `-supplement` to the visualizer or evaluation gate. A usage record can include its `usageSource` and `tokenizerFingerprint`; otherwise the visual marks those labels `unavailable`. Token savings are calculated from summed paired totals, never by averaging task percentages. Invalid pairs and token-unavailable pairs remain visibly separate from task-success samples and token aggregates.
 
 ## Reproduce CI and regression gates
 
@@ -92,6 +98,8 @@ The gate report distinguishes these outcomes:
 The deterministic lexical retrieval baseline is the first blocking gate: recall may not decrease from the committed, fingerprint-matched baseline. The initial 95% recall@5 floor, no task-success decrease, 20% median token or elapsed-time reduction on successful context-heavy tasks, and 80% aggregate opt-in helpful rating remain advisory until their configured sample requirements are met.
 
 Thresholds and sample requirements live in `evaluation/fixtures/regression-gates.json`; every rule requires a non-blank rationale. Changing a threshold, toggling enforcement, or replacing a committed file under `evaluation/baselines/` must include an explicit benchmark rationale in the same change. A release must have no enforced regression or infrastructure outcome. Promote an advisory rule only after repeated matched baselines demonstrate that its fixture, client/model configuration, and sample size are stable.
+
+Baseline refresh rationale for issue #30: the new feedback documentation moved the `MAX_MCP_OUTPUT_TOKENS` passage in `docs/README.md`, and review found that the paired `docs/clients.md` judgment also retained an older line number. Both judgments were moved to the current exact passage without changing their query or relevance meaning. The committed lexical baseline was regenerated after that anchor-only correction; no retrieval scoring behavior changed.
 
 ## Validate the contract
 

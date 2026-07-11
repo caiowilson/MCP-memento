@@ -11,6 +11,7 @@ This directory collects the main project documentation, including client setup, 
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
 - Retrieval and agent helpfulness evaluation: `evaluation.md`
+- Opt-in local aggregate feedback and privacy controls: `feedback.md`
 - Canonical backlog: `../TODO.md`
 - VS Code extension: `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`
@@ -37,6 +38,7 @@ This directory collects the main project documentation, including client setup, 
 - `memory_gc` — conservatively delete eligible tombstones
 - `memory_delete` — explicitly delete one note
 - `memory_clear` — delete all repo-scoped notes
+- `feedback_submit` — when explicitly enabled, store one fixed-choice helpful/not-helpful/unsure signal locally
 
 ## Automatic indexing
 

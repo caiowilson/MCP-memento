@@ -1,7 +1,7 @@
 package mcp
 
-func leafToolDefinitionsFor(root string) []Tool {
-	return []Tool{
+func leafToolDefinitionsFor(root string, feedbackEnabled bool) []Tool {
+	tools := []Tool{
 		cloneToolDefinition(newRepoListFilesTool(root)),
 		cloneToolDefinition(newRepoReadFileTool(root)),
 		cloneToolDefinition(newRepoSearchTool(root)),
@@ -22,6 +22,10 @@ func leafToolDefinitionsFor(root string) []Tool {
 		memoryDeleteToolDefinition(),
 		memoryClearToolDefinition(),
 	}
+	if feedbackEnabled {
+		tools = append(tools, feedbackSubmitToolDefinition())
+	}
+	return tools
 }
 
 func repoContextToolDefinition() Tool {

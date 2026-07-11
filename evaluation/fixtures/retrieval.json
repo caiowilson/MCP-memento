@@ -32,8 +32,8 @@
       "id": "client-output-budget",
       "query": "MAX_MCP_OUTPUT_TOKENS",
       "relevant": [
-        { "path": "docs/README.md", "startLine": 159, "endLine": 159 },
-        { "path": "docs/clients.md", "startLine": 154, "endLine": 154 }
+        { "path": "docs/README.md", "startLine": 162, "endLine": 162 },
+        { "path": "docs/clients.md", "startLine": 181, "endLine": 181 }
       ]
     }
   ]

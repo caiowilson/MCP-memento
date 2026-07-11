@@ -22,6 +22,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - Project docs: [`docs/README.md`](./docs/README.md)
 - Claude Code, Claude Desktop, ChatGPT/Codex, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
+- Opt-in local aggregate feedback and privacy controls: [`docs/feedback.md`](./docs/feedback.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
 - ADR index and decisions: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
@@ -149,6 +150,7 @@ ChatGPT on the web does not load local Codex configuration or launch local STDIO
 - Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_switch_workspace`
 - Maintains an on-disk code index per repository for fast, bounded context retrieval
 - Stores explicit repo-scoped notes: `memory_upsert`, `memory_search`, `memory_clear`
+- Can record strictly aggregate, local-only helpfulness feedback after explicit opt-in
 - Supports a companion VS Code extension that installs and configures the server
 
 ## How It Works

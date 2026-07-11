@@ -2,13 +2,13 @@
   "version": 1,
   "mode": "lexical",
   "configurationFingerprint": "sha256:33e4116328f626f22ea771186ec17894004e28ac20e622e7e24a0c571298cd56",
-  "fixtureFingerprint": "sha256:fa2122a379284a547ebeec7d0a5e136670990505cdd1d564df477fdfd97e6fc9",
+  "fixtureFingerprint": "sha256:a7684696dadd692912b9a228449572fcad202f36e3761471a2a8c48dc79989da",
   "queryCount": 4,
   "k": 5,
   "metrics": {
-    "precision": 0.15000000000000002,
-    "recall": 0.29166666666666663,
-    "mrr": 0.25,
-    "ndcg": 0.19396308060137146
+    "precision": 0.25,
+    "recall": 0.5416666666666666,
+    "mrr": 0.425,
+    "ndcg": 0.37007061612703984
   }
 }

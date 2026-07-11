@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memento-mcp.local/schemas/feedback-event-v1.schema.json",
+  "title": "Memento local aggregate feedback event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "toolCategory",
+    "durationBucket",
+    "resultSizeBucket",
+    "failureClass",
+    "features"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "toolCategory": {
+      "type": "string",
+      "enum": ["repository", "memory", "index", "workspace", "unavailable"]
+    },
+    "durationBucket": {
+      "type": "string",
+      "enum": ["under_100ms", "100ms_to_1s", "1s_to_10s", "10s_or_more", "unavailable"]
+    },
+    "resultSizeBucket": {
+      "type": "string",
+      "enum": ["empty", "under_4kb", "4kb_to_32kb", "32kb_or_more", "unavailable"]
+    },
+    "failureClass": {
+      "type": "string",
+      "enum": ["none", "tool_error", "canceled", "timeout", "unavailable"]
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["semanticRetrieval", "redactionEnabled"],
+      "properties": {
+        "semanticRetrieval": {"type": "boolean"},
+        "redactionEnabled": {"type": "boolean"}
+      }
+    },
+    "rating": {
+      "type": "string",
+      "enum": ["helpful", "not_helpful", "unsure"]
+    }
+  }
+}

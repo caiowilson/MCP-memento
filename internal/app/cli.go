@@ -15,6 +15,7 @@ var defaultMCPEnv = map[string]string{
 	"MEMENTO_FS_DEBOUNCE_MS":     "500",
 	"MEMENTO_CONTEXT_MAX_TOKENS": "7000",
 	"MEMENTO_REDACTION_ENABLED":  "true",
+	"MEMENTO_FEEDBACK_ENABLED":   "false",
 }
 
 func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
@@ -23,6 +24,12 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 	}
 
 	switch args[0] {
+	case "feedback":
+		if err := runFeedbackCommand(args[1:], stdout); err != nil {
+			fmt.Fprintf(stderr, "feedback: %v\n", err)
+			return true, 1
+		}
+		return true, 0
 	case "setup":
 		if err := runSetup(args[1:], stdout, stderr); err != nil {
 			fmt.Fprintf(stderr, "setup: %v\n", err)
@@ -109,8 +116,17 @@ Usage:
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing
+  memento-mcp feedback status
+                            Show opt-in state, local storage path, and event count
+  memento-mcp feedback export [--evaluation]
+                            Export aggregate diagnostics or an evaluation supplement
+  memento-mcp feedback delete --confirm
+                            Permanently delete all locally stored feedback events
   memento-mcp help          Show this help text
 
 Workspace root precedence:
-  --root DIR -> CLAUDE_PROJECT_DIR -> MCP roots/list -> current working directory`
+  --root DIR -> CLAUDE_PROJECT_DIR -> MCP roots/list -> current working directory
+
+Feedback is disabled unless MEMENTO_FEEDBACK_ENABLED=true. It is local-only and
+never sends data over the network.`
 }
