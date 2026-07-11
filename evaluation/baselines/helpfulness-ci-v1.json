@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "fixtureFingerprint": "sha256:d53e12a717d782effb2d9791f98a9328642f923de97f24fce5dc9470edb7b2e7",
+  "results": [
+    {
+      "taskID": "discover-workspace-resolution",
+      "category": "discovery",
+      "taskFingerprint": "sha256:5caa64dab7110ae8b685a991ebdf1e8138c33de4bd447f4b21c4d810606a79ac",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget",
+      "baseline": {
+        "outcome": "failure",
+        "configurationFingerprint": "sha256:example-baseline-tools",
+        "modelFingerprint": "sha256:example-model-settings"
+      },
+      "memento": {
+        "outcome": "success",
+        "configurationFingerprint": "sha256:example-memento-tools",
+        "modelFingerprint": "sha256:example-model-settings"
+      }
+    },
+    {
+      "taskID": "onboard-local-validation",
+      "category": "onboarding",
+      "taskFingerprint": "sha256:4012cc147169f7b7ef90d5cc61bbd7769e66a8890320ec97cf4a1cd7544ea91f",
+      "matchFingerprint": "sha256:example-matched-model-prompt-budget-2",
+      "baseline": {
+        "outcome": "success",
+        "configurationFingerprint": "sha256:example-baseline-tools",
+        "modelFingerprint": "sha256:example-model-settings"
+      },
+      "memento": {
+        "outcome": "success",
+        "configurationFingerprint": "sha256:example-memento-tools",
+        "modelFingerprint": "sha256:example-model-settings"
+      }
+    }
+  ],
+  "summary": {
+    "selectedTasks": 2,
+    "validPairs": 2,
+    "invalidPairs": 0,
+    "timeoutPairs": 0,
+    "deltas": {
+      "success": {"pairs": 2, "delta": 0.5, "unavailable": false},
+      "elapsedTimeMs": {"pairs": 2, "delta": -150, "unavailable": false},
+      "turns": {"pairs": 2, "delta": -1, "unavailable": false},
+      "tokens": {
+        "input": {"pairs": 1, "delta": -300, "unavailable": false},
+        "output": {"pairs": 1, "delta": -20, "unavailable": false},
+        "total": {"pairs": 1, "delta": -320, "unavailable": false}
+      },
+      "toolCalls": {"pairs": 2, "delta": -1, "unavailable": false},
+      "contextReads": {"pairs": 2, "delta": -0.5, "unavailable": false},
+      "contextBytes": {"pairs": 2, "delta": -2000, "unavailable": false}
+    }
+  }
+}

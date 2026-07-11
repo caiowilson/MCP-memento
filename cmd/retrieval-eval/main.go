@@ -14,6 +14,7 @@ import (
 func main() {
 	root := flag.String("root", ".", "repository root to evaluate")
 	fixtures := flag.String("fixtures", "evaluation/fixtures/retrieval.json", "retrieval fixture file")
+	jsonOut := flag.String("json-out", "", "optional privacy-safe retrieval summary JSON path")
 	flag.Parse()
 
 	rootAbs, err := filepath.Abs(*root)
@@ -41,6 +42,34 @@ func main() {
 	})
 	if err != nil {
 		fatal(err)
+	}
+	fixtureSet, err := evaluation.LoadFixtureFile(fixturePath)
+	if err != nil {
+		fatal(err)
+	}
+	mode := "lexical"
+	embedderName := ""
+	semanticWeight := 0.0
+	if semantic.Enabled {
+		mode = "semantic"
+		embedderName = semantic.Embedder.Name()
+		semanticWeight = semantic.SemanticWeight
+	}
+	if *jsonOut != "" {
+		summary, err := evaluation.NewRetrievalSummary(fixtureSet, report, evaluation.RetrievalSummaryConfig{Mode: mode, Embedder: embedderName, SemanticWeight: semanticWeight})
+		if err != nil {
+			fatal(err)
+		}
+		outputPath := *jsonOut
+		if !filepath.IsAbs(outputPath) {
+			outputPath = filepath.Join(rootAbs, outputPath)
+		}
+		if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+			fatal(err)
+		}
+		if err := evaluation.WriteRetrievalSummary(outputPath, summary); err != nil {
+			fatal(err)
+		}
 	}
 	if semantic.Enabled {
 		fmt.Printf("MODE hybrid model=%s semantic-weight=%.2f\n", semantic.Embedder.Name(), semantic.SemanticWeight)

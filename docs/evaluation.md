@@ -72,6 +72,27 @@ The visual report makes the three regression decisions explicit: task success, p
 
 The optional supplement is strict versioned JSON for aggregate retrieval snapshots, committed trend points, and aggregate opted-in feedback. It never accepts raw events. A usage record can include its `usageSource` and `tokenizerFingerprint`; otherwise the visual marks those labels `unavailable`. Token savings are calculated from summed paired totals, never by averaging task percentages. Invalid pairs and token-unavailable pairs remain visibly separate from task-success samples and token aggregates.
 
+## Reproduce CI and regression gates
+
+Run the same pinned paired subset, privacy-safe retrieval summary, visual artifacts, and baseline comparison used by CI:
+
+```bash
+make evaluation-ci
+```
+
+Outputs are written under `/tmp/memento-evaluation-ci` by default; set `EVALUATION_OUT` to choose another local directory. The `Helpfulness Evaluation` workflow uploads the current JSON, Markdown, HTML, gate report, and exact committed baselines for 30 days. Reports contain fingerprints, aggregate metrics, outcomes, and fixture task IDs, but no prompts, queries, repository paths, retrieved chunks, source, notes, memory, or raw feedback.
+
+The gate report distinguishes these outcomes:
+
+- `product-regression`: a measured metric crossed an enforced threshold;
+- `infrastructure-failure`: an enforced metric was unavailable or incomparable because a run, fixture, or configuration could not be trusted;
+- `advisory-regression`: an initial target was missed but is not mature enough to block CI; and
+- `pass`: every enforced comparison passed and no advisory target regressed.
+
+The deterministic lexical retrieval baseline is the first blocking gate: recall may not decrease from the committed, fingerprint-matched baseline. The initial 95% recall@5 floor, no task-success decrease, 20% median token or elapsed-time reduction on successful context-heavy tasks, and 80% aggregate opt-in helpful rating remain advisory until their configured sample requirements are met.
+
+Thresholds and sample requirements live in `evaluation/fixtures/regression-gates.json`; every rule requires a non-blank rationale. Changing a threshold, toggling enforcement, or replacing a committed file under `evaluation/baselines/` must include an explicit benchmark rationale in the same change. A release must have no enforced regression or infrastructure outcome. Promote an advisory rule only after repeated matched baselines demonstrate that its fixture, client/model configuration, and sample size are stable.
+
 ## Validate the contract
 
 ```bash

@@ -7,13 +7,15 @@ TARGET ?= server
 REMOTE ?= origin
 DRY_RUN ?= 0
 CHECK_CLEAN ?= 1
+EVALUATION_OUT ?= /tmp/memento-evaluation-ci
+HELPFULNESS_CI_TASKS ?= discover-workspace-resolution,onboard-local-validation
 
 # Parallel agent wave: worktree root and branch names
 WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test plugin-test retrieval-eval helpfulness-eval helpfulness-visualize install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test plugin-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
@@ -24,6 +26,7 @@ help:
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
 	@printf "  helpfulness-visualize Render local paired helpfulness visual artifacts\n"
+	@printf "  evaluation-ci Reproduce CI reports and regression gates locally\n"
 	@printf "  install   Install to $(PREFIX)/bin/$(BIN_NAME)\n"
 	@printf "  install-dev Install to $$HOME/.local/bin/$(BIN_NAME)\n"
 	@printf "  uninstall Remove $(PREFIX)/bin/$(BIN_NAME)\n"
@@ -64,13 +67,21 @@ plugin-test:
 	claude plugin validate --strict ./plugins/memento
 
 retrieval-eval:
-	go run ./cmd/retrieval-eval
+	go run ./cmd/retrieval-eval $(RETRIEVAL_ARGS)
 
 helpfulness-eval:
 	go run ./cmd/helpfulness-eval $(HELPFULNESS_ARGS)
 
 helpfulness-visualize:
 	go run ./cmd/helpfulness-visualize $(HELPFULNESS_VISUAL_ARGS)
+
+evaluation-ci:
+	mkdir -p "$(EVALUATION_OUT)/current" "$(EVALUATION_OUT)/visual" "$(EVALUATION_OUT)/gates" "$(EVALUATION_OUT)/baseline"
+	cp evaluation/baselines/helpfulness-ci-v1.json evaluation/baselines/retrieval-ci-v1.json "$(EVALUATION_OUT)/baseline/"
+	go run ./cmd/helpfulness-eval -tasks "$(HELPFULNESS_CI_TASKS)" -runs evaluation/fixtures/helpfulness-runs.example.json -out "$(EVALUATION_OUT)/current"
+	go run ./cmd/retrieval-eval -json-out "$(EVALUATION_OUT)/current/retrieval-report.json"
+	go run ./cmd/helpfulness-visualize -report "$(EVALUATION_OUT)/current/helpfulness-report.json" -out "$(EVALUATION_OUT)/visual"
+	go run ./cmd/evaluation-gate -current "$(EVALUATION_OUT)/current/helpfulness-report.json" -baseline evaluation/baselines/helpfulness-ci-v1.json -retrieval-current "$(EVALUATION_OUT)/current/retrieval-report.json" -retrieval-baseline evaluation/baselines/retrieval-ci-v1.json -policy evaluation/fixtures/regression-gates.json -out "$(EVALUATION_OUT)/gates"
 
 install: build
 	@install -d $(PREFIX)/bin

@@ -163,7 +163,7 @@ Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` 
 
 ## Retrieval evaluation
 
-Run `make retrieval-eval` to index this repository and print macro-averaged precision@k, recall@k, MRR, and nDCG@k. `make test` runs the Go suite and then prints the same lexical report. The initial CI job is non-blocking so ranking changes are visible before metric thresholds are established.
+Run `make retrieval-eval` to index this repository and print macro-averaged precision@k, recall@k, MRR, and nDCG@k. `make test` runs the Go suite and then prints the same lexical report. The standalone retrieval job remains non-blocking for visibility; `make evaluation-ci` reproduces the unified helpfulness workflow, whose fingerprint-matched retrieval-baseline comparison is blocking while newer outcome, floor, efficiency, and rating targets remain advisory.
 
 After pulling the configured Ollama model, run `MEMENTO_SEMANTIC_ENABLED=true make retrieval-eval` to measure hybrid retrieval against the same fixtures. Compare it with the default command to separate semantic gains from fixture or scoring changes. Unlike the production server's lexical fallback, the semantic evaluator fails when vector creation or query embedding is unavailable so it cannot mislabel fallback metrics as hybrid results.
 

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "retrievalBaseline": {
+    "enforce": true,
+    "minSamples": 4,
+    "maxDecrease": 0,
+    "rationale": "Lexical retrieval is deterministic and mature enough to block decreases from the committed fixture/configuration baseline; baseline changes require a benchmark rationale."
+  },
+  "retrievalRecallFloor": {
+    "enforce": false,
+    "minSamples": 4,
+    "minimum": 0.95,
+    "rationale": "Issue #31 establishes 95% recall@5 as the initial target, but the current curated corpus is not yet baselined at that level."
+  },
+  "taskSuccess": {
+    "enforce": false,
+    "minSamples": 5,
+    "maxDecrease": 0,
+    "rationale": "No task-success regression is the release target; enforcement waits for at least five stable matched agent pairs."
+  },
+  "efficiency": {
+    "enforce": false,
+    "minSamples": 5,
+    "minimumReductionPercent": 20,
+    "categories": ["discovery", "impact-analysis", "memory-recovery"],
+    "rationale": "A 20% median token or elapsed-time reduction is the initial context-heavy target; enforcement waits for five successful qualifying pairs."
+  },
+  "helpfulRating": {
+    "enforce": false,
+    "minSamples": 20,
+    "minimum": 0.8,
+    "rationale": "An 80% helpful rating is the initial opt-in aggregate target; enforcement waits for twenty voluntary ratings."
+  }
+}

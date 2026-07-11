@@ -1,0 +1,102 @@
+name: Helpfulness Evaluation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helpfulness-evaluation:
+    name: Helpfulness reports and regression gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare artifact directories
+        run: mkdir -p evaluation-artifacts/current evaluation-artifacts/visual evaluation-artifacts/gates evaluation-artifacts/baseline
+
+      - name: Run deterministic paired benchmark subset
+        run: >-
+          go run ./cmd/helpfulness-eval
+          -tasks discover-workspace-resolution,onboard-local-validation
+          -runs evaluation/fixtures/helpfulness-runs.example.json
+          -out evaluation-artifacts/current
+
+      - name: Run privacy-safe retrieval evaluation
+        shell: bash
+        run: |
+          set -o pipefail
+          go run ./cmd/retrieval-eval -json-out evaluation-artifacts/current/retrieval-report.json |
+            tee evaluation-artifacts/current/retrieval-report.txt
+
+      - name: Render static visual artifacts
+        run: >-
+          go run ./cmd/helpfulness-visualize
+          -report evaluation-artifacts/current/helpfulness-report.json
+          -out evaluation-artifacts/visual
+
+      - name: Copy committed baselines into artifact
+        run: cp evaluation/baselines/helpfulness-ci-v1.json evaluation/baselines/retrieval-ci-v1.json evaluation-artifacts/baseline/
+
+      - name: Build regression gate
+        run: go build -o "$RUNNER_TEMP/evaluation-gate" ./cmd/evaluation-gate
+
+      - name: Evaluate regression gates
+        id: gates
+        shell: bash
+        run: |
+          set +e
+          "$RUNNER_TEMP/evaluation-gate" \
+            -current evaluation-artifacts/current/helpfulness-report.json \
+            -baseline evaluation/baselines/helpfulness-ci-v1.json \
+            -retrieval-current evaluation-artifacts/current/retrieval-report.json \
+            -retrieval-baseline evaluation/baselines/retrieval-ci-v1.json \
+            -policy evaluation/fixtures/regression-gates.json \
+            -out evaluation-artifacts/gates
+          status=$?
+          set -e
+          case "$status" in
+            0) echo 'Gate evaluation passed (advisory findings may still be present).' ;;
+            1) echo '::error::Measured product regression crossed an enforced gate.' ;;
+            2) echo '::error::Evaluation infrastructure/configuration failure prevented a trustworthy comparison.' ;;
+            *) echo "::error::Unexpected evaluation gate exit status: $status" ;;
+          esac
+          exit "$status"
+
+      - name: Publish evaluation summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f evaluation-artifacts/gates/gate-report.md ]; then
+            cat evaluation-artifacts/gates/gate-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '## Evaluation infrastructure/model-run failure'
+              echo
+              echo 'The gate report was not produced. Inspect the paired-run and retrieval steps; this is not classified as a measured product regression.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f evaluation-artifacts/visual/helpfulness-visual.md ]; then
+            cat evaluation-artifacts/visual/helpfulness-visual.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helpfulness-evaluation
+          path: evaluation-artifacts
+          if-no-files-found: warn
+          retention-days: 30
