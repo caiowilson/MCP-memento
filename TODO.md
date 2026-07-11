@@ -7,13 +7,15 @@ Single source of truth for pending work. This file supersedes the previous dupli
 - Status: `todo` | `in-progress` | `done` | `blocked`
 - Owner: GitHub handle (for example, `@caiowilson`) or name
 - Convention: when a step is complete, mark it `[x]` and set `(status: done)`
-- Execution policy: complete priorities in order `P0 -> P1 -> P2 -> P3 -> P4`
+- Execution policy: complete unblocked priorities in order `P0 -> P1 -> P2 -> P3 -> P4`
+- Last audited: 2026-07-11 against `main` at `053720d`
+- Slice numbers are legacy backlog identifiers and do not map to GitHub issue numbers.
 
 ## P0 — Critical Path
 
 ### Slice 25 — Per-project MCP server instances + isolated vector stores
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: hard
 - Scope: `internal/mcp/server.go`, `internal/indexing/indexer.go`, `internal/app/`, `vscode-extension/`
@@ -25,21 +27,25 @@ A single MCP server instance is effectively shared across projects, which risks 
 
 #### Steps
 
-- [ ] Spawn a dedicated MCP server process per project/workspace (one server per `cwd`) (status: todo)
-- [ ] Create an isolated vector/chunk store per project under `~/.memento-mcp/<project-hash>/` (status: todo)
-- [ ] Set the server root to the current working directory for that project instance (status: todo)
-- [ ] Ensure lifecycle management: start server on project open, stop on project close (status: todo)
-- [ ] Prevent cross-project index contamination (no shared state between server instances) (status: todo)
-- [ ] Update VS Code extension to manage multiple server processes (one per workspace folder) (status: todo)
-- [ ] Add tests verifying two concurrent servers maintain independent stores (status: todo)
+- [x] Spawn a dedicated child MCP server process per project/workspace root (status: done)
+- [x] Create isolated vector/chunk and note stores under `~/.memento-mcp/repos/<project-hash>/` (status: done)
+- [x] Set each child server root to its routed workspace root (status: done)
+- [x] Manage child startup, idle reaping, respawn, and shutdown in the broker (status: done)
+- [x] Prevent cross-project index and memory contamination (status: done)
+- [x] Supersede extension-owned processes with broker-owned per-workspace child processes (status: done)
+- [x] Add tests verifying independent stores, routing, reuse, idle reaping, and respawn (status: done)
+
+Delivered by `99438fc`, `28baf3f`, and the broker isolation tests in `internal/mcp/broker_test.go`.
 
 ### Slice 10 — Signed macOS packaging + notarization
 
-- Status: todo
+- Status: blocked
 - Owner: @caiowilson
 - Difficulty: hard
 - Scope: release workflows, Apple signing assets, notarization pipeline
 - Priority: P0
+
+Blocked on Apple Developer ID Installer credentials, notarization credentials, and GitHub Actions secrets. Unsigned macOS binaries and packages continue to ship alongside the credential-free Claude Code marketplace/plugin.
 
 #### Steps
 
@@ -53,7 +59,7 @@ A single MCP server instance is effectively shared across projects, which risks 
 
 ### Slice 20 — Chunk boundary regression fixtures
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `internal/indexing/chunk.go`, `internal/indexing/*_test.go`
@@ -65,9 +71,11 @@ Chunking behavior is not pinned down tightly enough before syntax-aware chunking
 
 #### Steps
 
-- [ ] Add Go fixture coverage for adjacent declarations and doc comments (status: todo)
-- [ ] Add assertions for chunk start and end lines (status: todo)
-- [ ] Add one non-Go fallback test proving line-based chunking still works (status: todo)
+- [x] Add Go fixture coverage for adjacent declarations and doc comments (status: done)
+- [x] Add assertions for chunk start and end lines (status: done)
+- [x] Add one non-Go fallback test proving line-based chunking still works (status: done)
+
+Delivered by `91b6366` in `internal/indexing/chunk_test.go`.
 
 ### Slice 13 — Syntax-aware chunk boundaries
 
@@ -126,7 +134,7 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 ### Slice 21 — Package-level coverage reporting
 
-- Status: todo
+- Status: in-progress
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: CI workflow, `internal/indexing`, `internal/mcp`
@@ -134,13 +142,15 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Add CI coverage reporting for `internal/indexing` and `internal/mcp` (status: todo)
-- [ ] Set an initial floor that only blocks regressions for those packages (status: todo)
+- [x] Add CI coverage reporting for `internal/indexing` and `internal/mcp` (status: done)
+- [x] Set an initial floor that only blocks regressions for those packages (status: done)
 - [ ] Document local coverage command in contributor-facing docs (status: todo)
+
+CI reporting was delivered by `0c4f77e` and `.github/workflows/coverage-internal.yml`; the documentation follow-up remains open.
 
 ### Slice 22 — `repo_context` golden output tests
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `internal/mcp/context_tool_test.go`
@@ -148,13 +158,15 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Add stable coverage for `intent: navigate` output shape (status: todo)
-- [ ] Add stable coverage for `intent: implement` and `intent: review` output shapes (status: todo)
-- [ ] Add explicit-mode contract assertions for `full`, `outline`, and `summary` (status: todo)
+- [x] Add stable coverage for `intent: navigate` output shape (status: done)
+- [x] Add stable coverage for `intent: implement` and `intent: review` output shapes (status: done)
+- [x] Add explicit-mode contract assertions for `full`, `outline`, and `summary` (status: done)
+
+Covered in `internal/mcp/context_tool_test.go`, including intent routing, explicit-mode precedence, auto mode, and suggested follow-up calls.
 
 ### Slice 24 — Deprecate `README-old.md` safely
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `README-old.md`, docs index
@@ -162,9 +174,11 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Decide whether to archive, delete, or hard-deprecate `README-old.md` (status: todo)
-- [ ] If retained, keep a top-of-file notice pointing to `README.md` (status: todo)
-- [ ] Remove any remaining links that direct readers to the old file (status: todo)
+- [x] Decide whether to archive, delete, or hard-deprecate `README-old.md` (status: done)
+- [x] If retained, keep a top-of-file notice pointing to `README.md` (status: done)
+- [x] Remove any remaining links that direct readers to the old file (status: done)
+
+Delivered by `d3a26a5`; the only remaining non-backlog reference is a Makefile audit helper.
 
 ### Slice 26 — VS Code extension config tests
 
@@ -180,11 +194,38 @@ Edit/review workflows need context centered on changed files, not full graph con
 - [ ] Add tests for MCP config merge behavior when a config already exists (status: todo)
 - [ ] Keep installer network behavior out of this slice (status: todo)
 
-## P2 — Capability Expansion
-
-### Slice 15 — `repo_symbols` tool
+### Slice 28 — Credential-free Claude workflow skills
 
 - Status: todo
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: `.claude-plugin/marketplace.json`, `plugins/memento-workflows/`, plugin docs and validation CI
+- Priority: P1
+
+#### Problem
+
+Some users cannot or do not want to run an unsigned native MCP binary. Claude skills can still provide repeatable repository orientation, change review, and handoff workflows using Claude Code's built-in tools, without downloading an executable or requiring Apple signing credentials.
+
+#### Boundary
+
+This is a companion distribution, not a transparent replacement for the MCP server. It must not claim indexed retrieval, semantic vectors, MCP resources/prompts, automatic background indexing, cross-client support, or the server's structured durable-memory lifecycle.
+
+#### Steps
+
+- [ ] Add a separate `memento-workflows` marketplace plugin with skills only and no `.mcp.json`, hooks, native executables, or install-time downloads (status: todo)
+- [ ] Add a `prime` skill that inspects repository instructions, manifests, Git state, and high-signal files with bounded built-in reads (status: todo)
+- [ ] Add a `review-changes` skill grounded in changed paths and `git diff`, with focused reads and test discovery (status: todo)
+- [ ] Add a `handoff` skill with an explicit, user-visible repo-local Markdown storage contract and no hidden writes (status: todo)
+- [ ] Use narrow skill descriptions, progressive disclosure, and minimal pre-approved tool patterns (status: todo)
+- [ ] Document the capability matrix for `memento-workflows` versus the full `memento` MCP plugin (status: todo)
+- [ ] Add strict plugin validation, isolated marketplace installation, and skill smoke tests (status: todo)
+- [ ] Decide after validation whether the same workflow skills should also ship inside the full `memento` plugin (status: todo)
+
+## P2 — Capability Expansion
+
+### Slice 15 — `repo_symbols` capability (delivered as `repo_outline`)
+
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: `internal/mcp/` (new tool)
@@ -192,11 +233,13 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Add `repo_symbols` returning `{name, kind, line, signature}` per symbol (status: todo)
-- [ ] Implement Go symbol extraction via `go/ast` (status: todo)
-- [ ] Implement JS/TS symbol extraction via regex (func, class, export, const) (status: todo)
-- [ ] Add generic fallback regex for `func`, `def`, `class`, `interface` keywords (status: todo)
-- [ ] Add tests (status: todo)
+- [x] Return names, kinds, signatures, documentation, containers, and line ranges through `repo_outline` (status: done)
+- [x] Implement Go symbol extraction via `go/ast` (status: done)
+- [x] Implement JS/TS structural extraction (status: done)
+- [x] Add a generic declaration fallback for unsupported languages (status: done)
+- [x] Add structured and fallback tests (status: done)
+
+Superseded by the richer `repo_outline` tool delivered in `3942370` for GitHub issue #24; a duplicate `repo_symbols` tool would add API surface without a distinct capability.
 
 ### Slice 16 — Trigram search index
 
@@ -235,7 +278,7 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 ### Slice 18 — Python import graph
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `internal/mcp/` (`py_semantic.go`)
@@ -243,9 +286,11 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Build Python import graph via regex (`import X`, `from X import Y`, relative imports) (status: todo)
-- [ ] Wire it into `computeRelatedFiles` for `.py` files (status: todo)
-- [ ] Add tests with sample Python import structures (status: todo)
+- [x] Build Python import graph via regex (`import X`, `from X import Y`, relative imports) (status: done)
+- [x] Wire it into `computeRelatedFiles` for `.py` files (status: done)
+- [x] Add tests with sample Python import structures (status: done)
+
+Delivered by `8c7865b` in `internal/mcp/py_semantic.go` and `internal/mcp/related_tools_test.go`.
 
 ### Slice 27 — Canonicalize config and LLM guidance
 
