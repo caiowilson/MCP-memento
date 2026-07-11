@@ -194,6 +194,39 @@ func (s *NoteStore) Search(query string, tags []string, limit int) ([]Note, erro
 	return out, nil
 }
 
+// Read returns one active note and records that its contents were retrieved.
+func (s *NoteStore) Read(key string) (Note, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return Note{}, fmt.Errorf("missing note key")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.loadLocked()
+	if err != nil {
+		return Note{}, err
+	}
+	changed := s.reconcileLocked(&f, nil)
+	for index := range f.Notes {
+		note := &f.Notes[index]
+		if note.Key != key || noteStatus(*note) == NoteStatusTombstoned {
+			continue
+		}
+		note.RetrievalCount++
+		note.LastRetrievedAt = time.Now().UTC().Format(time.RFC3339)
+		if err := s.saveLocked(f); err != nil {
+			return Note{}, err
+		}
+		return *note, nil
+	}
+	if changed {
+		if err := s.saveLocked(f); err != nil {
+			return Note{}, err
+		}
+	}
+	return Note{}, fmt.Errorf("note not found: %q", key)
+}
+
 func (s *NoteStore) Clear() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

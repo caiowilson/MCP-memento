@@ -43,6 +43,14 @@ On startup the server resolves the workspace root in this order: explicit `--roo
 
 By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses a filesystem watcher to detect changes; if the watcher fails to start and the repo is a git repo, it falls back to `git status` polling. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (git polling first). See `docs/adr/ADRs.md`.
 
+## Native MCP resources and prompt
+
+Memento advertises MCP `resources` and `prompts` alongside tools. Active durable notes are direct `note://memory/<key>` resources, while high-signal project files such as `AGENTS.md`, `README.md`, `go.mod`, and `package.json` are direct `repo://file/<path>` resources. The `repo://file/{path}` resource template supports other repo-relative UTF-8 text files on demand.
+
+Resource reads default to `32000` bytes; set `MEMENTO_RESOURCE_MAX_BYTES` to change that cap. File resources stay inside the active workspace after symlink resolution, reject ignored directories, binary files, `.env*`, private-key/certificate/database formats, and other sensitive paths, and apply the repository redactor. Tombstoned notes are omitted from discovery and cannot be read as active resources; stale notes remain discoverable with a warning in their description. Reading a note resource records usage for the conservative memory lifecycle.
+
+The `prime` prompt front-loads up to eight fresh-then-stale durable notes and bounded high-signal project files. Optional `path` and `focus` arguments add an active-file `repo_outline` and task focus. The complete prompt defaults to `24000` bytes, configurable with `MEMENTO_PRIME_MAX_BYTES`, and ends with a truncation marker when capped. Clients discover it through `prompts/list`; Claude Code presents it as `/mcp__<server-name>__prime`.
+
 ## Optional semantic retrieval
 
 Semantic retrieval is opt-in. The default remains deterministic substring scoring and does not require a model runtime. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines lexical and cosine scores. A focused `repo_context` call can then include conceptually related chunks even when they do not share the query text. `repo_search` remains a literal substring search.
@@ -120,6 +128,7 @@ Example anchored upsert:
 - Use `intent: "navigate"` for lighter outlines and `intent: "implement"` or `intent: "review"` for mixed full+outline context.
 - Omit `mode` unless you need to force `full`, `outline`, or `summary`.
 - Existing callers that already send `mode` are unchanged.
+- In clients with MCP resource/prompt support, use note/file `@`-mentions for explicit context and the `prime` prompt at session start.
 
 ## Extractive outlines
 

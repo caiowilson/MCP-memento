@@ -81,6 +81,8 @@ printf '%s\n' \
 - `repo_switch_workspace` to retarget the server to another repository/workspace root at runtime (no process restart).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
 - Optional code anchors that flag stale notes, preserve them for verification, and protect renamed or branch-specific referents from accidental eviction.
+- MCP resources for active notes and bounded repository text files, discoverable through client `@`-mention interfaces.
+- A `prime` MCP prompt for bounded session-start context, exposed by Claude Code as `/mcp__<server-name>__prime`.
 
 ### Switch workspace without restart
 
@@ -106,6 +108,8 @@ Prefer `repo_context` with `intent` for new callers. Keep explicit `mode` only f
 Use `repo_outline` first when the caller only needs the shape of one file. Follow its line ranges with `repo_read_file`, or switch to `repo_context` when related-file context is needed.
 
 For durable memory, pass `anchors` to `memory_upsert` when a note describes code. Stale notes remain visible in search; reconcile them with `memory_verify` or soft-evict them with `memory_tombstone`. Use `memory_list` to inspect tombstones and reserve `memory_gc`, `memory_delete`, and `memory_clear` for intentional destructive maintenance.
+
+In Claude Code, type `@` and select an active Memento note (`note://memory/...`) or repository file (`repo://file/...`). Type `/mcp__memento__prime` when the server entry is named `memento`; if it has another name, Claude Code substitutes that normalized server name. Pass an optional active file and focus after the command, for example `/mcp__memento__prime internal/mcp/server.go "workspace routing"`.
 
 Navigate or explain:
 
@@ -181,6 +185,8 @@ The server maintains a background code index on disk, but clients can still cont
 - `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)
 - `MEMENTO_CONTEXT_MAX_TOKENS` (default `7000`; approximate primary budget for `repo_context`)
 - `MEMENTO_OUTLINE_MAX_FILE_BYTES` (default `1048576`; source file safety limit for `repo_outline`)
+- `MEMENTO_RESOURCE_MAX_BYTES` (default `32000`; maximum text returned by one file resource read)
+- `MEMENTO_PRIME_MAX_BYTES` (default `24000`; complete `prime` prompt cap)
 - `MEMENTO_SEMANTIC_ENABLED` (default `false`; requires a separately installed local Ollama runtime)
 - `MEMENTO_EMBEDDING_MODEL` (default `nomic-embed-text:v1.5`; pull it with Ollama before enabling)
 - `MEMENTO_OLLAMA_URL` (default `http://127.0.0.1:11434`; loopback HTTP only)

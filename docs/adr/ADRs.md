@@ -18,6 +18,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0006: Opt-in local hybrid retrieval with Ollama (Accepted, 2026-07-10)
 - ADR 0007: Standalone extractive repository outlines (Accepted, 2026-07-10)
 - ADR 0008: Anchored memory lifecycle and conservative eviction (Accepted, 2026-07-10)
+- ADR 0009: Native MCP resources and prime prompt (Accepted, 2026-07-11)
 
 ---
 
@@ -543,6 +544,44 @@ Durable notes can become actively misleading when code changes but the note cont
 - Hide stale notes: removes useful historical evidence and makes reconciliation harder.
 - Treat every missing path as orphaned: fails on renames, branch switches, detached checkouts, and rewritten history.
 - Require model adjudication for every file change: precise but expensive and unavailable without an active caller.
+
+---
+
+## ADR 0009: Native MCP resources and prime prompt
+
+- Status: Accepted
+- Date: 2026-07-11
+
+### Context
+
+Memento tools make repository context available to a model, but users cannot explicitly attach durable notes or repository files through native client context pickers. Session priming also requires users to remember a sequence of tool calls. MCP resources and prompts are user-controlled protocol surfaces designed for those workflows, and Claude Code maps them to `@` mentions and slash commands.
+
+### Decision
+
+- Advertise `resources` and `prompts` capabilities under the existing MCP 2024-11-05 protocol negotiation.
+- Expose active notes as direct `note://memory/<key>` resources and high-signal project files as direct `repo://file/<path>` resources.
+- Expose a `repo://file/{path}` resource template for bounded, redacted, repo-relative UTF-8 text reads.
+- Omit tombstoned notes from resource discovery and reads; retain stale notes with explicit warning metadata.
+- Count note resource reads as usage in the anchored memory lifecycle.
+- Add one user-controlled `prime` prompt with optional active-file path and focus arguments. Embed bounded fresh-then-stale notes, high-signal project files, and an optional body-free outline.
+- Serve resources and prompts directly against the broker's current workspace so they follow roots discovery and manual workspace switching without requiring a separate child protocol proxy.
+- Do not advertise resource subscriptions or list-changed notifications until the stdio notification path covers every workspace and note mutation source.
+
+### Consequences
+
+- Claude Code users can attach Memento context through native `@` autocomplete and invoke `/mcp__<server-name>__prime` at session start.
+- Resource URIs remain stable within a workspace scope and are fuzzy-searchable by note key or file path.
+- Arbitrary file resources require stricter path, type, size, and redaction checks than explicit low-level file tools.
+- Resource and prompt lists may be refreshed by clients, but this release does not push dynamic list-change notifications.
+- Prime context is deliberately bounded; task-specific depth remains the responsibility of `repo_context` and `repo_outline`.
+
+### Alternatives considered
+
+- Add tools named `attach_note` and `prime`: callable by the model, but not visible in native `@` or `/` client interfaces.
+- Proxy resources/prompts through child processes: duplicates protocol transport and lifecycle logic without needing the child index.
+- Expose every repository file as a direct resource: large discovery payloads; a small direct set plus a template is cheaper.
+- Include tombstones in autocomplete: improves recoverability but makes obsolete context too easy to attach accidentally.
+- Advertise list-changed immediately: incomplete unless every mutation and workspace transition emits notifications reliably.
 
 ---
 

@@ -155,6 +155,32 @@ The same three tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` 
 
 Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the default token budget, or pass `maxTokens` to one `repo_context` call. Responses report `usedTokens`, `usedBytes`, and the estimator name under `limits`.
 
+## Claude Code resources and prime prompt
+
+Claude Code discovers Memento resources in the `@` autocomplete menu and MCP prompts in the `/` command menu. If the configured server name is `memento`, examples are:
+
+```text
+@memento:note://memory/repo-overview
+@memento:repo://file/README.md
+/mcp__memento__prime
+/mcp__memento__prime internal/mcp/server.go "workspace routing"
+```
+
+Replace `memento` in the prefix when your MCP server entry uses a different name. Prefer the autocomplete menu for note keys containing spaces or punctuation; Memento emits properly escaped URIs. The `prime` prompt takes optional positional `path` and `focus` arguments, includes bounded durable notes and project manifests, and adds a body-free outline when `path` is provided.
+
+Only active notes appear as resources. Stale notes are labeled and should be verified; tombstones remain available through `memory_list` but are intentionally absent from `@` discovery. File resources are bounded and redacted, and sensitive/binary paths are rejected rather than attached.
+
+Protocol-level verification:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}' \
+  '{"jsonrpc":"2.0","id":3,"method":"prompts/list","params":{}}' | ./bin/memento-mcp --root "$PWD"
+```
+
+The initialize result must advertise `resources` and `prompts`; subsequent results should include `note://memory/...` / `repo://file/...` descriptors and the `prime` prompt. Claude Code formats discovered prompts as `/mcp__<server-name>__<prompt-name>`.
+
 ## Example tool calls
 
 Save a note anchored to a symbol:

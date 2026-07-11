@@ -879,9 +879,33 @@ func (s *Server) handleRPC(ctx context.Context, req rpcRequest) rpcResponse {
 			})
 		}
 		return rpcOK(req.ID, res)
+	case "resources/list":
+		result, err := s.listResources(ctx, req.Params)
+		return nativeRPCResponse(req.ID, result, err)
+	case "resources/templates/list":
+		return rpcOK(req.ID, listResourceTemplates())
+	case "resources/read":
+		result, err := s.readResource(ctx, req.Params)
+		return nativeRPCResponse(req.ID, result, err)
+	case "prompts/list":
+		return rpcOK(req.ID, listPrompts())
+	case "prompts/get":
+		result, err := s.getPrompt(ctx, req.Params)
+		return nativeRPCResponse(req.ID, result, err)
 	default:
 		return rpcErr(req.ID, -32601, "Method not found", req.Method)
 	}
+}
+
+func nativeRPCResponse(id any, result any, err error) rpcResponse {
+	if err == nil {
+		return rpcOK(id, result)
+	}
+	var nativeErr *nativeRPCError
+	if errors.As(err, &nativeErr) {
+		return rpcErr(id, nativeErr.Code, nativeErr.Message, nativeErr.Data)
+	}
+	return rpcErr(id, -32603, "Internal error", err.Error())
 }
 
 func (s *Server) workspaceDiscoveryPending(method string, session *stdioSession) bool {
@@ -970,6 +994,10 @@ Durable repo-scoped memory:
 - Use memory_mark_stale after finding a contradiction, memory_verify after reconciliation, and memory_tombstone for recoverable soft eviction. memory_gc is conservative and destructive.
 - Use memory_delete for one confirmed key. memory_clear is destructive and erases all notes for the repository.
 
+Native client UX:
+- Repository notes and key files are available as note://memory and repo://file resources for explicit @-mention.
+- Use the prime prompt to front-load bounded durable memory, project manifests, and optional active-file structure.
+
 Prefer repo_context over broad file reads when beginning implementation or review. Save only information that should remain useful in future sessions.`
 
 func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
@@ -989,7 +1017,9 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 			"version": "0.6.0",
 		},
 		"capabilities": map[string]any{
-			"tools": map[string]any{},
+			"tools":     map[string]any{},
+			"resources": map[string]any{},
+			"prompts":   map[string]any{},
 		},
 		"instructions": serverInstructions,
 	}
