@@ -80,6 +80,7 @@ printf '%s\n' \
 - `repo_context` to fetch a single “context window” with intent-aware routing (uses automatic indexing in the background).
 - `repo_switch_workspace` to retarget the server to another repository/workspace root at runtime (no process restart).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
+- Optional code anchors that flag stale notes, preserve them for verification, and protect renamed or branch-specific referents from accidental eviction.
 
 ### Switch workspace without restart
 
@@ -103,6 +104,8 @@ Call `repo_switch_workspace` with a new root path:
 Prefer `repo_context` with `intent` for new callers. Keep explicit `mode` only for advanced overrides.
 
 Use `repo_outline` first when the caller only needs the shape of one file. Follow its line ranges with `repo_read_file`, or switch to `repo_context` when related-file context is needed.
+
+For durable memory, pass `anchors` to `memory_upsert` when a note describes code. Stale notes remain visible in search; reconcile them with `memory_verify` or soft-evict them with `memory_tombstone`. Use `memory_list` to inspect tombstones and reserve `memory_gc`, `memory_delete`, and `memory_clear` for intentional destructive maintenance.
 
 Navigate or explain:
 

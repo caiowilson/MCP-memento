@@ -15,6 +15,10 @@ func leafToolDefinitionsFor(root string) []Tool {
 		memoryUpsertToolDefinition(),
 		memorySearchToolDefinition(),
 		memoryListToolDefinition(),
+		memoryMarkStaleToolDefinition(),
+		memoryVerifyToolDefinition(),
+		memoryTombstoneToolDefinition(),
+		memoryGCToolDefinition(),
 		memoryDeleteToolDefinition(),
 		memoryClearToolDefinition(),
 	}
@@ -100,11 +104,12 @@ func memoryUpsertToolDefinition() Tool {
 			"type":     "object",
 			"required": []any{"key", "text"},
 			"properties": map[string]any{
-				"key":  map[string]any{"type": "string", "description": "Stable identifier for the note (e.g. \"repo-overview\" or \"internal/mcp/server.go\")."},
-				"text": map[string]any{"type": "string", "description": "Note content to store."},
-				"tags": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags for filtering."},
-				"path": map[string]any{"type": "string", "description": "Optional repo-relative path this note refers to."},
-				"meta": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Optional metadata map."},
+				"key":     map[string]any{"type": "string", "description": "Stable identifier for the note (e.g. \"repo-overview\" or \"internal/mcp/server.go\")."},
+				"text":    map[string]any{"type": "string", "description": "Note content to store."},
+				"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags for filtering."},
+				"path":    map[string]any{"type": "string", "description": "Optional repo-relative path this note refers to."},
+				"meta":    map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Optional metadata map."},
+				"anchors": map[string]any{"type": "array", "items": memoryAnchorSchema(), "description": "Optional code anchors. Current hashes, Git commit, branch, and symbol lines are captured on save."},
 			},
 		},
 	}
@@ -114,8 +119,8 @@ func memorySearchToolDefinition() Tool {
 	return Tool{
 		Name:        "memory_search",
 		Title:       "Search Memory Notes",
-		Description: "Search repo-scoped notes (explicit memory) by substring and/or tags.",
-		Annotations: readOnlyAnnotations(),
+		Description: "Search active repo-scoped notes by substring and/or tags. Reconcile anchors first and return stale notes after fresh notes; omit tombstones.",
+		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -131,9 +136,84 @@ func memoryListToolDefinition() Tool {
 	return Tool{
 		Name:        "memory_list",
 		Title:       "List Memory Notes",
-		Description: `List all durable notes stored for the current repository scope. Returns every note with its key, text, tags, path, updatedAt, and meta. Use to enumerate saved context or to find a note's key before calling memory_delete.`,
-		Annotations: readOnlyAnnotations(),
+		Description: `List all durable notes, including stale and tombstoned notes with lifecycle metadata. Reconcile anchors before return.`,
+		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{"type": "object"},
+	}
+}
+
+func memoryAnchorSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path":        map[string]any{"type": "string", "description": "Repo-relative anchored file path."},
+			"symbol":      map[string]any{"type": "string", "description": "Optional symbol name or Container.Symbol name."},
+			"commitSha":   map[string]any{"type": "string", "description": "Optional Git commit; refreshed on upsert or verify."},
+			"contentHash": map[string]any{"type": "string", "description": "Optional content hash; refreshed on upsert or verify."},
+			"branch":      map[string]any{"type": "string", "description": "Optional branch identity; refreshed on upsert or verify."},
+			"startLine":   map[string]any{"type": "integer", "minimum": 1},
+			"endLine":     map[string]any{"type": "integer", "minimum": 1},
+		},
+		"anyOf": []any{
+			map[string]any{"required": []any{"path"}},
+			map[string]any{"required": []any{"commitSha"}},
+		},
+	}
+}
+
+func memoryMarkStaleToolDefinition() Tool {
+	return Tool{
+		Name:        "memory_mark_stale",
+		Title:       "Mark Memory Note Stale",
+		Description: "Confirm that a note contradicts current reality. Stale notes remain searchable and are downranked. Set failedAdjudication only after an attempted reconciliation could not salvage the note.",
+		Annotations: mutatingAnnotations(),
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []any{"key", "reason"},
+			"properties": map[string]any{
+				"key":                map[string]any{"type": "string"},
+				"reason":             map[string]any{"type": "string"},
+				"failedAdjudication": map[string]any{"type": "boolean", "description": "Increment the failed-reconciliation count (default false)."},
+				"orphaned":           map[string]any{"type": "boolean", "description": "Confirm that the note's referent no longer exists (default false)."},
+			},
+		},
+	}
+}
+
+func memoryVerifyToolDefinition() Tool {
+	return Tool{
+		Name:        "memory_verify",
+		Title:       "Verify Memory Note",
+		Description: "Confirm a note against current code, refresh its anchors, and reset its lifecycle to fresh. Fails if an anchor cannot be resolved.",
+		Annotations: mutatingAnnotations(),
+		InputSchema: map[string]any{"type": "object", "required": []any{"key"}, "properties": map[string]any{"key": map[string]any{"type": "string"}}},
+	}
+}
+
+func memoryTombstoneToolDefinition() Tool {
+	return Tool{
+		Name:        "memory_tombstone",
+		Title:       "Tombstone Memory Note",
+		Description: "Soft-evict a confirmed obsolete note from active search while retaining it for inspection and recovery through memory_list or memory_verify.",
+		Annotations: mutatingAnnotations(),
+		InputSchema: map[string]any{"type": "object", "required": []any{"key", "reason"}, "properties": map[string]any{"key": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}},
+	}
+}
+
+func memoryGCToolDefinition() Tool {
+	return Tool{
+		Name:        "memory_gc",
+		Title:       "Garbage Collect Memory Notes",
+		Description: "Permanently delete only notes that are tombstoned, orphaned, aged out, repeatedly unsalvageable, and below the retrieval threshold. Explicit memory_delete remains the direct override.",
+		Annotations: destructiveAnnotations(),
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"olderThanDays":          map[string]any{"type": "integer", "minimum": minimumMemoryGCAgeDays, "description": "Tombstone and last-use age threshold (default 90 days; minimum 30)."},
+				"minFailedAdjudications": map[string]any{"type": "integer", "minimum": 1, "description": "Required failed reconciliations (default 2)."},
+				"maximumRetrievalCount":  map[string]any{"type": "integer", "minimum": 1, "maximum": defaultMemoryGCMaxRetrievals, "description": "Notes retrieved this many times or more survive (default and maximum 3)."},
+			},
+		},
 	}
 }
 

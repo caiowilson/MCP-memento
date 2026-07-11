@@ -247,6 +247,10 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 		newMemoryUpsertTool(mem),
 		newMemorySearchTool(mem),
 		newMemoryListTool(mem),
+		newMemoryMarkStaleTool(mem),
+		newMemoryVerifyTool(mem),
+		newMemoryTombstoneTool(mem),
+		newMemoryGCTool(mem),
 		newMemoryDeleteTool(mem),
 		newMemoryClearTool(mem),
 	}
@@ -313,6 +317,7 @@ func (s *Server) restartBackgroundIndexing() {
 
 	root := s.root
 	idx := s.idx
+	mem := s.mem
 
 	idx.Start(runCtx)
 	go func() {
@@ -320,6 +325,10 @@ func (s *Server) restartBackgroundIndexing() {
 	}()
 
 	notifySemantic := func(add, del []string) {
+		if mem != nil {
+			paths := append(append([]string{}, add...), del...)
+			_ = mem.ReconcileChanged(paths)
+		}
 		if touchesGoSemantic(add) || touchesGoSemantic(del) {
 			InvalidateGoSemanticCache(root)
 			go WarmGoSemanticCache(runCtx, root)
@@ -957,7 +966,8 @@ Repository context:
 
 Durable repo-scoped memory:
 - Use memory_search when prior decisions or handoffs may matter; use memory_list to enumerate notes.
-- Use memory_upsert to preserve durable decisions, conventions, findings, and handoffs.
+- Use memory_upsert with anchors to preserve durable decisions and detect code drift. Stale notes remain visible and should be verified against current code.
+- Use memory_mark_stale after finding a contradiction, memory_verify after reconciliation, and memory_tombstone for recoverable soft eviction. memory_gc is conservative and destructive.
 - Use memory_delete for one confirmed key. memory_clear is destructive and erases all notes for the repository.
 
 Prefer repo_context over broad file reads when beginning implementation or review. Save only information that should remain useful in future sessions.`

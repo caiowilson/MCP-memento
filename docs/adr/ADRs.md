@@ -17,6 +17,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0005: Git-first incremental indexing (with filesystem fallback) (Proposed, 2026-01-17)
 - ADR 0006: Opt-in local hybrid retrieval with Ollama (Accepted, 2026-07-10)
 - ADR 0007: Standalone extractive repository outlines (Accepted, 2026-07-10)
+- ADR 0008: Anchored memory lifecycle and conservative eviction (Accepted, 2026-07-10)
 
 ---
 
@@ -503,6 +504,45 @@ Agents often need a file's declarations and signatures before they need implemen
 - Add only a `granularity` flag to `repo_context`: smaller API surface, but poor Tool Search discoverability and continued coupling to relationship assembly.
 - Replace existing context outline modes: cleaner long term, but breaks established callers without improving the standalone tool.
 - Add tree-sitter: richer cross-language parsing, but adds native/runtime distribution complexity that is disproportionate to extractive signatures.
+
+---
+
+## ADR 0008: Anchored memory lifecycle and conservative eviction
+
+- Status: Accepted
+- Date: 2026-07-10
+
+### Context
+
+Durable notes can become actively misleading when code changes but the note continues to appear as fresh fact. Elapsed-time expiry alone cannot establish whether a note is wrong, and deleting on each change would disproportionately destroy useful knowledge in frequently edited files. The system needs deterministic evidence, model adjudication, recoverable eviction, and a deletion policy whose false-positive cost matches the irreversibility of hard deletion.
+
+### Decision
+
+- Extend notes with optional code anchors containing a repo-relative path, optional symbol or line range, content hash, Git commit, and branch identity. Preserve legacy notes as unanchored fresh notes.
+- Snapshot anchors on `memory_upsert` and `memory_verify`. Symbol anchors resolve line metadata and hash the full declaration extent, including function or method bodies.
+- Reconcile affected anchors from filesystem/Git change callbacks and reconcile all active notes before search or list operations.
+- Model the lifecycle as `fresh`, `stale`, and `tombstoned`. Content drift marks a note stale; stale notes remain searchable with reasons and rank after fresh notes.
+- Expose `memory_mark_stale` and `memory_verify` as discoverable adjudication tools. Count only explicitly declared failed adjudications, never raw deterministic flags.
+- Use Git branch and ancestry identity before declaring orphaning. Follow working-tree and committed renames; absence on another branch, detached checkout, or non-descendant history is not orphaning.
+- Soft-evict high-confidence orphaned referents as recoverable tombstones. Keep tombstones in `memory_list` and omit them from active search.
+- Hard-delete through `memory_gc` only when a note is tombstoned, orphaned, aged out, not recently used, below the retrieval threshold, and above the failed-adjudication threshold. Default to 90 days, two failed adjudications, and fewer than three retrievals; enforce a 30-day minimum age.
+- Keep `memory_delete` and `memory_clear` as explicit destructive overrides.
+
+### Consequences
+
+- Anchored notes can no longer silently survive code drift as fresh facts, while unanchored notes remain backward compatible.
+- Change-heavy files produce review prompts rather than deletion pressure. Usage is a hard protection signal for automatic GC.
+- Git commands add local reconciliation work for missing anchors, but only when disappearance needs lineage or rename adjudication.
+- Conservative scanners may omit unusual symbols during anchor creation; callers can use path or explicit line-range anchors instead.
+- Notes continue to use the existing local JSON store, with additive fields that older files can omit.
+
+### Alternatives considered
+
+- Time-to-live expiration: simple, but age does not establish falsity and would evict stable decisions.
+- Delete after a fixed stale-flag count: conflates code churn with obsolescence and targets valuable hot-path notes.
+- Hide stale notes: removes useful historical evidence and makes reconciliation harder.
+- Treat every missing path as orphaned: fails on renames, branch switches, detached checkouts, and rewritten history.
+- Require model adjudication for every file change: precise but expensive and unavailable without an active caller.
 
 ---
 

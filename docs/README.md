@@ -27,8 +27,14 @@ This directory collects the main project documentation, including client setup, 
 - `repo_reindex` — trigger full re-index
 - `repo_clear_index` — delete all indexed chunks, vectors, and manifest
 - `repo_index_debug` — index debug info (filters, counts, last error)
-- `memory_upsert` — store/update repo-scoped notes
-- `memory_search` — search repo-scoped notes
+- `memory_upsert` — store/update repo-scoped notes, optionally anchored to code
+- `memory_search` — search active notes; stale results remain visible and downranked
+- `memory_list` — enumerate active, stale, and tombstoned notes
+- `memory_mark_stale` — confirm a contradiction and record adjudication evidence
+- `memory_verify` — refresh anchors and reset a reconciled note to fresh
+- `memory_tombstone` — soft-evict an obsolete note without deleting it
+- `memory_gc` — conservatively delete eligible tombstones
+- `memory_delete` — explicitly delete one note
 - `memory_clear` — delete all repo-scoped notes
 
 ## Automatic indexing
@@ -82,6 +88,30 @@ Configuration:
 Example: `MEMENTO_REDACTION_ADDITIONAL_PATTERNS='["INTERNAL-[A-Z0-9]{16}"]'`. Invalid JSON or regular expressions fail server startup rather than silently weakening protection.
 
 The redaction configuration is fingerprinted in the index manifest. On the first startup after this feature is installed, or whenever these settings change, Memento automatically removes the old chunk index and rebuilds it so previously persisted unredacted chunks are not retained. Explicit memory notes are unaffected.
+
+## Durable memory lifecycle
+
+`memory_upsert` accepts optional `anchors`. A code anchor uses a repo-relative `path` and can narrow the referent with `symbol` or `startLine`/`endLine`; a commit-only anchor marks a note stale when the same branch advances. On save, Memento captures the current content hash, Git commit, branch, and resolved symbol lines. The legacy top-level `path` remains descriptive metadata; use `anchors` when deterministic drift detection is required.
+
+Filesystem and Git change notifications reconcile affected anchors. Search and list also reconcile before returning, so missed watcher events do not silently preserve fresh status. Content changes mark a note `stale`; stale notes remain in `memory_search`, carry `staleReason`, and rank after fresh matches. Repeated code churn does not increment `failedAdjudications` and never deletes a note.
+
+Git lineage makes orphaning deliberately strict. Memento follows working-tree and committed renames, searches for a uniquely moved anchored symbol when Git similarity is inconclusive, does not orphan notes when their anchor is absent on another branch or detached checkout, and only confirms disappearance when the anchor commit remains in the current branch lineage. Confirmed disappearance of a note's single referent produces a recoverable `tombstoned` note; loss of one anchor from a multi-anchor note remains stale for adjudication. Tombstones are visible through `memory_list` but omitted from active search.
+
+Use `memory_mark_stale` when current context contradicts a note. Set `failedAdjudication: true` only after attempting and failing to reconcile it; raw stale flags are not deletion evidence. Use `memory_verify` after correction to refresh anchors and reset the lifecycle to `fresh`. `memory_tombstone` is explicit soft eviction, while `memory_delete` is the explicit hard-delete override.
+
+`memory_gc` hard-deletes only notes that are all of: tombstoned, confirmed orphaned, older than the aging window, not recently used, below the retrieval threshold, and above the failed-adjudication threshold. Defaults are 90 days, two failed adjudications, and fewer than three retrievals; the aging window cannot be lowered below 30 days. Frequently retrieved notes therefore survive regardless of stale-flag count. Notes remain stored in the existing backward-compatible `notes.json` file under `~/.memento-mcp/repos/<repo-id>/`.
+
+Example anchored upsert:
+
+```json
+{
+  "key": "context-packing-contract",
+  "text": "Oversized chunks are skipped so smaller candidates can still fit.",
+  "anchors": [
+    { "path": "internal/mcp/token_budget.go", "symbol": "contextBudget.tryAdd" }
+  ]
+}
+```
 
 ## LLM usage
 

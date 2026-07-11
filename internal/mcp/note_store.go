@@ -19,13 +19,43 @@ type NoteStore struct {
 }
 
 type Note struct {
-	Key       string            `json:"key"`
-	Text      string            `json:"text"`
-	Tags      []string          `json:"tags,omitempty"`
-	Path      string            `json:"path,omitempty"`
-	UpdatedAt string            `json:"updatedAt"`
-	Meta      map[string]string `json:"meta,omitempty"`
+	Key                 string            `json:"key"`
+	Text                string            `json:"text"`
+	Tags                []string          `json:"tags,omitempty"`
+	Path                string            `json:"path,omitempty"`
+	UpdatedAt           string            `json:"updatedAt"`
+	Meta                map[string]string `json:"meta,omitempty"`
+	Anchors             []NoteAnchor      `json:"anchors,omitempty"`
+	Status              NoteStatus        `json:"status"`
+	StaleReason         string            `json:"staleReason,omitempty"`
+	StaleAt             string            `json:"staleAt,omitempty"`
+	VerifiedAt          string            `json:"verifiedAt,omitempty"`
+	Orphaned            bool              `json:"orphaned"`
+	OrphanReason        string            `json:"orphanReason,omitempty"`
+	OrphanedAt          string            `json:"orphanedAt,omitempty"`
+	TombstonedAt        string            `json:"tombstonedAt,omitempty"`
+	FailedAdjudications int               `json:"failedAdjudications"`
+	RetrievalCount      int               `json:"retrievalCount"`
+	LastRetrievedAt     string            `json:"lastRetrievedAt,omitempty"`
 }
+
+type NoteAnchor struct {
+	Path        string `json:"path,omitempty"`
+	Symbol      string `json:"symbol,omitempty"`
+	CommitSHA   string `json:"commitSha,omitempty"`
+	ContentHash string `json:"contentHash,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	StartLine   int    `json:"startLine,omitempty"`
+	EndLine     int    `json:"endLine,omitempty"`
+}
+
+type NoteStatus string
+
+const (
+	NoteStatusFresh      NoteStatus = "fresh"
+	NoteStatusStale      NoteStatus = "stale"
+	NoteStatusTombstoned NoteStatus = "tombstoned"
+)
 
 type noteFile struct {
 	Repo  string `json:"repo"`
@@ -60,21 +90,38 @@ func (s *NoteStore) Upsert(n Note) (Note, error) {
 		return Note{}, fmt.Errorf("missing note text")
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	n.UpdatedAt = now
-
 	f, err := s.loadLocked()
 	if err != nil {
 		return Note{}, err
 	}
 
 	n.Key = strings.TrimSpace(n.Key)
-	n.Path = filepath.ToSlash(filepath.Clean(strings.TrimSpace(n.Path)))
+	if strings.TrimSpace(n.Path) != "" {
+		n.Path = filepath.ToSlash(filepath.Clean(strings.TrimSpace(n.Path)))
+	} else {
+		n.Path = ""
+	}
 	n.Tags = normalizeTags(n.Tags)
+	n.Anchors, err = s.snapshotAnchors(n.Anchors)
+	if err != nil {
+		return Note{}, err
+	}
+	n.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	n.Status = NoteStatusFresh
+	n.VerifiedAt = n.UpdatedAt
+	n.StaleReason = ""
+	n.StaleAt = ""
+	n.Orphaned = false
+	n.OrphanReason = ""
+	n.OrphanedAt = ""
+	n.TombstonedAt = ""
+	n.FailedAdjudications = 0
 
 	found := false
 	for i := range f.Notes {
 		if f.Notes[i].Key == n.Key {
+			n.RetrievalCount = f.Notes[i].RetrievalCount
+			n.LastRetrievedAt = f.Notes[i].LastRetrievedAt
 			f.Notes[i] = n
 			found = true
 			break
@@ -110,8 +157,12 @@ func (s *NoteStore) Search(query string, tags []string, limit int) ([]Note, erro
 		tagSet[t] = struct{}{}
 	}
 
-	out := make([]Note, 0, min(limit, len(f.Notes)))
-	for _, n := range f.Notes {
+	changed := s.reconcileLocked(&f, nil)
+	matches := make([]int, 0, len(f.Notes))
+	for index, n := range f.Notes {
+		if noteStatus(n) == NoteStatusTombstoned {
+			continue
+		}
 		if len(tagSet) > 0 && !noteHasAllTags(n, tagSet) {
 			continue
 		}
@@ -121,9 +172,23 @@ func (s *NoteStore) Search(query string, tags []string, limit int) ([]Note, erro
 				continue
 			}
 		}
-		out = append(out, n)
-		if len(out) >= limit {
-			break
+		matches = append(matches, index)
+	}
+	sortNoteMatches(f.Notes, matches)
+	if len(matches) > limit {
+		matches = matches[:limit]
+	}
+	out := make([]Note, 0, len(matches))
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, index := range matches {
+		f.Notes[index].RetrievalCount++
+		f.Notes[index].LastRetrievedAt = now
+		out = append(out, f.Notes[index])
+		changed = true
+	}
+	if changed {
+		if err := s.saveLocked(f); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -144,6 +209,11 @@ func (s *NoteStore) List() ([]Note, error) {
 	f, err := s.loadLocked()
 	if err != nil {
 		return nil, err
+	}
+	if s.reconcileLocked(&f, nil) {
+		if err := s.saveLocked(f); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]Note, len(f.Notes))
 	copy(out, f.Notes)
@@ -182,6 +252,11 @@ func (s *NoteStore) loadLocked() (noteFile, error) {
 	}
 	if f.Repo == "" {
 		f.Repo = s.repo
+	}
+	for index := range f.Notes {
+		if f.Notes[index].Status == "" {
+			f.Notes[index].Status = NoteStatusFresh
+		}
 	}
 	return f, nil
 }

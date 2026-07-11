@@ -74,6 +74,10 @@ func TestServerExposesExpectedTools(t *testing.T) {
 		"memory_upsert",
 		"memory_search",
 		"memory_list",
+		"memory_mark_stale",
+		"memory_verify",
+		"memory_tombstone",
+		"memory_gc",
 		"memory_delete",
 		"memory_clear",
 	}
