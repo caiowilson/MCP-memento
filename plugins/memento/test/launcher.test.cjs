@@ -150,7 +150,7 @@ test("resolveBinary rejects a mismatched checksum without caching", async () => 
         /checksum mismatch/,
       );
     });
-    const expected = path.join(pluginData, "bin", "server-v0.8.0", asset);
+    const expected = path.join(pluginData, "bin", "server-v0.9.0", asset);
     await assert.rejects(fsp.stat(expected), { code: "ENOENT" });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
