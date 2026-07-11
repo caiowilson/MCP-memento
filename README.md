@@ -162,7 +162,7 @@ ChatGPT on the web does not load local Codex configuration or launch local STDIO
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
    - Indexed chunks and scoring
-   - Language-aware relationships (Go, TS/JS, PHP)
+   - Language-aware relationships (Go type analysis, TS/JS imports, and PHP Composer/symbol/Laravel references)
    - Hard byte and line limits for LLM context safety
 5. Explicit notes are stored separately as durable, repo-scoped memory.
 

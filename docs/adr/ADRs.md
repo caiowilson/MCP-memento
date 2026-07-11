@@ -328,7 +328,7 @@ Return an ordered list of repo-relative files related to a given file. Relations
 
 - Go: imports, importers, and semantic edges (go/types).
 - TS/JS: import graph (relative specifiers).
-- PHP: include/require graph (simple relative literals).
+- PHP: include/require graph, Composer PSR-4 namespace imports/importers, symbol references, and common Laravel view/config references.
 - Other: best-effort mention/same-directory heuristics.
 
 **Input**

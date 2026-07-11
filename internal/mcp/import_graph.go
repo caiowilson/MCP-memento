@@ -1,8 +1,10 @@
 package mcp
 
 type importGraph struct {
-	imports   map[string][]string // file -> imported files (rel)
-	importers map[string][]string // file -> importing files (rel)
+	imports      map[string][]string // file -> imported files (rel)
+	importers    map[string][]string // file -> importing files (rel)
+	references   map[string][]string // file -> semantically referenced files (rel)
+	referencedBy map[string][]string // file -> files with semantic references to it (rel)
 }
 
 func appendUnique(list []string, v string) []string {

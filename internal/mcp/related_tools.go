@@ -42,11 +42,11 @@ func newRepoRelatedFilesTool(root string) Tool {
 				},
 				"includeImporters": map[string]any{
 					"type":        "boolean",
-					"description": "Include files that import the file's package (Go-only, default true).",
+					"description": "Include files that import the target (language-aware, default true).",
 				},
 				"includeReferences": map[string]any{
 					"type":        "boolean",
-					"description": "Include semantic references (Go uses go/types; default true).",
+					"description": "Include semantic references where supported (Go and PHP, default true).",
 				},
 			},
 		},
@@ -165,12 +165,20 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 		if err == nil && g != nil {
 			if opts.IncludeImports {
 				for _, p := range g.imports[relClean] {
-					collector.add(p, 9, "includes")
+					collector.add(p, 9, "imports")
 				}
 			}
 			if opts.IncludeImporters {
 				for _, p := range g.importers[relClean] {
-					collector.add(p, 10, "included_by")
+					collector.add(p, 10, "imported_by")
+				}
+			}
+			if opts.IncludeRefs {
+				for _, p := range g.references[relClean] {
+					collector.add(p, 8, "semantic_reference")
+				}
+				for _, p := range g.referencedBy[relClean] {
+					collector.add(p, 8, "referenced_by")
 				}
 			}
 		}

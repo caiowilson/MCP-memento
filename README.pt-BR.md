@@ -129,7 +129,7 @@ No macOS ou WSL, `claude mcp add-from-claude-desktop` pode importar esse servido
    - Repositórios sem Git: fallback com watcher do sistema de arquivos
 4. As ferramentas de contexto combinam:
    - Chunks indexados e pontuação
-   - Relacionamentos com conhecimento de linguagem (Go, TS/JS, PHP)
+   - Relacionamentos com conhecimento de linguagem (análise de tipos Go, imports TS/JS e referências Composer/símbolos/Laravel em PHP)
    - Limites rígidos de bytes e linhas para segurança do contexto de LLM
 5. Notas explícitas são armazenadas separadamente como memória durável com escopo do repositório.
 

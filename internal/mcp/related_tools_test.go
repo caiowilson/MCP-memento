@@ -144,6 +144,96 @@ func TestRepoRelatedFilesPHPIncludesAndIncludedBy(t *testing.T) {
 	}
 }
 
+func TestRepoRelatedFilesPHPComposerImportsAndSemanticReferences(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"composer.json":                           `{"autoload":{"psr-4":{"App\\":"app/"}}}`,
+		"app/Models/User.php":                     "<?php\nnamespace App\\Models;\nclass User {}\n",
+		"app/Support/Clock.php":                   "<?php // resolved from its PSR-4 path even before a declaration is indexed\n",
+		"app/Services/UserService.php":            "<?php\nnamespace App\\Services;\nuse App\\Models\\User as DomainUser;\nclass UserService { public function make(): DomainUser { return new DomainUser(); } }\n",
+		"app/Http/Controllers/UserController.php": "<?php\nnamespace App\\Http\\Controllers;\nuse App\\Services\\UserService;\nuse App\\Support\\Clock;\nclass UserController { public function __invoke(UserService $service) { Clock::now(); } }\n",
+	}
+	for rel, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tool := newRepoRelatedFilesTool(root)
+	call := func(path string, extra map[string]any) []relatedCandidate {
+		t.Helper()
+		args := map[string]any{"path": path, "includeSameDir": false}
+		for key, value := range extra {
+			args[key] = value
+		}
+		raw, _ := json.Marshal(args)
+		got, err := tool.Handler(context.Background(), raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.(map[string]any)["related"].([]relatedCandidate)
+	}
+
+	service := call("app/Services/UserService.php", nil)
+	if !hasRelatedReason(service, "app/Models/User.php", "imports") || !hasRelatedReason(service, "app/Models/User.php", "semantic_reference") {
+		t.Fatalf("expected Composer import and semantic reference to User: %#v", service)
+	}
+	user := call("app/Models/User.php", nil)
+	if !hasRelatedReason(user, "app/Services/UserService.php", "imported_by") || !hasRelatedReason(user, "app/Services/UserService.php", "referenced_by") {
+		t.Fatalf("expected reverse PHP importer and reference: %#v", user)
+	}
+	controller := call("app/Http/Controllers/UserController.php", map[string]any{"includeReferences": false})
+	if !hasRelatedReason(controller, "app/Services/UserService.php", "imports") {
+		t.Fatalf("expected PHP namespace import when references are disabled: %#v", controller)
+	}
+	if !hasRelatedReason(controller, "app/Support/Clock.php", "imports") {
+		t.Fatalf("expected Composer PSR-4 path fallback: %#v", controller)
+	}
+}
+
+func TestRepoRelatedFilesPHPLaravelViewAndConfigConventions(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"app/Http/Controllers/DashboardController.php": "<?php\nclass DashboardController { public function show() { config('services.stripe'); return view('dashboard.index'); } }\n",
+		"resources/views/dashboard/index.blade.php":    "@extends('layouts.app')\n",
+		"resources/views/layouts/app.blade.php":        "<html>{{ $slot }}</html>\n",
+		"config/services.php":                          "<?php return [];\n",
+	}
+	for rel, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tool := newRepoRelatedFilesTool(root)
+	raw, _ := json.Marshal(map[string]any{"path": "app/Http/Controllers/DashboardController.php", "includeSameDir": false, "includeImports": false, "includeImporters": false})
+	got, err := tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	related := got.(map[string]any)["related"].([]relatedCandidate)
+	if !hasRelatedReason(related, "resources/views/dashboard/index.blade.php", "semantic_reference") || !hasRelatedReason(related, "config/services.php", "semantic_reference") {
+		t.Fatalf("expected Laravel view and config references: %#v", related)
+	}
+
+	raw, _ = json.Marshal(map[string]any{"path": "resources/views/dashboard/index.blade.php", "includeSameDir": false, "includeImports": false, "includeImporters": false})
+	got, err = tool.Handler(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	related = got.(map[string]any)["related"].([]relatedCandidate)
+	if !hasRelatedReason(related, "resources/views/layouts/app.blade.php", "semantic_reference") {
+		t.Fatalf("expected Blade layout reference: %#v", related)
+	}
+}
+
 func TestRepoRelatedFilesTSInvalidatesStaleGraphOnRename(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "src")
@@ -343,6 +433,20 @@ func containsRelated(list []relatedCandidate, path string) bool {
 	for _, c := range list {
 		if c.Path == path {
 			return true
+		}
+	}
+	return false
+}
+
+func hasRelatedReason(list []relatedCandidate, path, reason string) bool {
+	for _, candidate := range list {
+		if candidate.Path != path {
+			continue
+		}
+		for _, got := range candidate.Reasons {
+			if got == reason {
+				return true
+			}
 		}
 	}
 	return false

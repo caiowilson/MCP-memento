@@ -21,7 +21,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_list_files` — list files under workspace root
 - `repo_read_file` — read redacted file content (optionally line-bounded)
 - `repo_search` — substring search across files with redacted snippets
-- `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware)
+- `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
