@@ -912,13 +912,22 @@ func (s *Server) handleClientRPCResponse(ctx context.Context, msg rpcMessage, se
 		return
 	}
 
-	if _, _, err := s.ensureChild(ctx, absRoot); err != nil {
+	previousRoot := s.currentRoot()
+	_, spawned, err := s.ensureChild(ctx, absRoot)
+	if err != nil {
 		s.logf("roots/list workspace root %q could not be initialized, keeping source=%s root=%s: %v", absRoot, s.rootSource, s.currentRoot(), err)
 		s.ensureCurrentWorkspaceChild(ctx)
 		return
 	}
-	if absRoot != s.currentRoot() {
+	if absRoot != previousRoot {
 		s.setCurrentRoot(absRoot)
+		// Fresh children already run a full startup index. Reused worktree
+		// children are explicitly refreshed when selected again.
+		if !spawned {
+			if err := s.triggerWorkspaceReindex(ctx, absRoot, false); err != nil {
+				s.logf("roots/list workspace root %q reindex could not be triggered: %v", absRoot, err)
+			}
+		}
 	}
 
 	s.rootSource = workspaceRootSourceClientRoots

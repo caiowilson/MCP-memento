@@ -19,7 +19,7 @@ func newRepoListFilesTool(root string) Tool {
 	return Tool{
 		Name:        "repo_list_files",
 		Title:       "List Repository Files",
-		Description: "List files under the workspace root (basic ignores).",
+		Description: "List files under the workspace root, excluding Git-ignored and built-in sensitive paths.",
 		Annotations: readOnlyAnnotations(),
 		InputSchema: map[string]any{
 			"type": "object",
@@ -45,26 +45,29 @@ func newRepoListFilesTool(root string) Tool {
 				max = int(f)
 			}
 
+			ignored := loadGitIgnored(root)
 			paths := make([]string, 0, 256)
 			err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
 					return nil
 				}
-				if d.IsDir() {
-					if shouldIgnoreDir(d.Name()) {
-						return filepath.SkipDir
-					}
-					return nil
-				}
-				if shouldIgnoreFile(d.Name()) {
-					return nil
-				}
-
 				rel, err := filepath.Rel(root, path)
 				if err != nil {
 					return nil
 				}
 				rel = filepath.ToSlash(rel)
+				if d.IsDir() {
+					if shouldIgnoreDir(d.Name()) {
+						return filepath.SkipDir
+					}
+					if rel != "." && ignored.Matches(rel) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if shouldIgnoreFile(d.Name()) || ignored.Matches(rel) {
+					return nil
+				}
 				if glob != "" {
 					ok, err := filepath.Match(glob, rel)
 					if err != nil || !ok {
@@ -147,6 +150,10 @@ func newRepoReadFileTool(root string, redactors ...*redact.Redactor) Tool {
 			abs, err := safeJoin(root, rel)
 			if err != nil {
 				return nil, err
+			}
+			rel = filepath.ToSlash(filepath.Clean(rel))
+			if loadGitIgnored(root).Matches(rel) {
+				return nil, fmt.Errorf("path is ignored by Git: %s", rel)
 			}
 
 			fh, err := os.Open(abs)
@@ -244,7 +251,7 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 	return Tool{
 		Name:        "repo_search",
 		Title:       "Search Repository",
-		Description: "Search for a substring across files in the workspace root (basic ignores).",
+		Description: "Search for a substring across non-ignored files in the workspace root.",
 		Annotations: readOnlyAnnotations(),
 		Meta:        largeResultToolMeta(),
 		InputSchema: map[string]any{
@@ -327,25 +334,28 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 			}
 			matches := make([]match, 0, min(maxResults, 32))
 
+			ignored := loadGitIgnored(root)
 			walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return nil
 				}
-				if d.IsDir() {
-					if shouldIgnoreDir(d.Name()) {
-						return filepath.SkipDir
-					}
-					return nil
-				}
-				if shouldIgnoreFile(d.Name()) {
-					return nil
-				}
-
 				rel, err := filepath.Rel(root, path)
 				if err != nil {
 					return nil
 				}
 				rel = filepath.ToSlash(rel)
+				if d.IsDir() {
+					if shouldIgnoreDir(d.Name()) {
+						return filepath.SkipDir
+					}
+					if rel != "." && ignored.Matches(rel) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if shouldIgnoreFile(d.Name()) || ignored.Matches(rel) {
+					return nil
+				}
 				if glob != "" {
 					ok, err := filepath.Match(glob, rel)
 					if err != nil || !ok {

@@ -23,7 +23,7 @@ func newRepoSwitchWorkspaceTool(s *Server) Tool {
 				},
 				"reindexNow": map[string]any{
 					"type":        "boolean",
-					"description": "When true, waits for a full index pass before returning.",
+					"description": "Workspace changes always trigger a full reindex. When true, waits for that pass before returning.",
 				},
 			},
 		},
@@ -52,13 +52,17 @@ func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bo
 	}
 
 	previousRoot := s.currentRoot()
+	changed := absRoot != previousRoot
 	_, spawned, err := s.ensureChild(ctx, absRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	if reindexNow {
-		if _, err := s.callChildTool(ctx, absRoot, "repo_reindex", json.RawMessage([]byte(`{}`))); err != nil {
+	reindexTriggered := changed || reindexNow
+	// A newly spawned child starts with a full index pass. Reused children need
+	// an explicit refresh when they become active again.
+	if reindexNow || (changed && !spawned) {
+		if err := s.triggerWorkspaceReindex(ctx, absRoot, reindexNow); err != nil {
 			return nil, err
 		}
 	}
@@ -76,11 +80,31 @@ func (s *Server) switchWorkspace(ctx context.Context, root string, reindexNow bo
 	}
 
 	return map[string]any{
-		"switched":     absRoot != previousRoot,
-		"spawned":      spawned,
-		"previousRoot": previousRoot,
-		"root":         absRoot,
-		"indexDebug":   indexDebug.StructuredContent,
-		"indexStatus":  indexStatus.StructuredContent,
+		"switched":         changed,
+		"spawned":          spawned,
+		"reindexTriggered": reindexTriggered,
+		"reindexWaited":    reindexNow,
+		"previousRoot":     previousRoot,
+		"root":             absRoot,
+		"indexDebug":       indexDebug.StructuredContent,
+		"indexStatus":      indexStatus.StructuredContent,
 	}, nil
+}
+
+func (s *Server) triggerWorkspaceReindex(ctx context.Context, root string, wait bool) error {
+	if wait {
+		_, err := s.callChildTool(ctx, root, "repo_reindex", json.RawMessage([]byte(`{}`)))
+		return err
+	}
+
+	backgroundCtx := s.backgroundParentCtx
+	if backgroundCtx == nil {
+		backgroundCtx = context.Background()
+	}
+	go func() {
+		if _, err := s.callChildTool(backgroundCtx, root, "repo_reindex", json.RawMessage([]byte(`{}`))); err != nil {
+			s.logf("workspace root %q automatic reindex failed: %v", root, err)
+		}
+	}()
+	return nil
 }

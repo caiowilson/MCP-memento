@@ -29,6 +29,7 @@ func buildPythonImportGraph(ctx context.Context, rootAbs string) (*importGraph, 
 		imports:   map[string][]string{},
 		importers: map[string][]string{},
 	}
+	ignored := loadGitIgnored(rootAbs)
 
 	_ = filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -40,13 +41,21 @@ func buildPythonImportGraph(ctx context.Context, rootAbs string) (*importGraph, 
 		default:
 		}
 
+		fromRel, relErr := filepath.Rel(rootAbs, path)
+		if relErr != nil {
+			return nil
+		}
+		fromRel = filepath.ToSlash(fromRel)
 		if d.IsDir() {
 			if shouldIgnoreDir(d.Name()) {
 				return filepath.SkipDir
 			}
+			if fromRel != "." && ignored.Matches(fromRel) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		if shouldIgnoreFile(d.Name()) {
+		if shouldIgnoreFile(d.Name()) || ignored.Matches(fromRel) {
 			return nil
 		}
 		if strings.ToLower(filepath.Ext(d.Name())) != ".py" {
@@ -61,12 +70,6 @@ func buildPythonImportGraph(ctx context.Context, rootAbs string) (*importGraph, 
 		if err != nil {
 			return nil
 		}
-
-		fromRel, err := filepath.Rel(rootAbs, path)
-		if err != nil {
-			return nil
-		}
-		fromRel = filepath.ToSlash(fromRel)
 
 		resolved := parseAndResolvePythonImports(rootAbs, path, string(b))
 		for _, toRel := range resolved {

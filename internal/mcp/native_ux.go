@@ -187,7 +187,11 @@ func keyResourceFiles(root string) []string {
 		"pyproject.toml", "Cargo.toml", "composer.json", "Makefile", "Taskfile.yml", "Taskfile.yaml",
 	}
 	files := make([]string, 0, len(candidates))
+	ignored := loadGitIgnored(root)
 	for _, candidate := range candidates {
+		if ignored.Matches(candidate) {
+			continue
+		}
 		abs, err := resolvedResourcePath(root, candidate)
 		if err != nil {
 			continue
@@ -204,6 +208,9 @@ func readFileResource(ctx context.Context, root, rel string, redactor *redact.Re
 	rel = filepath.ToSlash(filepath.Clean(strings.TrimSpace(rel)))
 	if !resourceFileAllowed(rel) {
 		return "", "", fmt.Errorf("resource file is not allowed")
+	}
+	if loadGitIgnored(root).Matches(rel) {
+		return "", "", fmt.Errorf("resource file is ignored by Git")
 	}
 	abs, err := resolvedResourcePath(root, rel)
 	if err != nil {

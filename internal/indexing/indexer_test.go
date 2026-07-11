@@ -3,6 +3,7 @@ package indexing
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -282,5 +283,34 @@ func TestIndexerMementoignoreNegation(t *testing.T) {
 	}
 	if _, err := idx.FileChunks("important.log"); err != nil {
 		t.Fatal("expected important.log to be re-included by .mementoignore negation")
+	}
+}
+
+func TestIndexerMementoignoreCannotReincludeGitIgnoredFile(t *testing.T) {
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init", "-q")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".mementoignore"), []byte("!ignored.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ignored.go"), []byte("package ignored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := New(Config{RootAbs: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx.Start(context.Background())
+	if err := idx.IndexAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.FileChunks("ignored.go"); err == nil {
+		t.Fatal("expected Git ignore to remain authoritative over .mementoignore negation")
 	}
 }

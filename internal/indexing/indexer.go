@@ -153,6 +153,9 @@ func (i *Indexer) Start(ctx context.Context) {
 }
 
 func (i *Indexer) IndexAll(ctx context.Context) error {
+	if err := i.ReloadIgnoreRules(); err != nil {
+		return err
+	}
 	done := make(chan error, 1)
 	i.reqCh <- request{ctx: ctx, full: true, done: done}
 	return <-done

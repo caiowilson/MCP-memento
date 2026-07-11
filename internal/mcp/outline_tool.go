@@ -48,6 +48,9 @@ func newRepoOutlineTool(root string, redactors ...*redact.Redactor) Tool {
 			return nil, fmt.Errorf("missing required argument: path")
 		}
 		rel = filepath.ToSlash(filepath.Clean(rel))
+		if loadGitIgnored(root).Matches(rel) {
+			return nil, fmt.Errorf("path is ignored by Git: %s", rel)
+		}
 		abs, err := safeJoin(root, rel)
 		if err != nil {
 			return nil, err

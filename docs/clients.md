@@ -299,3 +299,5 @@ Switch workspace without restart:
   }
 }
 ```
+
+Every actual workspace change triggers a full index refresh. Set `reindexNow: true` to wait for completion; otherwise the refresh runs asynchronously. Selecting the already-active root does not schedule a redundant pass.

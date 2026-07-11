@@ -65,8 +65,14 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 	}
 	files := make([]phpFileRelations, 0, 128)
 	classFiles := map[string]string{}
+	ignored := loadGitIgnored(rootAbs)
 
 	walkErr := filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
+		rel, relErr := filepath.Rel(rootAbs, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		switch {
 		case err != nil:
 			return err
@@ -74,7 +80,11 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 			return ctx.Err()
 		case d.IsDir() && shouldIgnoreDir(d.Name()):
 			return filepath.SkipDir
+		case d.IsDir() && rel != "." && ignored.Matches(rel):
+			return filepath.SkipDir
 		case d.IsDir() || shouldIgnoreFile(d.Name()) || !strings.EqualFold(filepath.Ext(d.Name()), ".php"):
+			return nil
+		case ignored.Matches(rel):
 			return nil
 		}
 		info, err := d.Info()
@@ -85,11 +95,7 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 		if err != nil {
 			return nil
 		}
-		rel, err := filepath.Rel(rootAbs, path)
-		if err != nil {
-			return nil
-		}
-		file := parsePHPFileRelations(path, filepath.ToSlash(rel), string(b))
+		file := parsePHPFileRelations(path, rel, string(b))
 		files = append(files, file)
 		for _, class := range file.declared {
 			classFiles[strings.ToLower(class)] = file.rel

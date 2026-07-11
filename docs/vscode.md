@@ -99,7 +99,8 @@ Call `repo_switch_workspace` with a new root path:
 ```
 
 - `path` can be absolute or relative to the current process working directory.
-- `reindexNow: true` blocks until the first full index pass completes.
+- Every actual workspace change triggers a full index refresh. Fresh child processes perform their startup index; cached worktree/repository children are explicitly reindexed when selected again.
+- `reindexNow: true` blocks until the refresh completes. The default triggers it asynchronously.
 
 ### LLM usage recipe
 

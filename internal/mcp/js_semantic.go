@@ -38,8 +38,14 @@ func buildJSImportGraph(ctx context.Context, rootAbs string) (*importGraph, erro
 		imports:   map[string][]string{},
 		importers: map[string][]string{},
 	}
+	ignored := loadGitIgnored(rootAbs)
 
 	walkErr := filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
+		rel, relErr := filepath.Rel(rootAbs, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		switch {
 		case err != nil:
 			return err
@@ -47,7 +53,11 @@ func buildJSImportGraph(ctx context.Context, rootAbs string) (*importGraph, erro
 			return ctx.Err()
 		case shouldSkipDir(d):
 			return filepath.SkipDir
+		case d.IsDir() && rel != "." && ignored.Matches(rel):
+			return filepath.SkipDir
 		case shouldSkipFile(d):
+			return nil
+		case ignored.Matches(rel):
 			return nil
 		}
 		return processJSFile(g, rootAbs, path, d)

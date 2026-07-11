@@ -7,18 +7,25 @@ import (
 	"path/filepath"
 
 	gitignore "github.com/sabhiram/go-gitignore"
+	"memento-mcp/internal/gitstate"
 )
 
 type ignoreRules struct {
-	matcher *gitignore.GitIgnore // nil when no rules
+	matcher    *gitignore.GitIgnore // .mementoignore, plus root .gitignore outside Git
+	gitIgnored *gitstate.IgnoredPaths
 }
 
-// loadIgnoreRules reads .gitignore then .mementoignore from root,
-// merging all lines in order so .mementoignore negations override .gitignore.
-// Missing files are silently skipped.
+// loadIgnoreRules combines Git's authoritative standard excludes with
+// .mementoignore. Memento negations cannot re-include a Git-ignored path.
 func loadIgnoreRules(root string) (*ignoreRules, error) {
+	gitIgnored := gitstate.LoadIgnoredPaths(root)
 	var allLines []string
-	for _, name := range []string{".gitignore", ".mementoignore"} {
+	names := []string{".mementoignore"}
+	if !gitIgnored.Available() {
+		// Preserve root .gitignore behavior in non-Git workspaces.
+		names = append([]string{".gitignore"}, names...)
+	}
+	for _, name := range names {
 		lines, err := readIgnoreLines(filepath.Join(root, name))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -29,9 +36,9 @@ func loadIgnoreRules(root string) (*ignoreRules, error) {
 		allLines = append(allLines, lines...)
 	}
 	if len(allLines) == 0 {
-		return &ignoreRules{}, nil
+		return &ignoreRules{gitIgnored: gitIgnored}, nil
 	}
-	return &ignoreRules{matcher: gitignore.CompileIgnoreLines(allLines...)}, nil
+	return &ignoreRules{matcher: gitignore.CompileIgnoreLines(allLines...), gitIgnored: gitIgnored}, nil
 }
 
 func readIgnoreLines(path string) ([]string, error) {
@@ -50,8 +57,11 @@ func readIgnoreLines(path string) ([]string, error) {
 
 // matchesPath returns true if the slash-separated relative path should be ignored.
 func (r *ignoreRules) matchesPath(relPath string) bool {
-	if r == nil || r.matcher == nil {
+	if r == nil {
 		return false
 	}
-	return r.matcher.MatchesPath(relPath)
+	if r.gitIgnored.Matches(relPath) {
+		return true
+	}
+	return r.matcher != nil && r.matcher.MatchesPath(relPath)
 }

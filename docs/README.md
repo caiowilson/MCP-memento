@@ -48,6 +48,8 @@ On startup the server resolves the workspace root in this order: explicit `--roo
 
 By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses a filesystem watcher to detect changes; if the watcher fails to start and the repo is a git repo, it falls back to `git status` polling. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (git polling first). See `docs/adr/ADRs.md`.
 
+Memento never indexes or returns untracked paths ignored by Git. It honors nested `.gitignore` files, `.git/info/exclude`, and the user's global `core.excludesFile`; tracked files remain available, matching Git semantics. `.mementoignore` can exclude additional paths but cannot re-include a Git-ignored path. The same boundary applies to list, read, search, outline, context, related-file, resource, and language-relationship operations.
+
 ## Native MCP resources and prompt
 
 Memento advertises MCP `resources` and `prompts` alongside tools. Active durable notes are direct `note://memory/<key>` resources, while high-signal project files such as `AGENTS.md`, `README.md`, `go.mod`, and `package.json` are direct `repo://file/<path>` resources. The `repo://file/{path}` resource template supports other repo-relative UTF-8 text files on demand.

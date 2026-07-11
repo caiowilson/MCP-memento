@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"memento-mcp/internal/gitstate"
 )
 
 func newRepoRelatedFilesTool(root string) Tool {
@@ -111,6 +113,10 @@ type relatedOptions struct {
 }
 
 func computeRelatedFiles(ctx context.Context, root, relClean string, opts relatedOptions) ([]relatedCandidate, error) {
+	ignored := loadGitIgnored(root)
+	if ignored.Matches(relClean) {
+		return nil, fmt.Errorf("path is ignored by Git: %s", relClean)
+	}
 	targetAbs, err := safeJoin(root, relClean)
 	if err != nil {
 		return nil, err
@@ -132,16 +138,16 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 	collector := newRelatedCollector(relClean, opts.Max)
 
 	if opts.IncludeSameDir {
-		addSameDirRelated(root, targetDirAbs, relClean, collector)
+		addSameDirRelated(root, targetDirAbs, relClean, collector, ignored)
 	}
 
 	ext := strings.ToLower(filepath.Ext(relClean))
 	if ext == ".go" {
 		if opts.IncludeImports {
-			addGoImportsRelated(root, modulePath, targetAbs, collector)
+			addGoImportsRelated(root, modulePath, targetAbs, collector, ignored)
 		}
 		if opts.IncludeImporters && modulePath != "" {
-			addGoImportersRelated(ctx, root, modulePath, targetDirRel, relClean, collector)
+			addGoImportersRelated(ctx, root, modulePath, targetDirRel, relClean, collector, ignored)
 		}
 		if opts.IncludeRefs {
 			addGoTypeSemanticRelated(ctx, root, targetAbs, relClean, collector)
@@ -197,10 +203,10 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 			}
 		}
 	} else {
-		addGenericMentionsRelated(ctx, root, relClean, collector)
+		addGenericMentionsRelated(ctx, root, relClean, collector, ignored)
 	}
 
-	return filterExistingRelated(root, collector.results()), nil
+	return filterExistingRelated(root, collector.results(), ignored), nil
 }
 
 type relatedCandidate struct {
@@ -260,7 +266,7 @@ func (c *relatedCollector) results() []relatedCandidate {
 	return out
 }
 
-func addSameDirRelated(root, dirAbs, targetRel string, c *relatedCollector) {
+func addSameDirRelated(root, dirAbs, targetRel string, c *relatedCollector, ignored *gitstate.IgnoredPaths) {
 	entries, err := os.ReadDir(dirAbs)
 	if err != nil {
 		return
@@ -278,7 +284,7 @@ func addSameDirRelated(root, dirAbs, targetRel string, c *relatedCollector) {
 			continue
 		}
 		rel = filepath.ToSlash(rel)
-		if rel == targetRel {
+		if rel == targetRel || ignored.Matches(rel) {
 			continue
 		}
 		score := 5
@@ -289,7 +295,7 @@ func addSameDirRelated(root, dirAbs, targetRel string, c *relatedCollector) {
 	}
 }
 
-func addGenericMentionsRelated(ctx context.Context, root, targetRel string, c *relatedCollector) {
+func addGenericMentionsRelated(ctx context.Context, root, targetRel string, c *relatedCollector, ignored *gitstate.IgnoredPaths) {
 	base := filepath.Base(targetRel)
 	if base == "" {
 		return
@@ -306,13 +312,21 @@ func addGenericMentionsRelated(ctx context.Context, root, targetRel string, c *r
 			return ctx.Err()
 		default:
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if shouldIgnoreDir(d.Name()) {
 				return filepath.SkipDir
 			}
+			if rel != "." && ignored.Matches(rel) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		if shouldIgnoreFile(d.Name()) {
+		if shouldIgnoreFile(d.Name()) || ignored.Matches(rel) {
 			return nil
 		}
 		info, err := d.Info()
@@ -325,11 +339,7 @@ func addGenericMentionsRelated(ctx context.Context, root, targetRel string, c *r
 		}
 		hay := strings.ToLower(string(b))
 		if strings.Contains(hay, needle2) || strings.Contains(hay, needle1) {
-			rel, err := filepath.Rel(root, path)
-			if err != nil {
-				return nil
-			}
-			c.add(filepath.ToSlash(rel), 2, "mention")
+			c.add(rel, 2, "mention")
 		}
 		return nil
 	})
@@ -350,7 +360,7 @@ func readGoModulePath(root string) (string, error) {
 	return "", fmt.Errorf("module path not found in go.mod")
 }
 
-func addGoImportsRelated(root, modulePath, targetAbs string, c *relatedCollector) {
+func addGoImportsRelated(root, modulePath, targetAbs string, c *relatedCollector, ignored *gitstate.IgnoredPaths) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, targetAbs, nil, parser.ImportsOnly)
 	if err != nil {
@@ -383,13 +393,16 @@ func addGoImportsRelated(root, modulePath, targetAbs string, c *relatedCollector
 				if err != nil {
 					continue
 				}
-				c.add(filepath.ToSlash(rel), 8, "imported_package")
+				rel = filepath.ToSlash(rel)
+				if !ignored.Matches(rel) {
+					c.add(rel, 8, "imported_package")
+				}
 			}
 		}
 	}
 }
 
-func addGoImportersRelated(ctx context.Context, root, modulePath, targetDirRel, targetFileRel string, c *relatedCollector) {
+func addGoImportersRelated(ctx context.Context, root, modulePath, targetDirRel, targetFileRel string, c *relatedCollector, ignored *gitstate.IgnoredPaths) {
 	targetImportPath := modulePath
 	if targetDirRel != "." && targetDirRel != "" {
 		targetImportPath = modulePath + "/" + strings.TrimPrefix(targetDirRel, "./")
@@ -406,20 +419,23 @@ func addGoImportersRelated(ctx context.Context, root, modulePath, targetDirRel, 
 		default:
 		}
 
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if shouldIgnoreDir(d.Name()) {
 				return filepath.SkipDir
 			}
+			if rel != "." && ignored.Matches(rel) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") || ignored.Matches(rel) {
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
 		if rel == targetFileRel {
 			return nil
 		}
@@ -440,13 +456,16 @@ func addGoImportersRelated(ctx context.Context, root, modulePath, targetDirRel, 
 	})
 }
 
-func filterExistingRelated(root string, related []relatedCandidate) []relatedCandidate {
+func filterExistingRelated(root string, related []relatedCandidate, ignored *gitstate.IgnoredPaths) []relatedCandidate {
 	if len(related) == 0 {
 		return nil
 	}
 
 	filtered := make([]relatedCandidate, 0, len(related))
 	for _, cand := range related {
+		if ignored.Matches(cand.Path) {
+			continue
+		}
 		abs, err := safeJoin(root, cand.Path)
 		if err != nil {
 			continue

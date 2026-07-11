@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,48 @@ type localChildClient struct {
 
 	mu     sync.Mutex
 	closed bool
+}
+
+type recordingChildCalls struct {
+	mu     sync.Mutex
+	counts map[string]map[string]int
+}
+
+func newRecordingChildFactory(t *testing.T, calls *recordingChildCalls) childFactory {
+	t.Helper()
+	base := newLocalChildFactory(t)
+	return func(root string) (workspaceClient, error) {
+		client, err := base(root)
+		if err != nil {
+			return nil, err
+		}
+		return &recordingChildClient{workspaceClient: client, root: root, calls: calls}, nil
+	}
+}
+
+type recordingChildClient struct {
+	workspaceClient
+	root  string
+	calls *recordingChildCalls
+}
+
+func (c *recordingChildClient) CallTool(ctx context.Context, name string, args json.RawMessage) (toolCallResult, error) {
+	c.calls.mu.Lock()
+	if c.calls.counts == nil {
+		c.calls.counts = map[string]map[string]int{}
+	}
+	if c.calls.counts[c.root] == nil {
+		c.calls.counts[c.root] = map[string]int{}
+	}
+	c.calls.counts[c.root][name]++
+	c.calls.mu.Unlock()
+	return c.workspaceClient.CallTool(ctx, name, args)
+}
+
+func (c *recordingChildCalls) count(root, name string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.counts[root][name]
 }
 
 func newLocalChildFactory(t *testing.T) childFactory {
@@ -297,6 +340,100 @@ func TestBrokerSwitchWorkspaceSpawnsThenReusesChild(t *testing.T) {
 	if got, _ := reuseMap["spawned"].(bool); got {
 		t.Fatalf("expected second switch to rootB to reuse existing child, got %#v", reuseMap["spawned"])
 	}
+}
+
+func TestBrokerSwitchWorkspaceAutomaticallyReindexesChangedRoot(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	calls := &recordingChildCalls{}
+	s, err := NewServer(Config{Root: rootA, childFactory: newRecordingChildFactory(t, calls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartBackgroundIndexing(context.Background())
+	t.Cleanup(s.shutdown)
+
+	switchRoot := func(root string) map[string]any {
+		t.Helper()
+		res, err := s.callTool(context.Background(), toolCallParams{
+			Name:      "repo_switch_workspace",
+			Arguments: json.RawMessage([]byte(`{"path":` + quoteJSONString(root) + `}`)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, ok := res.StructuredContent.(map[string]any)
+		if !ok {
+			t.Fatalf("expected structured switch result, got %T", res.StructuredContent)
+		}
+		return result
+	}
+
+	first := switchRoot(rootB)
+	if triggered, _ := first["reindexTriggered"].(bool); !triggered {
+		t.Fatalf("expected changed root to trigger reindex, got %#v", first)
+	}
+	if waited, _ := first["reindexWaited"].(bool); waited {
+		t.Fatalf("expected default automatic reindex not to wait, got %#v", first)
+	}
+	waitForCondition(t, time.Second, func() bool {
+		return calls.count(rootB, "repo_index_status") >= 1
+	})
+	if got := calls.count(rootB, "repo_reindex"); got != 0 {
+		t.Fatalf("expected fresh rootB child startup indexing to avoid duplicate reindex, got %d", got)
+	}
+
+	same := switchRoot(rootB)
+	if triggered, _ := same["reindexTriggered"].(bool); triggered {
+		t.Fatalf("expected same-root switch not to reindex, got %#v", same)
+	}
+	if got := calls.count(rootB, "repo_reindex"); got != 0 {
+		t.Fatalf("expected no rootB reindex after same-root switch, got %d", got)
+	}
+
+	switchRoot(rootA)
+	waitForCondition(t, time.Second, func() bool {
+		return calls.count(rootA, "repo_reindex") == 1
+	})
+	switchRoot(rootB)
+	waitForCondition(t, time.Second, func() bool {
+		return calls.count(rootB, "repo_reindex") == 1
+	})
+}
+
+func TestClientRootsChangeAutomaticallyReindexesChangedRoot(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	calls := &recordingChildCalls{}
+	s, err := NewServer(Config{Root: rootA, childFactory: newRecordingChildFactory(t, calls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartBackgroundIndexing(context.Background())
+	t.Cleanup(s.shutdown)
+	s.rootSource = workspaceRootSourceCWD
+	s.allowClientRootsFallback = true
+	if _, spawned, err := s.ensureChild(context.Background(), rootB); err != nil {
+		t.Fatal(err)
+	} else if !spawned {
+		t.Fatal("expected rootB child to be prewarmed for reuse test")
+	}
+
+	result, err := json.Marshal(map[string]any{
+		"roots": []map[string]any{{"uri": (&url.URL{Scheme: "file", Path: rootB}).String()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &stdioSession{pendingRootsID: "number:1"}
+	s.handleClientRPCResponse(context.Background(), rpcMessage{ID: float64(1), Result: result}, session)
+
+	if got := s.currentRoot(); got != rootB {
+		t.Fatalf("expected client roots to select %q, got %q", rootB, got)
+	}
+	waitForCondition(t, time.Second, func() bool {
+		return calls.count(rootB, "repo_reindex") == 1
+	})
 }
 
 func TestBrokerMemoryIsolationAcrossRoots(t *testing.T) {
