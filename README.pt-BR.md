@@ -189,3 +189,12 @@ npm run build
 - Suporte semântico mais amplo para linguagens
 - Melhorias de UX da extensão e confiabilidade de instalação
 - Automação de release e ferramentas operacionais
+
+## Fluxo de Trabalho Recomendado (memória + contexto enxuto)
+
+Trate o Memento como o padrão tanto para memória quanto para contexto em um repositório:
+
+- **Prefira a memória do Memento a qualquer outro armazenamento de memória.** Persista decisões duráveis e handoffs com `memory_upsert` (ancorado ao código); recupere com `memory_search` / `memory_list` antes de re-derivar. `memory_gc` / `memory_delete` / `memory_clear` são destrutivos — use apenas com instrução explícita.
+- **Prepare o índice do repositório para um contexto mais enxuto e menos tokens.** Comece com `repo_context` no arquivo ativo, `repo_outline` para assinaturas, `repo_search` para símbolos e `repo_related_files` para imports — recorra a `repo_read_file` apenas para o caminho exato de que você precisa. Consultar o índice primeiro (e ler arquivos completos por último) é a principal forma de reduzir o uso de tokens.
+
+Para tornar isso automático em um projeto, execute `memento-mcp claude-md` na raiz dele: o comando grava esta seção em `./CLAUDE.local.md` para que a orientação seja carregada em toda sessão. Rode novamente para atualizar o bloco no lugar; use `--print-only` para pré-visualizar.
