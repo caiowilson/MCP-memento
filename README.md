@@ -20,7 +20,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 ## Documentation
 
 - Project docs: [`docs/README.md`](./docs/README.md)
-- Claude Code, Claude Desktop, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
+- Claude Code, Claude Desktop, ChatGPT/Codex, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
@@ -70,6 +70,33 @@ Add the equivalent stdio entry to `claude_desktop_config.json` and restart Claud
 ```
 
 On macOS or WSL, `claude mcp add-from-claude-desktop` can import this server into Claude Code. See the [client setup guide](./docs/clients.md) for details.
+
+## Use with ChatGPT / Codex
+
+After building memento, add it to Codex with the absolute path to the executable:
+
+```bash
+codex mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+```
+
+This configuration is shared by the ChatGPT desktop app, Codex CLI, and the Codex IDE extension. Memento uses the MCP workspace root supplied by the client, so it automatically indexes the repository open in Codex. Verify the connection with `codex mcp list` or `/mcp` inside Codex.
+
+You can also add it from the ChatGPT desktop app:
+
+1. Open **Settings → MCP servers**.
+2. Select **Add server** and choose **STDIO**.
+3. Name it `memento` and use `/absolute/path/to/MCP-memento/bin/memento-mcp` as the command.
+4. Save, then restart the app. Use `/mcp` to confirm that memento is connected.
+
+For manual or project-scoped setup, add this to `~/.codex/config.toml` or to `.codex/config.toml` in a trusted project:
+
+```toml
+[mcp_servers.memento]
+command = "/absolute/path/to/MCP-memento/bin/memento-mcp"
+args = []
+```
+
+ChatGPT on the web does not load local Codex configuration or launch local STDIO servers. This local-first server therefore works directly with the ChatGPT desktop app and Codex clients; web use would require hosting a remote MCP endpoint instead.
 
 ## What It Does
 
