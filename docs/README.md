@@ -10,6 +10,7 @@ This directory collects the main project documentation, including client setup, 
 - Claude Code plugin, manual setup, and Claude Desktop: `clients.md#claude-code`
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
+- Retrieval and agent helpfulness evaluation: `evaluation.md`
 - Canonical backlog: `../TODO.md`
 - VS Code extension: `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`

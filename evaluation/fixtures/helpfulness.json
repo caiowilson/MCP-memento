@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "name": "memento-helpfulness-v1",
+  "experiment": {
+    "baseline": "repository tools without Memento",
+    "treatment": "identical repository tools plus Memento",
+    "controls": [
+      "same checkout and fixture revision",
+      "same task prompt and starting state",
+      "same model, model settings, and tokenizer configuration",
+      "same time, turn, and output budgets",
+      "same validator and blinded review rubric"
+    ]
+  },
+  "scorecard": {
+    "retrieval": ["precisionAtK", "recallAtK", "mrr", "ndcg", "staleResultRate"],
+    "agent": ["taskSuccessRate", "reviewScore", "regressionRate", "elapsedTimeMs", "turns", "inputTokens", "outputTokens", "totalTokens", "unnecessaryContextReads"],
+    "memory": ["correctRecoveryRate", "anchorGroundingRate"],
+    "user": ["helpfulSessionRate", "explicitHelpfulRating"]
+  },
+  "tasks": [
+    {
+      "id": "discover-workspace-resolution",
+      "category": "discovery",
+      "title": "Find how Memento chooses the active workspace",
+      "prompt": "Explain the workspace-root precedence and name the code that owns it.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_context", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/server.go", "description": "workspace resolution lifecycle"}, {"path": "docs/clients.md", "description": "client-facing precedence guidance"}]},
+      "validators": [{"kind": "evidence", "rule": "answer names the precedence and cites both implementation and documentation evidence"}]
+    },
+    {
+      "id": "discover-context-token-budget",
+      "category": "discovery",
+      "title": "Locate context token-budget behavior",
+      "prompt": "Find the context token budget, its default, and the hard fallback limit.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_outline", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/token_budget.go", "description": "token estimation and packing logic"}, {"path": "docs/clients.md", "description": "documented budget behavior"}]},
+      "validators": [{"kind": "evidence", "rule": "answer distinguishes approximate tokens from the byte hard limit"}]
+    },
+    {
+      "id": "discover-semantic-retrieval",
+      "category": "discovery",
+      "title": "Explain semantic retrieval fallback",
+      "prompt": "Determine whether semantic retrieval is required and how a failure affects normal repository context.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_context", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/embedding/config.go", "description": "opt-in semantic configuration"}, {"path": "docs/README.md", "description": "fallback behavior"}]},
+      "validators": [{"kind": "review", "rule": "blinded reviewer confirms the answer correctly states opt-in and lexical fallback behavior"}]
+    },
+    {
+      "id": "discover-tool-catalog",
+      "category": "discovery",
+      "title": "Find repository context and memory tools",
+      "prompt": "List the tools a new agent should use for lean code context and durable notes.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_outline", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/tool_definitions.go", "description": "registered MCP tools"}, {"path": "README.md", "description": "recommended workflow"}]},
+      "validators": [{"kind": "evidence", "rule": "answer separates context-retrieval tools from explicit memory tools"}]
+    },
+    {
+      "id": "discover-index-storage",
+      "category": "discovery",
+      "title": "Find index and note storage boundaries",
+      "prompt": "Explain where repository indexes and durable notes live, including workspace isolation.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_context", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/server.go", "description": "workspace routing and isolation"}, {"path": "internal/indexing/indexer.go", "description": "index storage configuration"}]},
+      "validators": [{"kind": "review", "rule": "blinded reviewer confirms no cross-workspace storage claim is made"}]
+    },
+    {
+      "id": "impact-context-output-change",
+      "category": "impact-analysis",
+      "title": "Map a context-output-limit change",
+      "prompt": "Identify the implementation, tests, and documentation affected by changing repo_context output limits.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_context", "repo_related_files", "repo_outline"],
+      "expected": {"evidence": [{"path": "internal/mcp/context_tool.go", "description": "repo_context output construction"}, {"path": "internal/mcp/context_tool_test.go", "description": "context tool coverage"}, {"path": "docs/clients.md", "description": "limit documentation"}]},
+      "validators": [{"kind": "evidence", "rule": "answer identifies implementation, test, and documentation surfaces"}]
+    },
+    {
+      "id": "impact-new-mcp-tool",
+      "category": "impact-analysis",
+      "title": "Map a new read-only MCP tool",
+      "prompt": "Describe the files and contracts that must change to add a read-only repository tool.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_context", "repo_related_files", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/tool_definitions.go", "description": "tool metadata and registration"}, {"path": "internal/mcp/server.go", "description": "server tool wiring"}, {"path": "internal/mcp/tool_coverage_test.go", "description": "tool coverage contract"}]},
+      "validators": [{"kind": "review", "rule": "blinded reviewer confirms the plan covers metadata, handler wiring, tests, and docs"}]
+    },
+    {
+      "id": "impact-indexing-change",
+      "category": "impact-analysis",
+      "title": "Map an index change",
+      "prompt": "Identify the likely impact of changing chunk construction on retrieval evaluation and persisted data.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_context", "repo_related_files", "repo_search"],
+      "expected": {"evidence": [{"path": "internal/indexing/chunk.go", "description": "chunk construction"}, {"path": "evaluation/retrieval.go", "description": "retrieval evaluation behavior"}, {"path": "evaluation/fixtures/retrieval.json", "description": "line-bounded relevance judgments"}]},
+      "validators": [{"kind": "evidence", "rule": "answer calls out fixture-anchor drift as a risk"}]
+    },
+    {
+      "id": "impact-redaction-change",
+      "category": "impact-analysis",
+      "title": "Map a secret-redaction configuration change",
+      "prompt": "Identify the code, tests, and documentation affected by changing redaction configuration defaults.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_context", "repo_related_files", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/redact/redact.go", "description": "redaction configuration and implementation"}, {"path": "internal/redact/redact_test.go", "description": "redaction regression coverage"}, {"path": "docs/README.md", "description": "redaction configuration documentation"}]},
+      "validators": [{"kind": "evidence", "rule": "answer identifies the storage-rebuild and user-visible documentation implications"}]
+    },
+    {
+      "id": "implement-output-limit-regression",
+      "category": "implementation",
+      "title": "Add a bounded-output regression test",
+      "prompt": "Add a focused regression test proving a repository tool keeps a required match visible within its configured output cap.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_context", "repo_related_files", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/output_limits.go", "description": "bounded output helpers"}, {"path": "internal/mcp/output_limits_test.go", "description": "existing output limit tests"}], "patch": ["internal/mcp/output_limits_test.go"], "tests": ["go test ./internal/mcp"]},
+      "validators": [{"kind": "command", "command": "go test ./internal/mcp"}, {"kind": "review", "rule": "patch proves the match remains visible without exceeding the cap"}]
+    },
+    {
+      "id": "implement-retrieval-fixture",
+      "category": "implementation",
+      "title": "Add a retrieval evaluation fixture",
+      "prompt": "Add a well-scoped retrieval query fixture for a currently uncovered repository behavior.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_context", "repo_read_file"],
+      "expected": {"evidence": [{"path": "evaluation/retrieval.go", "description": "fixture contract"}, {"path": "evaluation/fixtures/retrieval.json", "description": "existing query fixture style"}], "patch": ["evaluation/fixtures/retrieval.json"], "tests": ["make retrieval-eval"]},
+      "validators": [{"kind": "command", "command": "make retrieval-eval"}, {"kind": "review", "rule": "fixture has stable symbol-centered relevance judgments"}]
+    },
+    {
+      "id": "onboard-plugin-installation",
+      "category": "onboarding",
+      "title": "Install the Claude Code plugin",
+      "prompt": "Give the shortest safe path to install and verify Memento in Claude Code.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "README.md", "description": "plugin installation commands"}, {"path": "docs/clients.md", "description": "client setup and verification"}]},
+      "validators": [{"kind": "evidence", "rule": "answer includes installation, reload, and MCP verification"}]
+    },
+    {
+      "id": "onboard-codex-setup",
+      "category": "onboarding",
+      "title": "Configure Codex",
+      "prompt": "Explain how to add Memento to Codex and verify the active workspace is detected.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "README.md", "description": "Codex setup instructions"}, {"path": "docs/clients.md", "description": "workspace behavior"}]},
+      "validators": [{"kind": "review", "rule": "blinded reviewer confirms commands and workspace behavior are accurate"}]
+    },
+    {
+      "id": "onboard-local-validation",
+      "category": "onboarding",
+      "title": "Run the local validation suite",
+      "prompt": "Tell a contributor which commands validate Go code, the plugin, and retrieval quality.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "Makefile", "description": "project validation commands"}, {"path": "README.md", "description": "contributor guidance"}]},
+      "validators": [{"kind": "evidence", "rule": "answer includes test, plugin-test, and retrieval-eval commands"}]
+    },
+    {
+      "id": "onboard-durable-memory-workflow",
+      "category": "onboarding",
+      "title": "Use durable repository memory",
+      "prompt": "Explain the recommended workflow for saving and recalling durable repository decisions.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh"},
+      "allowedTools": ["repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "README.md", "description": "recommended memory workflow"}, {"path": "internal/mcp/memory_tools.go", "description": "memory tool behavior"}]},
+      "validators": [{"kind": "evidence", "rule": "answer distinguishes safe recall/upsert from destructive memory operations"}]
+    },
+    {
+      "id": "memory-recover-output-limit-decision",
+      "category": "memory-recovery",
+      "title": "Recover a prior output-limit decision",
+      "prompt": "Resume a task and state the settled output-limit design decision before proposing a change.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh", "memorySeeds": [{"key": "output-limit-decision", "text": "Keep maxTotalBytes as the hard cap; token budgeting is approximate and may leave unused bytes.", "tags": ["decision", "output-limits"]}]},
+      "allowedTools": ["memory_search", "repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/output_limits.go", "description": "hard output limit behavior"}, {"path": "internal/mcp/token_budget.go", "description": "approximate token accounting"}]},
+      "validators": [{"kind": "evidence", "rule": "answer recovers the seeded decision and grounds it in current code"}]
+    },
+    {
+      "id": "memory-recover-semantic-policy",
+      "category": "memory-recovery",
+      "title": "Recover semantic retrieval policy",
+      "prompt": "Resume a task and explain whether an embedding model may be downloaded automatically.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh", "memorySeeds": [{"key": "semantic-policy", "text": "Semantic retrieval stays opt-in. Never auto-download an embedding model; preserve lexical fallback.", "tags": ["decision", "semantic"]}]},
+      "allowedTools": ["memory_search", "repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "docs/README.md", "description": "semantic model setup"}, {"path": "internal/embedding/config.go", "description": "semantic opt-in configuration"}]},
+      "validators": [{"kind": "evidence", "rule": "answer recovers both no-download and lexical-fallback constraints"}]
+    },
+    {
+      "id": "memory-recover-workspace-isolation",
+      "category": "memory-recovery",
+      "title": "Recover workspace isolation constraint",
+      "prompt": "Resume a multi-repository task and explain the isolation invariant that must not regress.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh", "memorySeeds": [{"key": "workspace-isolation", "text": "Every workspace gets an isolated child process and hashed store; never share indexes or notes between roots.", "tags": ["decision", "isolation"]}]},
+      "allowedTools": ["memory_search", "repo_context", "repo_read_file"],
+      "expected": {"evidence": [{"path": "internal/mcp/server.go", "description": "per-workspace broker ownership"}, {"path": "internal/mcp/broker_test.go", "description": "isolation regression coverage"}]},
+      "validators": [{"kind": "review", "rule": "blinded reviewer confirms the answer preserves index and memory isolation"}]
+    },
+    {
+      "id": "memory-recover-release-policy",
+      "category": "memory-recovery",
+      "title": "Recover release distribution policy",
+      "prompt": "Resume release work and explain the current signing/notarization priority without blocking normal installation paths.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh", "memorySeeds": [{"key": "release-priority", "text": "macOS signing and notarization are P3 polish; unsigned terminal, Codex, and Claude Code paths remain supported.", "tags": ["decision", "release"]}]},
+      "allowedTools": ["memory_search", "repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "TODO.md", "description": "signing and notarization priority"}, {"path": "README.md", "description": "supported installation paths"}]},
+      "validators": [{"kind": "evidence", "rule": "answer recovers the priority without claiming signing is complete"}]
+    },
+    {
+      "id": "memory-recover-fixture-drift",
+      "category": "memory-recovery",
+      "title": "Recover retrieval-fixture maintenance guidance",
+      "prompt": "Resume a retrieval regression investigation and state how line-bounded relevance fixtures should be maintained.",
+      "start": {"repository": "MCP-memento", "revision": "main", "session": "fresh", "memorySeeds": [{"key": "fixture-drift", "text": "When source moves, audit and refresh line-bounded relevance anchors before concluding retrieval quality regressed.", "tags": ["decision", "evaluation"]}]},
+      "allowedTools": ["memory_search", "repo_search", "repo_read_file"],
+      "expected": {"evidence": [{"path": "evaluation/fixtures/retrieval.json", "description": "line-bounded relevance fixtures"}, {"path": "evaluation/retrieval.go", "description": "line-range matching semantics"}]},
+      "validators": [{"kind": "evidence", "rule": "answer recovers the fixture-drift rule and identifies the relevant fixture contract"}]
+    }
+  ]
+}
