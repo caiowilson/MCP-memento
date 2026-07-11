@@ -108,6 +108,9 @@ func TestUpsertClaudeLocalMDUnpairedMarkers(t *testing.T) {
 }
 
 func TestRunClaudeMDPrintOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
 	var stdout, stderr bytes.Buffer
 	if err := runClaudeMD([]string{"--print-only"}, &stdout, &stderr); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -118,18 +121,14 @@ func TestRunClaudeMDPrintOnly(t *testing.T) {
 	if stdout.String() != recommendedWorkflowBlock {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), recommendedWorkflowBlock)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.local.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected --print-only to write nothing, stat err = %v", err)
+	}
 }
 
 func TestRunClaudeMDWritesFile(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(oldWd)
+	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
 	if err := runClaudeMD(nil, &stdout, &stderr); err != nil {
@@ -150,14 +149,7 @@ func TestRunClaudeMDWritesFile(t *testing.T) {
 
 func TestRunClaudeMDIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(oldWd)
+	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
 	if err := runClaudeMD(nil, &stdout, &stderr); err != nil {

@@ -13,6 +13,8 @@ const (
 	claudeMDMarkerEnd   = "<!-- memento-mcp:recommended-workflow:end -->"
 )
 
+var errUnpairedMarker = fmt.Errorf("%s contains an unpaired memento-mcp marker; fix or remove the marker line, then rerun", claudeLocalMDFileName)
+
 // upsertClaudeLocalMD returns the new contents of CLAUDE.local.md given its
 // existing contents (nil/empty if the file doesn't exist yet) and the
 // guidance block to upsert. If the markers are already present, the content
@@ -31,7 +33,7 @@ func upsertClaudeLocalMD(existing []byte, block string) ([]byte, error) {
 	start := strings.Index(content, claudeMDMarkerStart)
 	if start < 0 {
 		if strings.Contains(content, claudeMDMarkerEnd) {
-			return nil, fmt.Errorf("%s contains an unpaired memento-mcp marker; fix or remove the marker line, then rerun", claudeLocalMDFileName)
+			return nil, errUnpairedMarker
 		}
 		prefix := strings.TrimRight(content, "\n")
 		if prefix == "" {
@@ -42,7 +44,7 @@ func upsertClaudeLocalMD(existing []byte, block string) ([]byte, error) {
 
 	relEnd := strings.Index(content[start+len(claudeMDMarkerStart):], claudeMDMarkerEnd)
 	if relEnd < 0 {
-		return nil, fmt.Errorf("%s contains an unpaired memento-mcp marker; fix or remove the marker line, then rerun", claudeLocalMDFileName)
+		return nil, errUnpairedMarker
 	}
 	end := start + len(claudeMDMarkerStart) + relEnd + len(claudeMDMarkerEnd)
 
