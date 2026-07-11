@@ -30,7 +30,34 @@ Show built-in help:
 
 ## Claude Code
 
-### One-command setup
+### Plugin installation (recommended)
+
+The official plugin removes the per-machine binary path and MCP configuration steps. In Claude Code, run:
+
+```text
+/plugin marketplace add caiowilson/MCP-memento
+/plugin install memento@memento-mcp
+/reload-plugins
+/mcp
+```
+
+The marketplace and plugin are maintained in this repository. When enabled, the plugin MCP server starts automatically at the beginning of a session. Installing, enabling, disabling, or updating it during a running session requires `/reload-plugins` before the MCP server is connected or disconnected. `/mcp` lists it as a plugin-provided server.
+
+The plugin pins its launcher and server to the same version. On first start, the launcher detects x64 or arm64 macOS, Linux, or Windows, downloads that version's prebuilt server from the GitHub release, verifies its SHA-256 sidecar, and stores both under `${CLAUDE_PLUGIN_DATA}`. Every later start rehashes the cached executable. A valid cache works offline; a missing or invalid cache requires GitHub access so the launcher can replace it. Go is not required for plugin users.
+
+Update an installed plugin with:
+
+```text
+/plugin marketplace update memento-mcp
+/plugin update memento@memento-mcp
+/reload-plugins
+```
+
+Plugin MCP names include the plugin and server namespace. Examples are `mcp__plugin_memento_memento__repo_context` and `/mcp__plugin_memento_memento__prime`. Manually configured servers retain shorter names such as `mcp__memento__repo_context` and `/mcp__memento__prime`.
+
+If first start fails, open `/plugin`, inspect the Memento error, and confirm the machine can reach the pinned release on GitHub. Unsupported operating-system or CPU combinations fail explicitly. For local plugin development, set `MEMENTO_PLUGIN_BINARY` to an existing server executable; normal marketplace installs should leave it unset.
+
+### Manual one-command setup
 
 Build memento, then run the following command from the project you want Claude Code to index. Replace the executable path with the absolute path to your build:
 
@@ -40,7 +67,7 @@ claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
 
 The command uses Claude Code's default `local` scope, so it applies only to the current project and stays out of version control. Claude Code passes that project's root to the server through `CLAUDE_PROJECT_DIR`; memento indexes it automatically.
 
-### Shared project setup
+### Shared manual project setup
 
 To share the server configuration with a team, commit this `.mcp.json` at the project root:
 
@@ -157,7 +184,7 @@ Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the default token budget, or pass `ma
 
 ## Claude Code resources and prime prompt
 
-Claude Code discovers Memento resources in the `@` autocomplete menu and MCP prompts in the `/` command menu. If the configured server name is `memento`, examples are:
+Claude Code discovers Memento resources in the `@` autocomplete menu and MCP prompts in the `/` command menu. For a manually configured server named `memento`, examples are:
 
 ```text
 @memento:note://memory/repo-overview
@@ -167,6 +194,8 @@ Claude Code discovers Memento resources in the `@` autocomplete menu and MCP pro
 ```
 
 Replace `memento` in the prefix when your MCP server entry uses a different name. Prefer the autocomplete menu for note keys containing spaces or punctuation; Memento emits properly escaped URIs. The `prime` prompt takes optional positional `path` and `focus` arguments, includes bounded durable notes and project manifests, and adds a body-free outline when `path` is provided.
+
+For the plugin installation, Claude Code scopes the server as `plugin:memento:memento`; the equivalent prompt is `/mcp__plugin_memento_memento__prime`, and plugin resource autocomplete uses that scoped server identity.
 
 Only active notes appear as resources. Stale notes are labeled and should be verified; tombstones remain available through `memory_list` but are intentionally absent from `@` discovery. File resources are bounded and redacted, and sensitive/binary paths are rejected rather than attached.
 

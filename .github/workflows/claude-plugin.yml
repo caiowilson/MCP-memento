@@ -1,0 +1,59 @@
+name: Claude Code Plugin
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test launcher
+        run: node --test plugins/memento/test/launcher.test.cjs
+
+      - name: Install Claude Code validator
+        run: npm install --global @anthropic-ai/claude-code@2.1.207
+
+      - name: Validate marketplace and plugin
+        run: |
+          claude plugin validate --strict .
+          claude plugin validate --strict ./plugins/memento
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify launcher MCP lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=0.8.0" -o dist/memento-mcp ./cmd/server
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"plugin-ci","version":"1"}}}'
+          printf '%s\n' "$request" | \
+            MEMENTO_PLUGIN_BINARY="$PWD/dist/memento-mcp" \
+            MEMENTO_PLUGIN_DATA="$RUNNER_TEMP/memento-plugin-data" \
+            node plugins/memento/bin/memento-launcher.cjs > "$RUNNER_TEMP/initialize.json"
+          node -e '
+            const fs = require("node:fs");
+            const messages = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map(JSON.parse);
+            const reply = messages.find((message) => message.id === 1);
+            if (!reply?.result?.capabilities?.tools || !reply.result.capabilities.resources || !reply.result.capabilities.prompts || reply.result.serverInfo?.version !== "0.8.0") {
+              throw new Error("launcher initialize response omitted expected MCP capabilities or release version");
+            }
+          ' "$RUNNER_TEMP/initialize.json"

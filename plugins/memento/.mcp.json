@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "memento": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/memento-launcher.cjs"],
+      "env": {
+        "MEMENTO_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
+      }
+    }
+  }
+}

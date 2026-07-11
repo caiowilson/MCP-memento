@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "memento-mcp",
+  "description": "Official Memento plugins for Claude Code",
+  "owner": {
+    "name": "Memento MCP maintainers"
+  },
+  "plugins": [
+    {
+      "name": "memento",
+      "source": "./plugins/memento",
+      "description": "Local-first repository context and durable memory through MCP",
+      "version": "0.8.0",
+      "category": "development",
+      "tags": ["mcp", "memory", "repository", "context"]
+    }
+  ]
+}

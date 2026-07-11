@@ -1,5 +1,6 @@
 BIN_NAME := memento-mcp
 BIN_DIR := bin
+VERSION ?= dev
 # Prefer Homebrew prefix on macOS if available; fallback to /usr/local
 PREFIX ?= $(shell brew --prefix 2>/dev/null || echo /usr/local)
 TARGET ?= server
@@ -12,13 +13,14 @@ WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test retrieval-eval install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test plugin-test retrieval-eval install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
 	@printf "Targets:\n"
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
 	@printf "  test      Run Go tests and the retrieval evaluation report\n"
+	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  install   Install to $(PREFIX)/bin/$(BIN_NAME)\n"
 	@printf "  install-dev Install to $$HOME/.local/bin/$(BIN_NAME)\n"
@@ -48,11 +50,16 @@ help:
 
 build:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/$(BIN_NAME) ./cmd/server
+	go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$(VERSION)" -o $(BIN_DIR)/$(BIN_NAME) ./cmd/server
 
 test:
 	go test ./...
 	$(MAKE) retrieval-eval
+
+plugin-test:
+	node --test plugins/memento/test/launcher.test.cjs
+	claude plugin validate --strict .
+	claude plugin validate --strict ./plugins/memento
 
 retrieval-eval:
 	go run ./cmd/retrieval-eval

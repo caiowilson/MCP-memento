@@ -389,6 +389,13 @@ func TestInitializeReturnsToolSearchInstructions(t *testing.T) {
 	root := t.TempDir()
 	s := newBrokerServerForTest(t, root)
 	result := s.initializeResult(json.RawMessage(`{"protocolVersion":"2024-11-05"}`))
+	serverInfo, ok := result["serverInfo"].(map[string]any)
+	if !ok {
+		t.Fatalf("initializeResult serverInfo has type %T", result["serverInfo"])
+	}
+	if got := serverInfo["version"]; got != serverVersion {
+		t.Fatalf("initializeResult version = %v, want %q", got, serverVersion)
+	}
 	instructions, ok := result["instructions"]
 	if !ok {
 		t.Fatal("initializeResult missing 'instructions' field")

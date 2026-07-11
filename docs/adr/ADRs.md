@@ -19,6 +19,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0007: Standalone extractive repository outlines (Accepted, 2026-07-10)
 - ADR 0008: Anchored memory lifecycle and conservative eviction (Accepted, 2026-07-10)
 - ADR 0009: Native MCP resources and prime prompt (Accepted, 2026-07-11)
+- ADR 0010: Claude Code plugin distribution through verified release binaries (Accepted, 2026-07-11)
 
 ---
 
@@ -582,6 +583,48 @@ Memento tools make repository context available to a model, but users cannot exp
 - Expose every repository file as a direct resource: large discovery payloads; a small direct set plus a template is cheaper.
 - Include tombstones in autocomplete: improves recoverability but makes obsolete context too easy to attach accidentally.
 - Advertise list-changed immediately: incomplete unless every mutation and workspace transition emits notifications reliably.
+
+---
+
+## ADR 0010: Claude Code plugin distribution through verified release binaries
+
+- Status: Accepted
+- Date: 2026-07-11
+
+### Context
+
+Manual `claude mcp add` and project `.mcp.json` setup require every user to install a binary and maintain a machine-specific path. Claude Code plugins can auto-start MCP servers, but marketplace installs copy only the plugin directory into a cache. Committing six platform binaries would bloat the repository, while building on first start would require a matching Go toolchain and delay team onboarding.
+
+### Decision
+
+- Keep the plugin and marketplace catalog in this repository under `plugins/memento` and `.claude-plugin/marketplace.json`.
+- Register the MCP server through the plugin's `.mcp.json` and invoke a Node launcher from `${CLAUDE_PLUGIN_ROOT}`. Claude Code already supplies the Node runtime needed to run the launcher.
+- Publish prebuilt x64 and arm64 server binaries for macOS, Linux, and Windows through the existing versioned server release workflow.
+- Pin each plugin version to the same server version. On first start, download that release's platform binary into `${CLAUDE_PLUGIN_DATA}`, verify its published SHA-256 sidecar, and cache both files.
+- Rehash the cached executable on every start. Redownload it when the binary or checksum is missing or invalid; allow later starts to work offline after verification.
+- Keep manual MCP configuration and the standalone installer as supported alternatives.
+- Validate the marketplace and plugin with Claude Code's strict validator in CI, test launcher download/cache/failure behavior, and exercise an MCP initialize exchange through the launcher.
+
+### Consequences
+
+- Plugin installation is one marketplace command plus one install command, and enabled plugins start Memento automatically after session start or `/reload-plugins`.
+- The repository does not carry generated binaries, and plugin users do not need Go.
+- First start needs HTTPS access to the pinned GitHub release. Existing cached installations remain usable offline.
+- A plugin release and its server release must use the same version, and raw release assets must retain their `.sha256` sidecars.
+- Plugin-provided MCP names include Claude Code's plugin and server namespace rather than the shorter names used by manually configured servers.
+
+### Alternatives considered
+
+- Commit every prebuilt binary into the plugin directory: fully self-contained, but adds large generated files and multiplies repository churn on each release.
+- Build from source on first start: avoids binary release downloads, but requires Go 1.25.5 on every user machine and makes startup slower and less predictable.
+- Depend on a globally installed `memento-mcp`: small plugin package, but preserves the installation ritual and machine-specific PATH failures that the plugin is intended to remove.
+- Use a companion repository: isolates release assets, but splits ownership and duplicates version coordination before the plugin has independent lifecycle needs.
+
+### References
+
+- [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference)
+- [Claude Code plugin marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
+- [Claude Code plugin-provided MCP servers](https://code.claude.com/docs/en/mcp#plugin-provided-mcp-servers)
 
 ---
 

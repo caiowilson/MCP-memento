@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "memento",
+  "displayName": "Memento MCP",
+  "version": "0.8.0",
+  "description": "Local-first repository context and durable memory through MCP",
+  "author": {
+    "name": "Memento MCP maintainers"
+  },
+  "homepage": "https://github.com/caiowilson/MCP-memento",
+  "repository": "https://github.com/caiowilson/MCP-memento",
+  "license": "MIT",
+  "keywords": ["mcp", "memory", "repository", "context"],
+  "mcpServers": "./.mcp.json"
+}

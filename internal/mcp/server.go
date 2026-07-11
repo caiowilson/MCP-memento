@@ -25,6 +25,8 @@ import (
 
 type serverMode int
 
+var serverVersion = "dev"
+
 const (
 	serverModeBroker serverMode = iota
 	serverModeLeaf
@@ -1014,7 +1016,7 @@ func (s *Server) initializeResult(raw json.RawMessage) map[string]any {
 		"protocolVersion": protocolVersion,
 		"serverInfo": map[string]any{
 			"name":    "memento-mcp",
-			"version": "0.6.0",
+			"version": serverVersion,
 		},
 		"capabilities": map[string]any{
 			"tools":     map[string]any{},

@@ -28,7 +28,24 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 
 ## Use with Claude Code
 
-After building memento, run this from the project you want Claude Code to index (replace the executable path):
+### Plugin installation (recommended)
+
+Add this repository as a Claude Code marketplace, install Memento, then reload active plugins:
+
+```text
+/plugin marketplace add caiowilson/MCP-memento
+/plugin install memento@memento-mcp
+/reload-plugins
+/mcp
+```
+
+The enabled plugin starts Memento automatically for each Claude Code project. On first start it downloads the version-pinned prebuilt binary for x64 or arm64 macOS, Linux, or Windows, verifies the release SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory. The first start requires GitHub access; later starts verify the cache and work offline.
+
+Update with `/plugin marketplace update memento-mcp` followed by `/plugin update memento@memento-mcp` and `/reload-plugins`. Plugin MCP names are scoped: for example, the prime prompt is `/mcp__plugin_memento_memento__prime`. See the [client setup guide](./docs/clients.md#plugin-installation-recommended) for lifecycle and troubleshooting details.
+
+### Manual installation
+
+After building Memento, run this from the project you want Claude Code to index (replace the executable path):
 
 ```bash
 claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
@@ -36,7 +53,7 @@ claude mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
 
 Claude Code passes the active project through `CLAUDE_PROJECT_DIR`, so memento indexes it without a manual `repo_switch_workspace` call. Verify the connection with `claude mcp list` or `/mcp` inside Claude Code.
 
-For a shared, committable setup, add this `.mcp.json` to the project root:
+For a shared, committable manual setup, add this `.mcp.json` to the project root:
 
 ```json
 {
@@ -132,7 +149,7 @@ ChatGPT on the web does not load local Codex configuration or launch local STDIO
 ### Prerequisites
 
 - Go `1.25.5`
-- Node.js (only if working on `vscode-extension/`)
+- Node.js (if working on `vscode-extension/` or the Claude Code plugin)
 
 ### Local Development
 

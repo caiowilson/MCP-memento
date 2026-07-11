@@ -38,8 +38,18 @@ jobs:
           if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-            go build -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
+            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+              -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
+
+      - name: Generate binary checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset=$(find dist -maxdepth 1 -type f -name 'memento-mcp_*' -print -quit)
+          cd dist
+          sha256sum "$(basename "$asset")" > "$(basename "$asset").sha256"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
@@ -69,8 +79,10 @@ jobs:
         run: |
           mkdir -p dist
           GOARCH="${{ matrix.goarch }}"
+          VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
-            go build -o "dist/memento-mcp" ./cmd/server
+            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+              -o "dist/memento-mcp" ./cmd/server
 
       - name: Build .deb package
         shell: bash
@@ -127,8 +139,10 @@ jobs:
         run: |
           mkdir -p dist
           GOARCH="${{ matrix.goarch }}"
+          VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS=darwin GOARCH="$GOARCH" \
-            go build -o "dist/memento-mcp" ./cmd/server
+            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+              -o "dist/memento-mcp" ./cmd/server
 
       - name: Build .pkg installer
         shell: bash

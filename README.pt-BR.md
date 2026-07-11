@@ -24,7 +24,24 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 
 ## Uso com Claude Code
 
-Depois de compilar o memento, execute este comando no projeto que o Claude Code deve indexar (substitua o caminho do executável):
+### Instalação por plugin (recomendada)
+
+Adicione este repositório como marketplace do Claude Code, instale o Memento e recarregue os plugins ativos:
+
+```text
+/plugin marketplace add caiowilson/MCP-memento
+/plugin install memento@memento-mcp
+/reload-plugins
+/mcp
+```
+
+O plugin habilitado inicia o Memento automaticamente em cada projeto. Na primeira inicialização, ele baixa o binário pré-compilado e versionado para macOS, Linux ou Windows em x64 ou arm64, verifica o checksum SHA-256 da release e o armazena no diretório persistente de dados do plugin. O primeiro uso requer acesso ao GitHub; os próximos verificam o cache e funcionam offline.
+
+Atualize com `/plugin marketplace update memento-mcp`, depois `/plugin update memento@memento-mcp` e `/reload-plugins`. Os nomes MCP do plugin têm namespace; por exemplo, o prompt prime é `/mcp__plugin_memento_memento__prime`.
+
+### Instalação manual
+
+Depois de compilar o Memento, execute este comando no projeto que o Claude Code deve indexar (substitua o caminho do executável):
 
 ```bash
 claude mcp add memento -- /caminho/absoluto/para/MCP-memento/bin/memento-mcp
@@ -32,7 +49,7 @@ claude mcp add memento -- /caminho/absoluto/para/MCP-memento/bin/memento-mcp
 
 O Claude Code informa o projeto ativo por `CLAUDE_PROJECT_DIR`, então o memento o indexa sem uma chamada manual a `repo_switch_workspace`. Verifique a conexão com `claude mcp list` ou `/mcp` dentro do Claude Code.
 
-Para uma configuração compartilhada e versionável, adicione este `.mcp.json` à raiz do projeto:
+Para uma configuração manual compartilhada e versionável, adicione este `.mcp.json` à raiz do projeto:
 
 ```json
 {
@@ -101,7 +118,7 @@ No macOS ou WSL, `claude mcp add-from-claude-desktop` pode importar esse servido
 ### Pré-requisitos
 
 - Go `1.25.5`
-- Node.js (somente se for trabalhar em `vscode-extension/`)
+- Node.js (se for trabalhar em `vscode-extension/` ou no plugin do Claude Code)
 
 ### Desenvolvimento Local
 
