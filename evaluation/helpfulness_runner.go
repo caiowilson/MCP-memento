@@ -30,14 +30,17 @@ const (
 	OutcomeSuccess RunOutcome = "success"
 	OutcomeFailure RunOutcome = "failure"
 	OutcomeInvalid RunOutcome = "invalid"
+	OutcomeTimeout RunOutcome = "timeout"
 )
 
 // TokenUsage is intentionally nullable. Missing usage is unavailable, not an
 // estimate derived from bytes, a prompt, or a different tokenizer.
 type TokenUsage struct {
-	Input  *int64 `json:"input,omitempty"`
-	Output *int64 `json:"output,omitempty"`
-	Total  *int64 `json:"total,omitempty"`
+	Input                *int64 `json:"input,omitempty"`
+	Output               *int64 `json:"output,omitempty"`
+	Total                *int64 `json:"total,omitempty"`
+	UsageSource          string `json:"usageSource,omitempty"`
+	TokenizerFingerprint string `json:"tokenizerFingerprint,omitempty"`
 }
 
 type ToolContextMetrics struct {
@@ -215,6 +218,7 @@ type PairedDeltas struct {
 
 type PairedTaskResult struct {
 	TaskID           string            `json:"taskID"`
+	Category         string            `json:"category"`
 	TaskFingerprint  string            `json:"taskFingerprint"`
 	MatchFingerprint string            `json:"matchFingerprint"`
 	Baseline         RunObservation    `json:"baseline"`
@@ -227,6 +231,7 @@ type HelpfulnessSummary struct {
 	SelectedTasks int          `json:"selectedTasks"`
 	ValidPairs    int          `json:"validPairs"`
 	InvalidPairs  int          `json:"invalidPairs"`
+	TimeoutPairs  int          `json:"timeoutPairs"`
 	Deltas        PairedDeltas `json:"deltas"`
 }
 
@@ -276,7 +281,7 @@ func RunHelpfulness(ctx context.Context, fixtures HelpfulnessFixtureSet, cfg Pai
 			memento.Outcome = OutcomeInvalid
 		}
 		result := PairedTaskResult{
-			TaskID: task.ID, TaskFingerprint: fingerprint(task), MatchFingerprint: baseline.MatchFingerprint,
+			TaskID: task.ID, Category: task.Category, TaskFingerprint: fingerprint(task), MatchFingerprint: baseline.MatchFingerprint,
 			Baseline: baseline, Memento: memento, Deltas: taskDeltas(baseline, memento),
 		}
 		for _, run := range []struct {
@@ -333,7 +338,7 @@ func validateObservation(taskID string, condition RunCondition, got RunObservati
 	if got.TaskID != taskID || got.Condition != condition {
 		return fmt.Errorf("%s task %q observation does not match requested task and condition", condition, taskID)
 	}
-	if got.Outcome != OutcomeSuccess && got.Outcome != OutcomeFailure && got.Outcome != OutcomeInvalid {
+	if got.Outcome != OutcomeSuccess && got.Outcome != OutcomeFailure && got.Outcome != OutcomeInvalid && got.Outcome != OutcomeTimeout {
 		return fmt.Errorf("%s task %q has unsupported outcome %q", condition, taskID, got.Outcome)
 	}
 	if strings.TrimSpace(got.MatchFingerprint) == "" || strings.TrimSpace(got.ConfigurationFingerprint) == "" {
@@ -351,7 +356,7 @@ func validateObservation(taskID string, condition RunCondition, got RunObservati
 }
 
 func taskDeltas(baseline, memento RunObservation) PairedDeltas {
-	if baseline.Outcome == OutcomeInvalid || memento.Outcome == OutcomeInvalid {
+	if baseline.Outcome == OutcomeInvalid || memento.Outcome == OutcomeInvalid || baseline.Outcome == OutcomeTimeout || memento.Outcome == OutcomeTimeout {
 		return unavailableDeltas()
 	}
 	return PairedDeltas{
@@ -391,7 +396,11 @@ func summarize(results []PairedTaskResult) HelpfulnessSummary {
 	values := map[string][]float64{}
 	for _, result := range results {
 		if result.Deltas.Success.Unavailable {
-			summary.InvalidPairs++
+			if result.Baseline.Outcome == OutcomeTimeout || result.Memento.Outcome == OutcomeTimeout {
+				summary.TimeoutPairs++
+			} else {
+				summary.InvalidPairs++
+			}
 			continue
 		}
 		summary.ValidPairs++
@@ -472,7 +481,7 @@ func WriteHelpfulnessReport(dir string, report HelpfulnessReport) (jsonPath, mar
 
 func HelpfulnessMarkdown(report HelpfulnessReport) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Paired helpfulness evaluation\n\n%d selected tasks; %d valid pairs; %d invalid pairs.\n\n", report.Summary.SelectedTasks, report.Summary.ValidPairs, report.Summary.InvalidPairs)
+	fmt.Fprintf(&b, "# Paired helpfulness evaluation\n\n%d selected tasks; %d valid pairs; %d invalid pairs; %d timeout pairs.\n\n", report.Summary.SelectedTasks, report.Summary.ValidPairs, report.Summary.InvalidPairs, report.Summary.TimeoutPairs)
 	b.WriteString("| Metric | Paired delta (Memento − baseline) |\n| --- | ---: |\n")
 	for _, row := range []struct {
 		name   string

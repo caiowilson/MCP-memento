@@ -89,6 +89,23 @@ func TestRunHelpfulnessMarksMismatchedPairsInvalid(t *testing.T) {
 	}
 }
 
+func TestRunHelpfulnessSeparatesTimeoutPairs(t *testing.T) {
+	fixtures := runnerFixtureSet()
+	report, err := RunHelpfulness(context.Background(), fixtures, PairedRunConfig{
+		Root: t.TempDir(), TaskIDs: []string{"neutral"},
+		Executor: RecordedExecutor{Observations: []RunObservation{
+			observation("neutral", BaselineCondition, OutcomeTimeout, "matched", 1, 1, TokenUsage{}),
+			observation("neutral", MementoCondition, OutcomeSuccess, "matched", 1, 1, TokenUsage{}),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("run timeout pair: %v", err)
+	}
+	if report.Summary.TimeoutPairs != 1 || report.Summary.InvalidPairs != 0 || report.Summary.ValidPairs != 0 {
+		t.Fatalf("timeout pair summary = %#v", report.Summary)
+	}
+}
+
 func TestNewBlindedReviewItemOmitsConditionAndPrompt(t *testing.T) {
 	task := runnerFixtureSet().Tasks[0]
 	item := NewBlindedReviewItem(task, task.Validators[2], "redacted response")

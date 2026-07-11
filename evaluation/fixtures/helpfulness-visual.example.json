@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "retrieval": [
+    {
+      "mode": "lexical",
+      "configurationFingerprint": "sha256:example-lexical-config",
+      "precision": 0.15,
+      "recall": 0.292,
+      "mrr": 0.25,
+      "ndcg": 0.194
+    },
+    {
+      "mode": "semantic",
+      "configurationFingerprint": "sha256:example-semantic-config",
+      "precision": 0.2,
+      "recall": 0.32,
+      "mrr": 0.28,
+      "ndcg": 0.23
+    }
+  ],
+  "trend": [
+    {
+      "revision": "example-baseline",
+      "fixtureFingerprint": "sha256:example-fixture-v1",
+      "modelFingerprint": "sha256:example-model",
+      "promptFingerprint": "sha256:example-prompt",
+      "tokenizerFingerprint": "sha256:example-tokenizer",
+      "scoringFingerprint": "sha256:example-scoring-v1",
+      "taskSuccessRate": 0.5,
+      "totalTokenSavings": 320
+    }
+  ],
+  "feedback": {"respondents": 3, "helpful": 2, "neutral": 1, "unhelpful": 0}
+}

@@ -56,9 +56,21 @@ Capture local paired observations using your client adapter, then run this deter
 make helpfulness-eval HELPFULNESS_ARGS='-tasks discover-workspace-resolution,onboard-local-validation -runs evaluation/fixtures/helpfulness-runs.example.json -out /tmp/memento-helpfulness-report'
 ```
 
-The command writes `helpfulness-report.json` and `helpfulness-report.md` under the selected output directory and also prints the Markdown summary. Every observation must provide a task ID, condition, success/failure/invalid outcome, a matched-run fingerprint (model, prompt, budgets, and starting state), a condition configuration fingerprint, elapsed milliseconds, turns, and aggregate tool/context counters. Input, output, and total token fields are optional; omitted fields remain explicitly `unavailable` in the report.
+The command writes `helpfulness-report.json` and `helpfulness-report.md` under the selected output directory and also prints the Markdown summary. Every observation must provide a task ID, condition, success/failure/invalid/timeout outcome, a matched-run fingerprint (model, prompt, budgets, and starting state), a condition configuration fingerprint, elapsed milliseconds, turns, and aggregate tool/context counters. Input, output, and total token fields are optional; omitted fields remain explicitly `unavailable` in the report.
 
-Invalid pairs (including a mismatched matched-run fingerprint) are retained in the per-task JSON but excluded from aggregate deltas. Successful and failed matched runs count in outcome deltas. Aggregate paired deltas include a deterministic normal-approximation 95% confidence interval when at least five pairs supply a metric.
+Invalid and timeout pairs (including a mismatched matched-run fingerprint) are retained in the per-task JSON but excluded from aggregate deltas. Successful and failed matched runs count in outcome deltas. Aggregate paired deltas include a deterministic normal-approximation 95% confidence interval when at least five pairs supply a metric.
+
+## Visualize paired results
+
+Render the report locally as static HTML plus an accessible Markdown table alternative:
+
+```bash
+make helpfulness-visualize HELPFULNESS_VISUAL_ARGS='-report /tmp/memento-helpfulness-report/helpfulness-report.json -supplement evaluation/fixtures/helpfulness-visual.example.json -out /tmp/memento-helpfulness-visual'
+```
+
+The visual report makes the three regression decisions explicit: task success, paired token efficiency, and retrieval quality. It includes category-grouped paired dumbbell charts for total tokens and elapsed time, task-success Wilson intervals, retrieval small multiples, a committed-baseline trend, and opt-in aggregate-only feedback. Every value remains traceable to the report version and fingerprints; no prompts, paths, source code, raw feedback, notes, or memory are rendered.
+
+The optional supplement is strict versioned JSON for aggregate retrieval snapshots, committed trend points, and aggregate opted-in feedback. It never accepts raw events. A usage record can include its `usageSource` and `tokenizerFingerprint`; otherwise the visual marks those labels `unavailable`. Token savings are calculated from summed paired totals, never by averaging task percentages. Invalid pairs and token-unavailable pairs remain visibly separate from task-success samples and token aggregates.
 
 ## Validate the contract
 
