@@ -323,6 +323,9 @@ func (s *Server) brokerToolsetFrom(defs []Tool) []Tool {
 			tool.Handler = s.feedbackProxyToolHandler()
 		} else {
 			tool.InputSchema = augmentInputSchemaWithRoot(tool.InputSchema)
+			if def.Name == "memory_list" || def.Name == "memory_search" {
+				tool.Description += " If the server only inferred its workspace from the launch directory, pass root or establish the active workspace first; unverified cwd memory reads fail closed."
+			}
 			tool.Handler = s.proxyToolHandler(tool.Name)
 		}
 		tools = append(tools, tool)
@@ -601,6 +604,9 @@ func augmentInputSchemaWithRoot(schema map[string]any) map[string]any {
 
 func (s *Server) proxyToolHandler(name string) ToolHandler {
 	return func(ctx context.Context, raw json.RawMessage) (any, error) {
+		if err := s.validateMemoryReadScope(name, raw); err != nil {
+			return nil, err
+		}
 		targetRoot, forwarded, err := s.resolveProxyRequest(raw)
 		if err != nil {
 			return nil, err
@@ -611,6 +617,22 @@ func (s *Server) proxyToolHandler(name string) ToolHandler {
 		}
 		return res, nil
 	}
+}
+
+func (s *Server) validateMemoryReadScope(name string, raw json.RawMessage) error {
+	if (name != "memory_list" && name != "memory_search") || s.rootSource != workspaceRootSourceCWD {
+		return nil
+	}
+
+	args, err := requireArgs(raw)
+	if err != nil {
+		return err
+	}
+	if root, ok := args["root"].(string); ok && strings.TrimSpace(root) != "" {
+		return nil
+	}
+
+	return fmt.Errorf("active workspace is unverified: memory reads will not use the MCP server launch directory implicitly; pass root, configure --root or CLAUDE_PROJECT_DIR, use MCP roots/list, or call repo_switch_workspace")
 }
 
 func (s *Server) feedbackProxyToolHandler() ToolHandler {
@@ -967,10 +989,10 @@ func (s *Server) workspaceDiscoveryPending(method string, session *stdioSession)
 	if method != "tools/call" || !s.allowClientRootsFallback || !session.clientSupportsRoots {
 		return false
 	}
-	if s.rootSource != workspaceRootSourceCWD {
-		return false
+	if session.pendingRootsID != "" {
+		return true
 	}
-	return !session.rootsRequested || session.pendingRootsID != ""
+	return s.rootSource == workspaceRootSourceCWD && !session.rootsRequested
 }
 
 func workspaceDiscoveryPendingResult() toolCallResult {

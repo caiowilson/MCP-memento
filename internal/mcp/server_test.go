@@ -726,6 +726,107 @@ func TestServeStdioRejectsToolCallWhileRootsListPending(t *testing.T) {
 	}
 }
 
+func TestServeStdioRejectsToolCallWhileRootsListRefreshPending(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwdRoot := t.TempDir()
+	initialRoot := t.TempDir()
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwdRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	s, err := NewServer(Config{childFactory: newLocalChildFactory(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartBackgroundIndexing(context.Background())
+
+	var input bytes.Buffer
+	enc := json.NewEncoder(&input)
+	requests := []map[string]any{
+		{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params": map[string]any{
+				"protocolVersion": "2024-11-05",
+				"capabilities": map[string]any{
+					"roots": map[string]any{"listChanged": true},
+				},
+			},
+		},
+		{"jsonrpc": "2.0", "method": "notifications/initialized"},
+		{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"result": map[string]any{
+				"roots": []map[string]any{{"uri": (&url.URL{Scheme: "file", Path: initialRoot}).String()}},
+			},
+		},
+		{"jsonrpc": "2.0", "method": "notifications/roots/list_changed"},
+		{
+			"jsonrpc": "2.0",
+			"id":      3,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name":      "memory_list",
+				"arguments": map[string]any{},
+			},
+		},
+	}
+	for _, request := range requests {
+		if err := enc.Encode(request); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var out bytes.Buffer
+	if err := s.ServeStdio(context.Background(), &input, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected initialize response, two roots/list requests, and pending-error response; got %d lines:\n%s", len(lines), out.String())
+	}
+	var refresh rpcMessage
+	if err := json.Unmarshal([]byte(lines[2]), &refresh); err != nil {
+		t.Fatal(err)
+	}
+	if refresh.Method != "roots/list" {
+		t.Fatalf("expected roots/list refresh request, got %q", refresh.Method)
+	}
+
+	var toolResp rpcResponse
+	if err := json.Unmarshal([]byte(lines[3]), &toolResp); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(toolResp.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result toolCallResult
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "workspace root discovery is pending") {
+		t.Fatalf("expected pending roots refresh error, got %#v", result)
+	}
+	if got := s.currentRoot(); got != initialRoot {
+		t.Fatalf("expected stale root to remain selected but unused until refresh completes, got %q", got)
+	}
+}
+
 func quoteJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

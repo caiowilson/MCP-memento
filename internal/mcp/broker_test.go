@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -375,6 +376,40 @@ func TestBrokerMemoryIsolationAcrossRoots(t *testing.T) {
 	notesBOverride, ok := searchBOverrideMap["notes"].([]any)
 	if !ok || len(notesBOverride) != 1 {
 		t.Fatalf("expected one note from rootB override, got %#v", searchBOverrideMap["notes"])
+	}
+}
+
+func TestBrokerMemoryReadsRejectUnverifiedCWD(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	s := newBrokerServerForTest(t, root)
+	s.rootSource = workspaceRootSourceCWD
+	s.allowClientRootsFallback = true
+
+	for _, tc := range []struct {
+		name string
+		args json.RawMessage
+	}{
+		{name: "memory_search", args: json.RawMessage(`{"query":"handoff"}`)},
+		{name: "memory_list", args: json.RawMessage(`{}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := s.callTool(context.Background(), toolCallParams{Name: tc.name, Arguments: tc.args})
+			if err == nil || !strings.Contains(err.Error(), "active workspace is unverified") {
+				t.Fatalf("expected unverified active workspace error, got %v", err)
+			}
+		})
+	}
+
+	res, err := s.callTool(context.Background(), toolCallParams{
+		Name:      "memory_list",
+		Arguments: json.RawMessage(`{"root":` + quoteJSONString(root) + `}`),
+	})
+	if err != nil {
+		t.Fatalf("expected explicit root to permit memory read: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected successful explicit-root memory read, got %#v", res)
 	}
 }
 

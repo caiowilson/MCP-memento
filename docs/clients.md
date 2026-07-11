@@ -148,6 +148,8 @@ The server resolves its workspace root in this order:
 
 Claude Code sessions therefore index the launched project without a manual `repo_switch_workspace` call. Use `repo_switch_workspace` only when you intentionally retarget the same MCP session to another repository.
 
+The current-working-directory fallback is not treated as verified active-workspace scope for `memory_search` or `memory_list`. Those reads fail closed until the caller passes `root` or the workspace is established by one of the first three sources above or by `repo_switch_workspace`. For clients with MCP Roots support, tool calls are also held while a `roots/list_changed` refresh is pending, preventing results from the previously active workspace.
+
 ## Optional semantic retrieval
 
 Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to enable local hybrid retrieval:
