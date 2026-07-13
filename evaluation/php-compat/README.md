@@ -51,14 +51,14 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
   -json-out /tmp/memento-php-compat.json
 ```
 
-The standalone evaluator currently measures the surfaces exposed directly by
-`internal/parsing`: parse success, required symbol recall, signature-fragment
-recall, declaration-boundary recall, exact anchor extents, and forbidden
-body-symbol leakage. It also reports the number of checked-in relationship,
-Composer, and retrieval judgments. MCP tests consume the relationship and
-Composer judgments because they require repository graph state; retrieval
-judgments are reserved for the term-aware corpus evaluator described in the
-accuracy roadmap.
+The standalone evaluator measures parse success, required symbol recall,
+signature-fragment recall, declaration-boundary recall, exact anchor extents,
+forbidden body-symbol leakage, and all natural-language retrieval judgments.
+Retrieval uses the deterministic, versioned `terms-v1` scorer against each
+corpus independently and emits only aggregate metrics in JSON. Pass
+`-retrieval-details` to print query IDs, metrics, and ranked paths locally. MCP
+tests separately consume relationship and Composer judgments because they
+require repository graph state.
 
 Lint all PHP-bearing fixture files with the active PHP CLI:
 

@@ -1,0 +1,56 @@
+name: PHP Compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  php-compatibility:
+    name: Parser, Composer, relationships, and retrieval
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run PHP compatibility gates
+        shell: bash
+        run: |
+          set -o pipefail
+          make php-compat-eval PHP_COMPAT_ARGS="-json-out php-compat-report.json" | tee php-compat-eval.txt
+
+      - name: Publish metrics summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## PHP compatibility and accuracy'
+            echo
+            echo '```text'
+            if [ -f php-compat-eval.txt ]; then
+              cat php-compat-eval.txt
+            else
+              echo 'The PHP compatibility evaluator did not produce a report.'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: php-compatibility
+          path: |
+            php-compat-eval.txt
+            php-compat-report.json
+          if-no-files-found: ignore

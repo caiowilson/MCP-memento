@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // trigramIndex is an in-memory, case-folded index over redacted chunk content.
@@ -82,6 +83,31 @@ func (t *trigramIndex) candidates(query string) (map[string]struct{}, bool) {
 		}
 	}
 	return result, true
+}
+
+// termCandidates returns the union of conservative prefix candidates for a
+// natural-language query. Four-rune prefixes retain common inflections such as
+// normalize/normalized and handler/handled without scanning the whole index.
+func (t *trigramIndex) termCandidates(terms []string) (map[string]struct{}, bool) {
+	result := map[string]struct{}{}
+	enabled := false
+	for _, term := range terms {
+		for _, probe := range termCandidateProbes(term) {
+			if utf8.RuneCountInString(probe) > 4 {
+				runes := []rune(probe)
+				probe = string(runes[:4])
+			}
+			candidates, ok := t.candidates(probe)
+			if !ok {
+				return nil, false
+			}
+			enabled = true
+			for path := range candidates {
+				result[path] = struct{}{}
+			}
+		}
+	}
+	return result, enabled
 }
 
 // SubstringCandidateSnapshot conservatively filters live repository files.

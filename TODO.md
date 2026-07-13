@@ -359,7 +359,24 @@ The versioned workflow signs raw binaries with the hardened runtime, signs the i
 - [x] Index Composer `.inc` files plus common template and Drupal PHP-bearing extensions (status: done)
 - [x] Add dependency-free PHP 7.4–8.4 and Composer/Laravel/Symfony/WordPress/Drupal fixture suites (status: done)
 - [x] Add reproducible structural, Composer, and relationship accuracy reporting (status: done)
-- [ ] Score the seeded PHP retrieval judgments with a term-aware lexical or hybrid corpus adapter (status: follow-up)
+- [x] Score the seeded PHP retrieval judgments with a term-aware lexical corpus adapter and per-corpus gates (status: done)
+
+### Slice 30 — Term-aware focus retrieval accuracy
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: `internal/indexing/`, `internal/mcp/context_tool.go`, `evaluation/`, `cmd/php-compat-eval/`
+- Priority: P4
+
+#### Steps
+
+- [x] Add deterministic identifier tokenization, stop-word filtering, conservative inflection handling, coverage scoring, and stable path/chunk ordering (status: done)
+- [x] Keep exact `SearchContext` and MCP `repo_search` semantics unchanged behind an opt-in term-aware indexer API (status: done)
+- [x] Use term-aware focus discovery in `repo_context` with and without semantic embeddings (status: done)
+- [x] Gate all 19 PHP retrieval judgments per corpus and overall, with distinct-path evaluation and privacy-safe JSON summaries (status: done)
+- [x] Add language-version distractors and clarify ambiguous framework judgments (status: done)
+- [x] Run the PHP compatibility gates from the standard test target and blocking pull-request CI (status: done)
 
 ## Recently Completed (historical)
 

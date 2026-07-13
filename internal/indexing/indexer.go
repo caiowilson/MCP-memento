@@ -431,6 +431,23 @@ func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) (
 }
 
 func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
+	return i.searchContext(ctx, query, maxResults, restrictPaths, false, false)
+}
+
+// SearchTermsContext ranks natural-language queries by meaningful identifier
+// terms while preserving SearchContext's exact-substring contract. Semantic
+// vectors, when configured, are combined with this term-aware lexical score.
+func (i *Indexer) SearchTermsContext(ctx context.Context, query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
+	return i.searchContext(ctx, query, maxResults, restrictPaths, true, false)
+}
+
+// SearchTermsByPathContext returns only the highest-ranked chunk for each file.
+// It is useful for path-level relevance judgments and repo-wide orientation.
+func (i *Indexer) SearchTermsByPathContext(ctx context.Context, query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
+	return i.searchContext(ctx, query, maxResults, restrictPaths, true, true)
+}
+
+func (i *Indexer) searchContext(ctx context.Context, query string, maxResults int, restrictPaths []string, termAware, distinctPaths bool) ([]Chunk, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -442,6 +459,13 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 		maxResults = 20
 	}
 	qLower := strings.ToLower(q)
+	queryTerms := []string(nil)
+	if termAware {
+		queryTerms = meaningfulSearchTerms(q)
+		if len(queryTerms) == 0 {
+			return nil, errors.New("query has no searchable terms")
+		}
+	}
 
 	restrict := map[string]struct{}{}
 	for _, p := range restrictPaths {
@@ -480,6 +504,9 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 	entries := make(map[string]fileEntry, len(i.manifest.Files))
 	paths := make([]string, 0, len(i.manifest.Files))
 	lexicalCandidates, prefilter := i.trigrams.candidates(qLower)
+	if termAware {
+		lexicalCandidates, prefilter = i.trigrams.termCandidates(queryTerms)
+	}
 	for p, entry := range i.manifest.Files {
 		if len(restrict) > 0 {
 			if _, ok := restrict[p]; !ok {
@@ -489,7 +516,9 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 		if len(queryVector) == 0 && prefilter {
 			if _, ready := i.trigrams.byPath[p]; ready {
 				if _, candidate := lexicalCandidates[p]; !candidate {
-					continue
+					if !termAware || termAwarePathScore(p, queryTerms) == 0 {
+						continue
+					}
 				}
 			}
 		}
@@ -547,6 +576,9 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 		}
 		for _, ch := range chunks {
 			lexical := lexicalChunkScore(ch, qLower)
+			if termAware {
+				lexical = termAwareChunkScore(ch, queryTerms)
+			}
 			if lexical > maxLexical {
 				maxLexical = lexical
 			}
@@ -593,6 +625,18 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 		}
 		return results[a].chunk.StartLine < results[b].chunk.StartLine
 	})
+	if distinctPaths {
+		collapsed := results[:0]
+		seen := map[string]struct{}{}
+		for _, result := range results {
+			if _, exists := seen[result.chunk.Path]; exists {
+				continue
+			}
+			seen[result.chunk.Path] = struct{}{}
+			collapsed = append(collapsed, result)
+		}
+		results = collapsed
+	}
 
 	if len(results) > maxResults {
 		results = results[:maxResults]

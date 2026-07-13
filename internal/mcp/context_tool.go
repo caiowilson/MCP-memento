@@ -56,7 +56,7 @@ func newRepoContextToolWithMemory(root string, idx *indexing.Indexer, memory *No
 				},
 				"focus": map[string]any{
 					"type":        "string",
-					"description": "Optional query used to prioritize chunks (e.g. function/type name).",
+					"description": "Optional natural-language or identifier query used to prioritize chunks.",
 				},
 				"maxFiles": map[string]any{
 					"type":        "integer",
@@ -241,7 +241,7 @@ func newRepoContextToolWithMemory(root string, idx *indexing.Indexer, memory *No
 			}
 			focusResults := []indexing.Chunk(nil)
 			focusBonus := map[contextChunkKey]int{}
-			if focusLower != "" && idx.SemanticEnabled() {
+			if focusLower != "" {
 				focusLimit := maxFiles * maxChunksPerFile
 				if focusLimit < maxFiles {
 					focusLimit = maxFiles
@@ -249,7 +249,11 @@ func newRepoContextToolWithMemory(root string, idx *indexing.Indexer, memory *No
 				if focusLimit > 100 {
 					focusLimit = 100
 				}
-				focusResults, _ = idx.SearchContext(ctx, focus, focusLimit, nil)
+				focusResults, _ = idx.SearchTermsByPathContext(ctx, focus, focusLimit, nil)
+				focusReason := "term_focus"
+				if idx.SemanticEnabled() {
+					focusReason = "hybrid_focus"
+				}
 				seenFocusPath := map[string]struct{}{}
 				for rank, chunk := range focusResults {
 					bonus := 12 - rank
@@ -258,7 +262,7 @@ func newRepoContextToolWithMemory(root string, idx *indexing.Indexer, memory *No
 					}
 					focusBonus[contextChunkKey{path: chunk.Path, startLine: chunk.StartLine}] = bonus
 					if _, seen := seenFocusPath[chunk.Path]; !seen {
-						reasonByPath[chunk.Path] = append(reasonByPath[chunk.Path], "hybrid_focus")
+						reasonByPath[chunk.Path] = append(reasonByPath[chunk.Path], focusReason)
 						seenFocusPath[chunk.Path] = struct{}{}
 					}
 				}

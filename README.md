@@ -128,7 +128,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
    - Default (`auto`): filesystem watcher first, fallback to `git status` polling for git repos if watcher fails
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
-   - Indexed chunks and scoring
+   - Indexed chunks with deterministic term-aware focus scoring and optional local semantic vectors
    - Declaration-aligned Go, JavaScript/JSX, TypeScript/TSX, Python, Rust, and PHP chunk boundaries from a pinned pure-Go tree-sitter runtime, with bounded deterministic fallback
    - Language-aware relationships (Go type analysis, TS/JS and Python imports, and PHP Composer, symbol, include, and framework references)
    - Hard byte and line limits for LLM context safety

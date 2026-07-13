@@ -60,9 +60,11 @@ Resource reads default to `32000` bytes; set `MEMENTO_RESOURCE_MAX_BYTES` to cha
 
 The `prime` prompt front-loads up to eight fresh-then-stale durable notes and bounded high-signal project files. Optional `path` and `focus` arguments add an active-file `repo_outline` and task focus. The complete prompt defaults to `24000` bytes, configurable with `MEMENTO_PRIME_MAX_BYTES`, and ends with a truncation marker when capped. Clients discover it through `prompts/list`; Claude Code presents it as `/mcp__<server-name>__prime`.
 
-## Optional semantic retrieval
+## Focus and optional semantic retrieval
 
-Semantic retrieval is opt-in. The default remains deterministic substring scoring and does not require a model runtime. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines lexical and cosine scores. A focused `repo_context` call can then include conceptually related chunks even when they do not share the query text. `repo_search` remains literal by default; pass `regex: true` for explicit regular-expression matching.
+Focused `repo_context` calls use deterministic term-aware scoring by default. The scorer splits natural-language and code identifiers, ignores common query glue, handles a conservative set of inflections, rewards multi-term coverage, and returns one best chunk per matching path. This can bring files outside the active file's relationship graph into a bounded context result without a model runtime. `repo_search` keeps its literal substring contract by default; pass `regex: true` for explicit regular-expression matching.
+
+Semantic retrieval is opt-in. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines term-aware lexical and cosine scores for focused context retrieval.
 
 Memento defaults to `nomic-embed-text:v1.5`, a roughly 274 MB general-purpose embedding model with enough context for the current 8 KiB chunk ceiling. Install Ollama separately and pull the model explicitly:
 

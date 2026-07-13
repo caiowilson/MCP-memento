@@ -23,12 +23,12 @@ MERGE_ORDER ?= 20 21 24 18
 help:
 	@printf "Targets:\n"
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
-	@printf "  test      Run Go, release-contract, and retrieval evaluation tests\n"
+	@printf "  test      Run Go, release-contract, retrieval, and PHP compatibility tests\n"
 	@printf "  coverage-internal Run the two blocking internal-package coverage checks\n"
 	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
 	@printf "  release-test Validate release workflow and macOS signing contracts\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
-	@printf "  php-compat-eval Run PHP structural, Composer, and relationship accuracy gates\n"
+	@printf "  php-compat-eval Run PHP structural, Composer, relationship, and retrieval accuracy gates\n"
 	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
 	@printf "  helpfulness-visualize Render local paired helpfulness visual artifacts\n"
 	@printf "  evaluation-ci Reproduce CI reports and regression gates locally\n"
@@ -66,6 +66,7 @@ test:
 	go test $(GO_TAG_FLAGS) ./...
 	$(MAKE) release-test
 	$(MAKE) retrieval-eval
+	$(MAKE) php-compat-eval
 
 coverage-internal:
 	go test -count=1 -cover $(GO_TAG_FLAGS) ./internal/indexing

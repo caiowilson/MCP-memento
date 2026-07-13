@@ -133,6 +133,44 @@ func TestExecuteWithConfigMeasuresSemanticRetrieval(t *testing.T) {
 	}
 }
 
+func TestExecuteWithConfigMeasuresTermAwareRetrieval(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "ReportHandler.php"), "<?php final class ReportHandler { public function handle(): void {} }\n")
+	mustWrite(t, filepath.Join(root, "Repository.php"), "<?php final class Repository {}\n")
+	fixtures := FixtureSet{Version: 1, K: 1, Queries: []QueryFixture{{
+		ID:       "report-handler",
+		Query:    "where is a report handled",
+		Relevant: []RelevantChunk{{Path: "ReportHandler.php"}},
+	}}}
+
+	exact, err := ExecuteFixturesWithConfig(context.Background(), root, t.TempDir(), fixtures, ExecuteConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terms, err := ExecuteFixturesWithConfig(context.Background(), root, t.TempDir(), fixtures, ExecuteConfig{TermAware: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact.Metrics.Recall != 0 {
+		t.Fatalf("exact baseline unexpectedly matched natural-language query: %#v", exact)
+	}
+	if terms.Metrics.Recall != 1 || terms.Metrics.MRR != 1 {
+		t.Fatalf("term-aware retrieval missed handler: %#v", terms)
+	}
+}
+
+func TestExecuteFixturesRejectsDistinctPathsWithoutTermAwareRetrieval(t *testing.T) {
+	fixtures := FixtureSet{Version: 1, K: 1, Queries: []QueryFixture{{
+		ID:       "report-handler",
+		Query:    "report handler",
+		Relevant: []RelevantChunk{{Path: "ReportHandler.php"}},
+	}}}
+	_, err := ExecuteFixturesWithConfig(context.Background(), t.TempDir(), t.TempDir(), fixtures, ExecuteConfig{DistinctPaths: true})
+	if err == nil || !strings.Contains(err.Error(), "requires term-aware retrieval") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestExecuteWithConfigRejectsSemanticFallbackMetrics(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "auth.go"), "package fixture\n\nfunc Guard() {}\n")

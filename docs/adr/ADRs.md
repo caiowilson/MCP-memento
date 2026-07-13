@@ -22,6 +22,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0010: Claude Code plugin distribution through verified release binaries (Accepted, 2026-07-11)
 - ADR 0011: Pure-Go tree-sitter as the shared structural parser (Accepted, 2026-07-13)
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
+- ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
 
 ---
 
@@ -707,6 +708,40 @@ PHP was indexed and outlined through a local scanner while the other primary lan
 
 - [tree-sitter-php](https://github.com/tree-sitter/tree-sitter-php)
 - [Composer autoload schema](https://getcomposer.org/doc/04-schema.md#autoload)
+
+---
+
+## ADR 0013: Deterministic term-aware focus retrieval
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+`repo_search` deliberately provides literal substring and explicit regular-expression search, but natural-language `repo_context` focus queries previously needed an embedding runtime to discover files outside the active file's relationship graph. The PHP compatibility suite included 19 natural-language retrieval judgments that literal full-phrase matching could not measure meaningfully. Default retrieval must remain local, deterministic, redacted, and inexpensive while preserving the exact-search contract.
+
+### Decision
+
+- Keep `SearchContext` and MCP `repo_search` exact-substring behavior unchanged.
+- Add an opt-in, versioned `terms-v1` indexer path that splits punctuation, snake case, camel case, and acronym boundaries; removes common query glue; and applies a small explicit set of canonical forms and conservative inflections.
+- Score each meaningful concept once across content and path, reward multi-term coverage, use path matches only as a tie boost, and sort equal results by path and declaration start line.
+- Use the existing redacted trigram index as a conservative candidate filter and return one highest-ranked chunk per path for focused repository orientation.
+- Apply the term-aware scorer to `repo_context` focus queries by default. When local semantic retrieval is enabled, combine the same lexical score with embeddings instead of replacing it.
+- Evaluate every checked-in PHP retrieval judgment independently within its corpus at `k=5`, gate recall, MRR, and nDCG per corpus and overall, and keep query IDs and ranked paths out of aggregate JSON reports.
+
+### Consequences
+
+- Natural-language focus can discover relevant unconnected files without Ollama, while explicit exact and regex search remain predictable.
+- The scorer is intentionally narrower than stemming or fuzzy search; unsupported synonyms still miss instead of creating broad false positives.
+- File-level relevance cannot prove that the right declaration chunk ranked first. The next accuracy slice should add line-bounded judgments and minimized production misses.
+- Changes to tokenization, canonical forms, or weights require a new adapter fingerprint and rerunning the compatibility and general retrieval baselines.
+
+### Alternatives considered
+
+- Make `repo_search` term-aware: improves recall but breaks its literal contract and makes exact repository inspection less predictable.
+- Require embeddings for natural-language focus: better synonym coverage, but adds a runtime dependency and makes default behavior unavailable offline.
+- Use broad stemming, edit distance, or prefix matching: simpler recall gains, but produced ambiguous code-identifier matches and weaker precision than explicit conservative forms.
+- Evaluate all framework roots as one corpus: easier to run, but allows similarly named files in one framework to hide misses in another.
 
 ---
 

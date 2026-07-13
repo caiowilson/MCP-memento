@@ -61,6 +61,8 @@ type ExecuteConfig struct {
 	Embedder           embedding.Embedder
 	SemanticWeight     float64
 	EmbeddingBatchSize int
+	TermAware          bool
+	DistinctPaths      bool
 }
 
 func LoadFixtures(r io.Reader) (FixtureSet, error) {
@@ -129,11 +131,25 @@ func Execute(ctx context.Context, root, fixturePath, storeDir string) (Report, e
 	return ExecuteWithConfig(ctx, root, fixturePath, storeDir, ExecuteConfig{})
 }
 
-// ExecuteWithConfig runs the same evaluation with optional semantic retrieval.
+// ExecuteWithConfig runs the same evaluation with optional semantic or
+// term-aware retrieval.
 func ExecuteWithConfig(ctx context.Context, root, fixturePath, storeDir string, cfg ExecuteConfig) (Report, error) {
 	fixtures, err := LoadFixtureFile(fixturePath)
 	if err != nil {
 		return Report{}, err
+	}
+	return ExecuteFixturesWithConfig(ctx, root, storeDir, fixtures, cfg)
+}
+
+// ExecuteFixturesWithConfig indexes root and evaluates an already validated
+// fixture set. TermAware is intended for natural-language context retrieval;
+// exact substring fixtures keep the default SearchContext behavior.
+func ExecuteFixturesWithConfig(ctx context.Context, root, storeDir string, fixtures FixtureSet, cfg ExecuteConfig) (Report, error) {
+	if err := fixtures.validate(); err != nil {
+		return Report{}, err
+	}
+	if cfg.DistinctPaths && !cfg.TermAware {
+		return Report{}, errors.New("distinct-path evaluation requires term-aware retrieval")
 	}
 	idx, err := indexing.New(indexing.Config{
 		RootAbs:            root,
@@ -165,7 +181,14 @@ func ExecuteWithConfig(ctx context.Context, root, fixturePath, storeDir string, 
 
 	report := Report{K: fixtures.K, Queries: make([]QueryResult, 0, len(fixtures.Queries))}
 	for _, fixture := range fixtures.Queries {
-		retrieved, err := idx.SearchContext(ctx, fixture.Query, fixtures.K, nil)
+		var retrieved []indexing.Chunk
+		if cfg.TermAware && cfg.DistinctPaths {
+			retrieved, err = idx.SearchTermsByPathContext(ctx, fixture.Query, fixtures.K, nil)
+		} else if cfg.TermAware {
+			retrieved, err = idx.SearchTermsContext(ctx, fixture.Query, fixtures.K, nil)
+		} else {
+			retrieved, err = idx.SearchContext(ctx, fixture.Query, fixtures.K, nil)
+		}
 		if err != nil {
 			return Report{}, fmt.Errorf("search query %q: %w", fixture.ID, err)
 		}

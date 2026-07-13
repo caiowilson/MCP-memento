@@ -196,7 +196,7 @@ The current-working-directory fallback is not treated as verified active-workspa
 
 ## Optional semantic retrieval
 
-Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to enable local hybrid retrieval:
+`repo_context` focus queries use deterministic term-aware retrieval without configuration; `repo_search` remains literal unless regex mode is requested. Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to add local embeddings to focused context ranking:
 
 ```json
 {

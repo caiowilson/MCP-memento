@@ -45,7 +45,7 @@
         {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.label", "startLine": 39, "endLine": 45}
       ],
       "retrieval": [
-        {"id": "php74-null-coalesce", "query": "where is the fallback name normalized", "relevant": ["src/LanguageFeatures.php"]}
+        {"id": "php74-null-coalesce", "query": "where does override fall back to name before normalizeName", "relevant": ["src/LanguageFeatures.php"]}
       ]
     },
     {
@@ -162,7 +162,7 @@
         {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.format", "startLine": 20, "endLine": 24}
       ],
       "retrieval": [
-        {"id": "php83-typed-constant", "query": "where is the report prefix typed", "relevant": ["src/LanguageFeatures.php"]}
+        {"id": "php83-typed-constant", "query": "where is the report prefix declared as a string constant", "relevant": ["src/LanguageFeatures.php"]}
       ]
     },
     {
@@ -192,7 +192,7 @@
         {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.legacyTitle", "startLine": 27, "endLine": 31}
       ],
       "retrieval": [
-        {"id": "php84-property-hook", "query": "where is the title trimmed by a property setter", "relevant": ["src/LanguageFeatures.php"]}
+        {"id": "php84-property-hook", "query": "where does the title set hook trim its value", "relevant": ["src/LanguageFeatures.php"]}
       ]
     },
     {
@@ -245,7 +245,7 @@
       ],
       "autoloadFiles": ["bootstrap/helpers.php"],
       "retrieval": [
-        {"id": "composer-consumer", "query": "where are all autoload strategies consumed", "relevant": ["app/Consumer.php"]},
+        {"id": "composer-consumer", "query": "where are Composer autoload mappings configured and consumed", "relevant": ["composer.json", "app/Consumer.php"]},
         {"id": "composer-classmap", "query": "where is the oddly located mapped thing", "relevant": ["classmap/MappedThing.php"]}
       ]
     },
@@ -277,7 +277,7 @@
       ],
       "retrieval": [
         {"id": "laravel-dashboard", "query": "where does the dashboard load recent reports", "relevant": ["app/Http/Controllers/DashboardController.php", "app/Services/ReportService.php"]},
-        {"id": "laravel-binding", "query": "where is the report repository bound to its database implementation", "relevant": ["app/Providers/AppServiceProvider.php"]},
+        {"id": "laravel-binding", "query": "where does AppServiceProvider bind ReportRepository to DatabaseReportRepository", "relevant": ["app/Providers/AppServiceProvider.php"]},
         {"id": "laravel-view", "query": "which Blade view extends the app layout and shows report stats", "relevant": ["resources/views/dashboard/index.blade.php"]}
       ]
     },
@@ -331,7 +331,7 @@
         {"from": "theme/single-report.php", "to": "theme/template-parts/content-report.php", "reasons": ["semantic_reference"]}
       ],
       "retrieval": [
-        {"id": "wordpress-hooks", "query": "where are report hooks and shortcode callbacks registered", "relevant": ["includes/class-report-plugin.php"]},
+        {"id": "wordpress-hooks", "query": "where are both the report action and shortcode callbacks registered", "relevant": ["includes/class-report-plugin.php"]},
         {"id": "wordpress-template-part", "query": "where is a single report template rendered", "relevant": ["theme/single-report.php", "theme/template-parts/content-report.php"]}
       ]
     },
@@ -360,7 +360,7 @@
         {"from": "report.module", "to": "templates/report-summary.html.twig", "reasons": ["semantic_reference"]}
       ],
       "retrieval": [
-        {"id": "drupal-route", "query": "where is the report summary route implemented", "relevant": ["report.routing.yml", "src/Controller/ReportController.php"]},
+        {"id": "drupal-route", "query": "where is the report summary route mapped to its controller", "relevant": ["report.routing.yml", "src/Controller/ReportController.php"]},
         {"id": "drupal-theme-hook", "query": "where is the report summary theme hook declared", "relevant": ["report.module"]},
         {"id": "drupal-block", "query": "where does the report summary block load reports", "relevant": ["src/Plugin/Block/ReportBlock.php"]}
       ]

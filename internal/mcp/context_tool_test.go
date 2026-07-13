@@ -116,6 +116,55 @@ func TestRepoContextFocusAddsSemanticMatchOutsideRelationshipGraph(t *testing.T)
 	}
 }
 
+func TestRepoContextFocusAddsTermMatchWithoutSemanticRuntime(t *testing.T) {
+	root := t.TempDir()
+	for rel, content := range map[string]string{
+		"pkg/active.go": "package pkg\n\nfunc Active() {}\n",
+		"app/Providers/AppServiceProvider.php": `<?php
+final class AppServiceProvider {
+    public function register(): void {
+        $this->app->bind(ReportRepository::class, DatabaseReportRepository::class);
+    }
+}
+`,
+	} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newRepoContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{
+		"path":              "pkg/active.go",
+		"focus":             "where does AppServiceProvider bind the report repository",
+		"mode":              "full",
+		"includeSameDir":    false,
+		"includeImports":    false,
+		"includeImporters":  false,
+		"includeReferences": false,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := contextResultFiles(t, result)
+	if !containsPath(paths, "app/Providers/AppServiceProvider.php") {
+		t.Fatalf("expected term-aware focus match outside relationship graph, got %v", paths)
+	}
+}
+
 func containsPath(paths []string, want string) bool {
 	for _, path := range paths {
 		if path == want {
