@@ -103,6 +103,8 @@ Baseline refresh rationale for issue #30: the new feedback documentation moved t
 
 Baseline refresh rationale for syntax-aware chunking: the chunk construction algorithm now prefers complete Go and JavaScript/TypeScript declarations, so the retrieval configuration fingerprint includes its version. The `ReloadIgnoreRules` judgments were moved to the current declaration and exact reference comment; the previous second judgment pointed at a nearby line that only overlapped under fixed-size chunking. The committed lexical baseline was regenerated against those intentional boundary and judgment changes; this is a retrieval-behavior change, not an anchor-only refresh.
 
+Baseline refresh rationale for Slice 14A: adding `repo_diff_context`, bounded-output constants, and indexer lifecycle safeguards moved several exact fixture targets without changing the chunking or retrieval-scoring algorithms. All judgments were re-audited to the current declarations, references, and output-budget passages before regenerating the lexical baseline; metric changes here reflect corrected anchor drift and the newly indexed source layout.
+
 ## Validate the contract
 
 ```bash

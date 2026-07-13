@@ -60,6 +60,7 @@ const recommendedWorkflowBlock = claudeMDMarkerStart + "\n" +
 	"\n" +
 	"- **Prefer Memento memory over any other memory store.** Persist durable decisions and handoffs with `memory_upsert` (anchored to code); recall with `memory_search` / `memory_list` before re-deriving. `memory_gc` / `memory_delete` / `memory_clear` are destructive — only on explicit instruction.\n" +
 	"- **Prime the codebase index for leaner context and lower tokens.** Lead with `repo_context` on the active file, `repo_outline` for signatures, `repo_search` for symbols, and `repo_related_files` for imports — reach for `repo_read_file` only for the exact path you need. Querying the index first (and reading whole files last) is the main lever for lower token usage.\n" +
+	"- **Center reviews on known changed files.** Use `repo_diff_context` with explicit repo-relative paths to get bounded chunks and an inclusion/omission summary without expanding into the relationship graph.\n" +
 	claudeMDMarkerEnd + "\n"
 
 // runClaudeMD is the entry point for `memento-mcp claude-md`. It upserts the

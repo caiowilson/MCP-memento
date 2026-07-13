@@ -6,8 +6,8 @@
       "id": "ignore-rule-reload",
       "query": "ReloadIgnoreRules",
       "relevant": [
-        { "path": "internal/indexing/indexer.go", "startLine": 138, "endLine": 139 },
-        { "path": "internal/indexing/indexer.go", "startLine": 650, "endLine": 650 },
+        { "path": "internal/indexing/indexer.go", "startLine": 147, "endLine": 148 },
+        { "path": "internal/indexing/indexer.go", "startLine": 728, "endLine": 728 },
         { "path": "internal/indexing/fs_change.go", "startLine": 142, "endLine": 142 }
       ]
     },
@@ -15,25 +15,25 @@
       "id": "match-centered-truncation",
       "query": "truncateStringAroundBytes",
       "relevant": [
-        { "path": "internal/mcp/output_limits.go", "startLine": 34, "endLine": 34 },
+        { "path": "internal/mcp/output_limits.go", "startLine": 38, "endLine": 38 },
         { "path": "internal/mcp/output_limits_test.go", "startLine": 35, "endLine": 35 },
-        { "path": "internal/mcp/repo_tools.go", "startLine": 405, "endLine": 405 }
+        { "path": "internal/mcp/repo_tools.go", "startLine": 415, "endLine": 415 }
       ]
     },
     {
       "id": "anthropic-result-limit",
       "query": "defaultAnthropicMaxResultSizeChars",
       "relevant": [
-        { "path": "internal/mcp/output_limits.go", "startLine": 4, "endLine": 16 },
-        { "path": "internal/mcp/server_test.go", "startLine": 64, "endLine": 64 }
+        { "path": "internal/mcp/output_limits.go", "startLine": 4, "endLine": 4 },
+        { "path": "internal/mcp/server_test.go", "startLine": 65, "endLine": 65 }
       ]
     },
     {
       "id": "client-output-budget",
       "query": "MAX_MCP_OUTPUT_TOKENS",
       "relevant": [
-        { "path": "docs/README.md", "startLine": 162, "endLine": 162 },
-        { "path": "docs/clients.md", "startLine": 181, "endLine": 181 }
+        { "path": "docs/README.md", "startLine": 169, "endLine": 169 },
+        { "path": "docs/clients.md", "startLine": 202, "endLine": 202 }
       ]
     }
   ]

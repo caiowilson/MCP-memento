@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestToolsListIncludesMetadata(t *testing.T) {
@@ -122,9 +123,10 @@ func TestLargeResultToolsAdvertiseAnthropicMaxResultSize(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"repo_context":   false,
-		"repo_read_file": false,
-		"repo_search":    false,
+		"repo_context":      false,
+		"repo_diff_context": false,
+		"repo_read_file":    false,
+		"repo_search":       false,
 	}
 	for _, tool := range decoded.Tools {
 		if _, ok := want[tool.Name]; !ok {
@@ -458,6 +460,25 @@ func TestNewServerUsesClaudeProjectDir(t *testing.T) {
 	s.StartBackgroundIndexing(context.Background())
 	if got := s.root; got != dir {
 		t.Fatalf("expected root %s from CLAUDE_PROJECT_DIR, got %s", dir, got)
+	}
+}
+
+func TestStartBackgroundIndexingIsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "fixture.go"), []byte("package fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewServer(Config{Root: root, Child: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	s.StartBackgroundIndexing(context.Background())
+	s.StartBackgroundIndexing(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.idx.EnsureIndexed(ctx, []string{"fixture.go"}); err != nil {
+		t.Fatalf("second StartBackgroundIndexing stopped the active indexer: %v", err)
 	}
 }
 

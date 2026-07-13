@@ -8,6 +8,7 @@ func leafToolDefinitionsFor(root string, feedbackEnabled bool) []Tool {
 		cloneToolDefinition(newRepoRelatedFilesTool(root)),
 		repoOutlineToolDefinition(),
 		repoContextToolDefinition(),
+		repoDiffContextToolDefinition(),
 		repoIndexStatusToolDefinition(),
 		repoReindexToolDefinition(),
 		repoClearIndexToolDefinition(),

@@ -181,6 +181,7 @@ Use the output of `print-guidance` directly, or paste the following into client 
 
 ```text
 When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+Use repo_diff_context when changed repo-relative paths are already known and you want compact context from only those files.
 Use repo_outline when you need signatures and file structure without implementation bodies.
 Anchor durable notes to code when possible. Treat stale notes as evidence to verify, then call memory_verify or memory_tombstone after adjudication.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
@@ -191,13 +192,14 @@ Existing explicit mode calls still work, but new callers should prefer intent.
 
 ## Claude Code output limits
 
-`repo_context`, `repo_read_file`, and `repo_search` default to compact responses to avoid Claude Code's MCP result warning near 10k tokens:
+`repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` default to compact responses to avoid Claude Code's MCP result warning near 10k tokens:
 
 - `repo_context`: `maxTokens` defaults to `7000` using an approximate `ceil(UTF-8 bytes / 4)` estimator; `maxTotalBytes` remains a `32000` hard ceiling.
+- `repo_diff_context`: at most 20 explicit paths, three chunks per file, `maxTokens: 4000`, and `maxTotalBytes: 16000` by default.
 - `repo_read_file`: `maxBytes` defaults to `32000`.
 - `repo_search`: each snippet is capped by `maxSnippetBytes`, default `500`.
 
-The same three tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` for intentional large reads. Claude Code's own `MAX_MCP_OUTPUT_TOKENS` setting can still be lower than the server-side caps, so tune the tool arguments and the client setting together when you need larger context.
+The same four tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` for intentional large reads. Claude Code's own `MAX_MCP_OUTPUT_TOKENS` setting can still be lower than the server-side caps, so tune the tool arguments and the client setting together when you need larger context.
 
 Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the default token budget, or pass `maxTokens` to one `repo_context` call. Responses report `usedTokens`, `usedBytes`, and the estimator name under `limits`.
 

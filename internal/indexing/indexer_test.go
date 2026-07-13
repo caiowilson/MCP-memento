@@ -2,15 +2,128 @@ package indexing
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/redact"
 )
+
+type lifecycleBlockingEmbedder struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (e *lifecycleBlockingEmbedder) Embed(ctx context.Context, _ embedding.Task, _ []string) ([][]float32, error) {
+	e.once.Do(func() { close(e.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (*lifecycleBlockingEmbedder) Fingerprint() string { return "lifecycle-blocking-v1" }
+func (*lifecycleBlockingEmbedder) Name() string        { return "test/lifecycle-blocking" }
+
+func TestIndexerRequestsFailAfterWorkerStops(t *testing.T) {
+	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerContext, stop := context.WithCancel(context.Background())
+	idx.Start(workerContext)
+	stop()
+	select {
+	case <-idx.workerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("indexer worker did not stop")
+	}
+	if err := idx.EnsureIndexed(context.Background(), []string{"fixture.go"}); !errors.Is(err, errIndexerStopped) {
+		t.Fatalf("EnsureIndexed error = %v, want %v", err, errIndexerStopped)
+	}
+	if err := idx.IndexAll(context.Background()); !errors.Is(err, errIndexerStopped) {
+		t.Fatalf("IndexAll error = %v, want %v", err, errIndexerStopped)
+	}
+}
+
+func TestIndexerLifecycleCancellationStopsActiveRequest(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "fixture.go"), []byte("package fixture\n\nfunc Active() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	embedder := &lifecycleBlockingEmbedder{started: make(chan struct{})}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir(), Embedder: embedder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerContext, stop := context.WithCancel(context.Background())
+	idx.Start(workerContext)
+	requestDone := make(chan error, 1)
+	go func() {
+		requestDone <- idx.EnsureIndexed(context.Background(), []string{"fixture.go"})
+	}()
+	select {
+	case <-embedder.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("embedding request did not start")
+	}
+	stop()
+	select {
+	case <-idx.workerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("active request kept indexer worker alive after lifecycle cancellation")
+	}
+	select {
+	case <-requestDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("active EnsureIndexed request did not return after lifecycle cancellation")
+	}
+}
+
+func TestIndexerRequestsRequireStartedWorker(t *testing.T) {
+	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.EnsureIndexed(context.Background(), []string{"fixture.go"}); !errors.Is(err, errIndexerNotStarted) {
+		t.Fatalf("EnsureIndexed error = %v, want %v", err, errIndexerNotStarted)
+	}
+}
+
+func TestEnsureIndexedEvictsStaleChunksWhenFileBecomesUnindexable(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	path := filepath.Join(root, "fixture.go")
+	if err := os.WriteFile(path, []byte("package fixture\n\nfunc Small() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: store, MaxFileBytes: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.EnsureIndexed(ctx, []string{"fixture.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.FileChunks("fixture.go"); err != nil {
+		t.Fatalf("expected initial chunks: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("package fixture\n"+strings.Repeat("x", 128)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.EnsureIndexed(ctx, []string{"fixture.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.FileChunks("fixture.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale chunks remained after file exceeded MaxFileBytes: %v", err)
+	}
+}
 
 func TestIndexerIndexesAndSearches(t *testing.T) {
 	root := t.TempDir()

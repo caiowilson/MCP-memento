@@ -78,6 +78,7 @@ printf '%s\n' \
 - `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
 - `repo_outline` to inspect symbols, signatures, documentation, and line ranges without function bodies.
 - `repo_context` to fetch a single “context window” with intent-aware routing (uses automatic indexing in the background).
+- `repo_diff_context` to fetch compact indexed chunks from only an explicit list of changed repo-relative paths.
 - `repo_switch_workspace` to retarget the server to another repository/workspace root at runtime (no process restart).
 - Repo-scoped explicit memory (`memory_*`) persisted under `~/.memento-mcp/`.
 - Optional code anchors that flag stale notes, preserve them for verification, and protect renamed or branch-specific referents from accidental eviction.

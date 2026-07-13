@@ -5,6 +5,10 @@ const (
 
 	defaultRepoContextMaxTokens      = 7_000
 	defaultRepoContextMaxTotalBytes  = 32_000
+	defaultRepoDiffContextMaxTokens  = 4_000
+	defaultRepoDiffContextMaxBytes   = 16_000
+	defaultRepoDiffContextMaxPaths   = 20
+	defaultRepoDiffContextMaxChunks  = 3
 	defaultRepoReadFileMaxBytes      = 32_000
 	defaultRepoSearchMaxSnippetBytes = 500
 

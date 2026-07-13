@@ -62,7 +62,10 @@ type Indexer struct {
 	status                Status
 	embeddingBackoffUntil time.Time
 
-	reqCh chan request
+	reqCh         chan request
+	startOnce     sync.Once
+	workerStarted chan struct{}
+	workerDone    chan struct{}
 }
 
 type request struct {
@@ -72,7 +75,11 @@ type request struct {
 	done  chan error
 }
 
-var errEmbeddingBackoff = errors.New("embedding runtime is in retry backoff")
+var (
+	errEmbeddingBackoff  = errors.New("embedding runtime is in retry backoff")
+	errIndexerNotStarted = errors.New("indexer has not been started")
+	errIndexerStopped    = errors.New("indexer has stopped")
+)
 
 func New(cfg Config) (*Indexer, error) {
 	if cfg.RootAbs == "" {
@@ -107,12 +114,14 @@ func New(cfg Config) (*Indexer, error) {
 	}
 
 	idx := &Indexer{
-		rootAbs:  rootAbs,
-		dir:      dir,
-		cfg:      cfg,
-		redactor: cfg.Redactor,
-		embedder: cfg.Embedder,
-		reqCh:    make(chan request, 8),
+		rootAbs:       rootAbs,
+		dir:           dir,
+		cfg:           cfg,
+		redactor:      cfg.Redactor,
+		embedder:      cfg.Embedder,
+		reqCh:         make(chan request, 8),
+		workerStarted: make(chan struct{}),
+		workerDone:    make(chan struct{}),
 	}
 
 	rules, err := loadIgnoreRules(rootAbs)
@@ -148,25 +157,67 @@ func (i *Indexer) ReloadIgnoreRules() error {
 }
 
 func (i *Indexer) Start(ctx context.Context) {
-	go i.worker(ctx)
-	if i.cfg.PollInterval > 0 {
-		go i.poller(ctx)
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	i.startOnce.Do(func() {
+		close(i.workerStarted)
+		go i.worker(ctx)
+		if i.cfg.PollInterval > 0 {
+			go i.poller(ctx)
+		}
+	})
 }
 
 func (i *Indexer) IndexAll(ctx context.Context) error {
 	if err := i.ReloadIgnoreRules(); err != nil {
 		return err
 	}
-	done := make(chan error, 1)
-	i.reqCh <- request{ctx: ctx, full: true, done: done}
-	return <-done
+	return i.submitRequest(ctx, request{full: true})
 }
 
 func (i *Indexer) EnsureIndexed(ctx context.Context, relPaths []string) error {
+	return i.submitRequest(ctx, request{paths: relPaths, full: false})
+}
+
+func (i *Indexer) submitRequest(ctx context.Context, req request) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-i.workerStarted:
+	default:
+		return errIndexerNotStarted
+	}
+	select {
+	case <-i.workerDone:
+		return errIndexerStopped
+	default:
+	}
+
 	done := make(chan error, 1)
-	i.reqCh <- request{ctx: ctx, paths: relPaths, full: false, done: done}
-	return <-done
+	req.ctx = ctx
+	req.done = done
+	select {
+	case i.reqCh <- req:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-i.workerDone:
+		return errIndexerStopped
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-i.workerDone:
+		select {
+		case err := <-done:
+			return err
+		default:
+			return errIndexerStopped
+		}
+	}
 }
 
 func (i *Indexer) RemovePaths(relPaths []string) error {
@@ -472,17 +523,22 @@ func dotProduct(a, b []float32) float64 {
 }
 
 func (i *Indexer) worker(ctx context.Context) {
+	defer close(i.workerDone)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case req := <-i.reqCh:
+			executionContext, cancel := context.WithCancel(req.ctx)
+			stopLifecycleCancellation := context.AfterFunc(ctx, cancel)
 			var err error
 			if req.full {
-				err = i.indexAll(req.ctx)
+				err = i.indexAll(executionContext)
 			} else {
-				err = i.indexFiles(req.ctx, req.paths)
+				err = i.indexFiles(executionContext, req.paths)
 			}
+			stopLifecycleCancellation()
+			cancel()
 			req.done <- err
 		}
 	}
@@ -515,6 +571,21 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 	totalBytes = i.manifest.TotalBytes
 	rules := i.ignoreRules
 	i.mu.Unlock()
+	evict := func(rel string) {
+		i.mu.Lock()
+		ent, ok := i.manifest.Files[rel]
+		if ok {
+			_ = os.Remove(i.chunkFilePath(ent.ID))
+			i.removeVectorFile(ent.ID)
+			i.manifest.TotalBytes -= ent.Size
+			delete(i.manifest.Files, rel)
+		}
+		i.mu.Unlock()
+		if ok {
+			totalBytes -= ent.Size
+			changed = true
+		}
+	}
 
 	for _, rel := range relPaths {
 		select {
@@ -524,30 +595,37 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 		}
 
 		if rules.matchesPath(rel) {
+			evict(rel)
 			continue
 		}
 		if !shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs) {
+			evict(rel)
 			continue
 		}
 		abs, err := safeJoin(i.rootAbs, rel)
 		if err != nil {
+			evict(rel)
 			continue
 		}
 		info, err := os.Stat(abs)
-		if err != nil || info.IsDir() {
+		if err != nil || !info.Mode().IsRegular() {
+			evict(rel)
 			continue
 		}
-		if info.Size() > i.cfg.MaxFileBytes {
+		if info.Size() <= 0 || info.Size() > i.cfg.MaxFileBytes {
+			evict(rel)
 			continue
 		}
 		existingSize := i.indexedFileSize(rel)
 		if totalBytes-existingSize+info.Size() > i.cfg.MaxTotalBytes {
+			evict(rel)
 			continue
 		}
 
 		ok, delta, err := i.indexOne(ctx, abs, rel, info)
 		if err != nil {
 			i.setError(err)
+			evict(rel)
 			continue
 		}
 		if ok {
