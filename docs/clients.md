@@ -1,6 +1,6 @@
-# Generic MCP Clients
+# Client Configuration and LLM Guidance
 
-This page covers non-VS Code usage for `memento-mcp`.
+This is the canonical page for configuring `memento-mcp` in Claude Code, Claude Desktop, ChatGPT/Codex, VS Code, and other MCP clients, and for teaching an LLM how to use the server. Client-specific pages should link here instead of copying configuration or agent instructions.
 
 ## Quick start
 
@@ -8,6 +8,19 @@ Build the binary from the repo root:
 
 ```bash
 go build -o ./bin/memento-mcp ./cmd/server
+```
+
+Let Memento detect supported clients and write their configuration, or preview the proposed changes:
+
+```bash
+./bin/memento-mcp setup
+./bin/memento-mcp setup --print-only
+```
+
+For a deterministic non-interactive target, repeat `--client` as needed. Supported values are `vscode`, `cursor`, `claude-desktop`, and `windsurf`. For example:
+
+```bash
+./bin/memento-mcp setup --client=vscode --client=cursor
 ```
 
 Print a generic MCP config snippet:
@@ -139,7 +152,7 @@ Select `memento` in the interactive importer, then verify it with `claude mcp li
 
 ## Recommended client config
 
-`print-config` emits a generic `mcpServers` map that uses:
+`print-config` is the source of truth for the generic JSON shape. It emits an `mcpServers` map that uses:
 
 - stdio transport
 - the current binary path as `command`
@@ -147,6 +160,26 @@ Select `memento` in the interactive importer, then verify it with `claude mcp li
 - the default indexing environment variables
 
 If your MCP client expects a different JSON shape, reuse the same values for `command`, `args`, `cwd`, `env`, and stdio transport.
+
+## ChatGPT and Codex
+
+Register a standalone build with Codex using its absolute path:
+
+```bash
+codex mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+```
+
+The registration is shared by the ChatGPT desktop app, Codex CLI, and the Codex IDE extension. Alternatively, add a local STDIO server named `memento` in the desktop app's **Settings → MCP servers**. Verify it with `codex mcp list` or `/mcp`.
+
+For a manual or project-scoped Codex entry, use:
+
+```toml
+[mcp_servers.memento]
+command = "/absolute/path/to/MCP-memento/bin/memento-mcp"
+args = []
+```
+
+ChatGPT on the web cannot launch this local STDIO server; use the desktop app or a Codex client.
 
 ## Workspace root detection
 
@@ -173,17 +206,30 @@ Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomi
 }
 ```
 
-The MCP client must launch Memento in an environment that can reach the local Ollama process at `http://127.0.0.1:11434`. See `README.md#optional-semantic-retrieval` for model caching, fallback behavior, and tuning variables.
+The MCP client must launch Memento in an environment that can reach the local Ollama process at `http://127.0.0.1:11434`. See [`docs/README.md`](./README.md#optional-semantic-retrieval) for model caching and fallback behavior, and [runtime configuration](#runtime-configuration) below for tuning variables.
+
+## Runtime configuration
+
+Keep defaults unless a workspace needs different limits or an opt-in feature. `print-config` includes the normal client entry defaults; the complete environment surface is:
+
+- Indexing: `MEMENTO_CHANGE_DETECTOR` (`auto`), `MEMENTO_INDEX_POLL_SECONDS` (`10`), `MEMENTO_INDEX_MAX_TOTAL_BYTES` (`20971520`), `MEMENTO_INDEX_MAX_FILE_BYTES` (`1048576`), `MEMENTO_GIT_POLL_SECONDS` (`2`), `MEMENTO_GIT_DEBOUNCE_MS` (`500`), and `MEMENTO_FS_DEBOUNCE_MS` (`500`).
+- Context: `MEMENTO_CONTEXT_MAX_TOKENS` (`7000`), `MEMENTO_OUTLINE_MAX_FILE_BYTES` (`1048576`), `MEMENTO_RESOURCE_MAX_BYTES` (`32000`), and `MEMENTO_PRIME_MAX_BYTES` (`24000`).
+- Semantic retrieval: `MEMENTO_SEMANTIC_ENABLED` (`false`), `MEMENTO_EMBEDDING_MODEL` (`nomic-embed-text:v1.5`), `MEMENTO_OLLAMA_URL` (`http://127.0.0.1:11434`), `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (`0.65`), `MEMENTO_EMBEDDING_BATCH_SIZE` (`32`), and `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (`30`).
+- Redaction: `MEMENTO_REDACTION_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (`4.3`), `MEMENTO_REDACTION_HEX_ENTROPY_THRESHOLD` (`3.5`), `MEMENTO_REDACTION_MIN_TOKEN_LENGTH` (`24`), plus JSON regular-expression arrays in `MEMENTO_REDACTION_ADDITIONAL_PATTERNS` and `MEMENTO_REDACTION_ALLOW_PATTERNS`.
+- Operations: `MEMENTO_UPDATE_CHECK` (enabled for release builds unless set to `false`), `MEMENTO_FEEDBACK_ENABLED` (`false`), optional `MEMENTO_FEEDBACK_DIR`, and `MEMENTO_MCP_DEV_LOG` (`0`; use `1` for stderr tool-call logs).
+
+Invalid values fail closed or fall back as documented by `memento-mcp help`; security-sensitive Ollama URLs must remain unauthenticated loopback HTTP.
 
 ## Recommended LLM guidance
 
-Use the output of `print-guidance` directly, or paste the following into client instructions:
+`print-guidance` is the source of truth. Its current output is:
 
 ```text
 When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
 Use repo_diff_context without paths to auto-detect staged, unstaged, and untracked Git changes, or pass a non-empty ordered path list to override detection; it returns exact-file chunks and a bounded, redacted unified diff summary without related-file expansion.
 Use repo_outline when you need signatures and file structure without implementation bodies.
-Anchor durable notes to code when possible. Treat stale notes as evidence to verify, then call memory_verify or memory_tombstone after adjudication.
+Anchor durable notes to code when possible. Verify stale notes before refreshing or tombstoning them.
+Use the prime MCP prompt at session start and explicit note/file resources when the client supports native prompts and @-mentions.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
 If repo_context returns suggestedNextCall, prefer following it for a deeper read without repeating context.
 When you change repositories in the same MCP session, call repo_switch_workspace with the new root path instead of restarting.
@@ -199,7 +245,11 @@ Existing explicit mode calls still work, but new callers should prefer intent.
 - `repo_read_file`: `maxBytes` defaults to `32000`.
 - `repo_search`: each snippet is capped by `maxSnippetBytes`, default `500`.
 
-The same four tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` for intentional large reads. Claude Code's own `MAX_MCP_OUTPUT_TOKENS` setting can still be lower than the server-side caps, so tune the tool arguments and the client setting together when you need larger context.
+The same four tools advertise `_meta["anthropic/maxResultSizeChars"] = 500000` for intentional large reads.
+
+### Client-side `MAX_MCP_OUTPUT_TOKENS`
+
+`MAX_MCP_OUTPUT_TOKENS` is Claude Code's client-side output cap and can be lower than Memento's server-side limits. Set `MAX_MCP_OUTPUT_TOKENS` in Claude Code, not in Memento's server entry. When raising `MAX_MCP_OUTPUT_TOKENS` for intentionally larger context, tune the tool arguments and the client setting together; otherwise lower the tool arguments to keep responses compact.
 
 Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the default token budget, or pass `maxTokens` to one `repo_context` call. Responses report `usedTokens`, `usedBytes`, and the estimator name under `limits`.
 
@@ -251,7 +301,7 @@ Save a note anchored to a symbol:
 }
 ```
 
-When `memory_search` returns `status: "stale"`, verify the code and use `memory_verify` if the note remains correct, or `memory_tombstone` for recoverable soft eviction. `memory_list` includes tombstones; `memory_gc` requires the full conservative eligibility policy described in `docs/README.md#durable-memory-lifecycle`.
+When `memory_search` returns `status: "stale"`, verify the code and use `memory_verify` if the note remains correct, or `memory_tombstone` for recoverable soft eviction. `memory_list` includes tombstones; `memory_gc` requires the full conservative eligibility policy described in [`docs/README.md`](./README.md#durable-memory-lifecycle).
 
 Inspect a file's structure without reading its bodies:
 

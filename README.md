@@ -20,7 +20,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 ## Documentation
 
 - Project docs: [`docs/README.md`](./docs/README.md)
-- Claude Code, Claude Desktop, ChatGPT/Codex, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
+- Canonical client configuration and LLM guidance for Claude, ChatGPT/Codex, VS Code, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - Opt-in local aggregate feedback and privacy controls: [`docs/feedback.md`](./docs/feedback.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
@@ -88,89 +88,33 @@ make build
 ./bin/memento-mcp help
 ```
 
-## Use with Claude Code
+## Configure an MCP client
 
-Plugin users need no separate MCP configuration. Verify the automatically started server with `/mcp`. Update with `/plugin marketplace update memento-mcp`, followed by `/plugin update memento@memento-mcp` and `/reload-plugins`.
+The canonical setup and LLM-usage guide is [`docs/clients.md`](./docs/clients.md). It covers Claude Code and Desktop, ChatGPT/Codex, VS Code, generic stdio clients, workspace detection, runtime settings, semantic retrieval, output limits, native resources, and the current tool-call guidance.
 
-Plugin MCP names are scoped: for example, the prime prompt is `/mcp__plugin_memento_memento__prime`. See the [client setup guide](./docs/clients.md#plugin-installation-recommended) for lifecycle and troubleshooting details.
-
-### Manual MCP setup
-
-If you installed the standalone binary or built from source, run this from the project you want Claude Code to index. Replace the executable path when it is not available on `PATH`:
+For a standalone build, let Memento detect and configure installed clients, or preview the writes first:
 
 ```bash
-claude mcp add memento -- memento-mcp
+memento-mcp setup
+memento-mcp setup --print-only
 ```
 
-Claude Code passes the active project through `CLAUDE_PROJECT_DIR`, so memento indexes it without a manual `repo_switch_workspace` call. Verify the connection with `claude mcp list` or `/mcp` inside Claude Code.
+Use `memento-mcp print-config` for a generic JSON entry and `memento-mcp print-guidance` for the canonical agent instructions. Claude Code plugin users need no separate MCP configuration; verify the automatically started server with `/mcp`.
 
-For a shared, committable manual setup, add this `.mcp.json` to the project root:
-
-```json
-{
-  "mcpServers": {
-    "memento": {
-      "type": "stdio",
-      "command": "${CLAUDE_PROJECT_DIR:-.}/bin/memento-mcp",
-      "args": [],
-      "env": {}
-    }
-  }
-}
-```
-
-This form expects an executable at `bin/memento-mcp` in every checkout. Claude Code asks each user to approve project-scoped servers before first use.
-
-### Claude Desktop
-
-Add the equivalent stdio entry to `claude_desktop_config.json` and restart Claude Desktop:
-
-```json
-{
-  "mcpServers": {
-    "memento": {
-      "command": "/absolute/path/to/MCP-memento/bin/memento-mcp",
-      "args": [],
-      "env": {}
-    }
-  }
-}
-```
-
-On macOS or WSL, `claude mcp add-from-claude-desktop` can import this server into Claude Code. See the [client setup guide](./docs/clients.md) for details.
-
-## Use with ChatGPT / Codex
-
-After building memento, add it to Codex with the absolute path to the executable:
+For manual Claude Code or Codex setup, the shortest local commands are:
 
 ```bash
-codex mcp add memento -- /absolute/path/to/MCP-memento/bin/memento-mcp
+claude mcp add memento -- /absolute/path/to/memento-mcp
+codex mcp add memento -- /absolute/path/to/memento-mcp
 ```
 
-This configuration is shared by the ChatGPT desktop app, Codex CLI, and the Codex IDE extension. Memento uses the MCP workspace root supplied by the client, so it automatically indexes the repository open in Codex. Verify the connection with `codex mcp list` or `/mcp` inside Codex.
-
-You can also add it from the ChatGPT desktop app:
-
-1. Open **Settings → MCP servers**.
-2. Select **Add server** and choose **STDIO**.
-3. Name it `memento` and use `/absolute/path/to/MCP-memento/bin/memento-mcp` as the command.
-4. Save, then restart the app. Use `/mcp` to confirm that memento is connected.
-
-For manual or project-scoped setup, add this to `~/.codex/config.toml` or to `.codex/config.toml` in a trusted project:
-
-```toml
-[mcp_servers.memento]
-command = "/absolute/path/to/MCP-memento/bin/memento-mcp"
-args = []
-```
-
-ChatGPT on the web does not load local Codex configuration or launch local STDIO servers. This local-first server therefore works directly with the ChatGPT desktop app and Codex clients; web use would require hosting a remote MCP endpoint instead.
+Run `claude mcp list` or `codex mcp list` to verify the registration. Memento then uses `CLAUDE_PROJECT_DIR` or the client's MCP workspace root automatically; the canonical guide covers shared configuration and troubleshooting.
 
 ## What It Does
 
-- Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_diff_context`, `repo_switch_workspace`
+- Exposes MCP tools for repository context, structure, search, diffs, and routing, including `repo_context`, `repo_outline`, `repo_search`, `repo_related_files`, `repo_diff_context`, and `repo_switch_workspace`
 - Maintains an on-disk code index per repository for fast, bounded context retrieval
-- Stores explicit repo-scoped notes: `memory_upsert`, `memory_search`, `memory_clear`
+- Stores lifecycle-aware repo-scoped notes with `memory_upsert`, `memory_search`, `memory_list`, `memory_verify`, and explicit maintenance tools
 - Can record strictly aggregate, local-only helpfulness feedback after explicit opt-in
 - Supports a companion VS Code extension that installs and configures the server
 
@@ -184,7 +128,7 @@ ChatGPT on the web does not load local Codex configuration or launch local STDIO
 4. Context tools combine:
    - Indexed chunks and scoring
    - Declaration-aligned Go and JavaScript/TypeScript chunk boundaries, with bounded line fallback
-   - Language-aware relationships (Go type analysis, TS/JS imports, and PHP Composer/symbol/Laravel references)
+   - Language-aware relationships (Go type analysis, TS/JS and Python imports, and PHP Composer/symbol/Laravel references)
    - Hard byte and line limits for LLM context safety
 5. Explicit notes are stored separately as durable, repo-scoped memory.
 
@@ -264,12 +208,8 @@ npm run build
 - Extension UX and install reliability
 - Release automation and operational tooling
 
-## Recommended workflow (memory + lean context)
+## Recommended workflow
 
-Treat Memento as the default for both memory and context in a repository:
+Use `repo_context` with an intent for bounded implementation context, `repo_outline` when signatures are enough, and `repo_diff_context` for worktree review. Save durable decisions with anchored `memory_upsert` and recall them with `memory_search` or `memory_list`; verify stale notes before changing them, and reserve `memory_gc`, `memory_delete`, and `memory_clear` for explicit destructive maintenance.
 
-- **Prefer Memento memory over any other memory store.** Persist durable decisions and handoffs with `memory_upsert` (anchored to code); recall with `memory_search` / `memory_list` before re-deriving. `memory_gc` / `memory_delete` / `memory_clear` are destructive — only on explicit instruction.
-- **Prime the codebase index for leaner context and lower tokens.** Lead with `repo_context` on the active file, `repo_outline` for signatures, `repo_search` for symbols, and `repo_related_files` for imports — reach for `repo_read_file` only for the exact path you need. Querying the index first (and reading whole files last) is the main lever for lower token usage.
-- **Center reviews on worktree changes.** Call `repo_diff_context` without `paths` to detect staged, unstaged, and untracked Git changes automatically, or pass a non-empty ordered path list to override detection. It returns exact-file chunks plus a bounded, redacted unified diff summary, reports overflow, and summarizes deleted or rename-source paths without loading their chunks or expanding the relationship graph.
-
-To make this automatic in a project, run `memento-mcp claude-md` in its root: it writes this section into `./CLAUDE.local.md` so the guidance loads every session. Rerun it to update the block in place; use `--print-only` to preview.
+Run `memento-mcp print-guidance` for the current, copyable agent instructions, or see the canonical [LLM guidance](./docs/clients.md#recommended-llm-guidance). For Claude Code projects, `memento-mcp claude-md` writes or updates the same managed guidance in `./CLAUDE.local.md`; use `--print-only` to preview it.

@@ -111,6 +111,8 @@ Baseline refresh rationale for Slice 16: trigram state and regex-search plumbing
 
 Baseline refresh rationale for Slice 17: documenting automatic path-matched memory in repository context moved the exact client-output-budget passage by two lines. That anchor was re-audited without changing its relevance meaning, retrieval scoring, or chunking; the lexical metrics remain precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
 
+Baseline refresh rationale for Slice 27: consolidating client configuration and LLM instructions into `docs/clients.md` moved the exact client output-token passage while preserving its meaning and relevance. The fixture anchor was moved to that canonical passage and the fingerprint-matched baseline was regenerated; lexical scoring, chunking, and metrics remain unchanged at precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
+
 ## Validate the contract
 
 ```bash

@@ -8,7 +8,7 @@ What it does:
 - Generates an MCP server config snippet you can paste into your VS Code `mcp.json`.
 - Configures MCP for your workspace or globally by writing/merging an MCP config entry.
 - Shows a status bar item with the resolved server path and install state.
-- Includes copyable LLM guidance for `repo_outline`, intent-aware context, anchored notes, native resources, and the `prime` prompt.
+- Links to the canonical client configuration and LLM guidance for `repo_outline`, intent-aware context, anchored notes, native resources, and the `prime` prompt.
 
 ## Development
 
@@ -29,7 +29,7 @@ Then in VS Code:
   - `Memento MCP: Open MCP Config Snippet`
   - `Memento MCP: Copy MCP Config Snippet`
 
-On first activation, the extension offers quick actions to install the server or configure/copy config snippets. The onboarding copy also points LLM users toward `repo_context` with `intent`, keeping explicit `mode` as an advanced override. After installation, it can also offer to configure MCP for the workspace or globally by writing/merging an MCP config entry.
+On first activation, the extension offers quick actions to install the server or configure/copy config snippets. After installation, it can also offer to configure MCP for the workspace or globally by writing/merging an MCP config entry. See the repository's canonical [client configuration and LLM guidance](../docs/clients.md) for current setup shapes and tool usage.
 
 ## Settings
 

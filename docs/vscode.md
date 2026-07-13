@@ -1,8 +1,8 @@
-## VS Code
+# VS Code
 
 This server is designed to be launched as an MCP stdio server with the working directory set to the repository root. It exposes tools for reading/searching the repo and storing repo-scoped notes.
 
-### Option 1: VS Code extension (WIP)
+## Option 1: VS Code extension (WIP)
 
 This repo includes a companion VS Code extension under `vscode-extension/` that can:
 
@@ -19,7 +19,7 @@ Defaults:
 - Release tag: `server/latest` (server releases are `server/vX.Y.Z`)
 - Install behavior: tries latest release tags first; if `repo_switch_workspace` is still unavailable, the extension opens source-build instructions from README.
 
-### Build a local binary
+## Build a local binary
 
 From the repo root:
 
@@ -27,7 +27,7 @@ From the repo root:
 go build -o ./bin/memento-mcp ./cmd/server
 ```
 
-### Run locally (binary)
+## Run locally (binary)
 
 From the repo root:
 
@@ -35,26 +35,18 @@ From the repo root:
 ./bin/memento-mcp
 ```
 
-### Configure in VS Code (client-agnostic)
+## Configure in VS Code (client-agnostic)
 
-Use any VS Code extension that supports MCP stdio servers and configure it to run the binary with the workspace root as its CWD. A generic config looks like:
+Use the server's setup command to configure a detected VS Code-compatible client, or preview the change first:
 
-```json
-{
-  "name": "memento-mcp",
-  "transport": "stdio",
-  "command": "${workspaceFolder}/bin/memento-mcp",
-  "args": [],
-  "cwd": "${workspaceFolder}",
-  "env": {
-    "MEMENTO_INDEX_POLL_SECONDS": "10"
-  }
-}
+```bash
+./bin/memento-mcp setup --client=vscode
+./bin/memento-mcp setup --client=vscode --print-only
 ```
 
-If your MCP client uses different field names, map them to the same concepts: **command**, **args**, **cwd**, **env**, and **stdio transport**.
+For clients with a different configuration shape, use `./bin/memento-mcp print-config` and map its command, arguments, working directory, environment, and stdio transport. See the canonical [client configuration guide](./clients.md#recommended-client-config).
 
-### Smoke test (raw stdio)
+## Smoke test (raw stdio)
 
 You can verify the server responds to MCP JSON-RPC over stdio:
 
@@ -72,7 +64,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"repo_index_debug","arguments":{}}}' | ./bin/memento-mcp
 ```
 
-### What it provides
+## What it provides
 
 - Repo context tools (`repo_*`) for listing, reading, and searching files.
 - `repo_related_files` to fetch “nearby” context for a file (same folder + Go/TS/JS/PHP import/semantic analysis).
@@ -85,7 +77,7 @@ printf '%s\n' \
 - MCP resources for active notes and bounded repository text files, discoverable through client `@`-mention interfaces.
 - A `prime` MCP prompt for bounded session-start context, exposed by Claude Code as `/mcp__<server-name>__prime`.
 
-### Switch workspace without restart
+## Switch workspace without restart
 
 Call `repo_switch_workspace` with a new root path:
 
@@ -103,73 +95,11 @@ Call `repo_switch_workspace` with a new root path:
 - Every actual workspace change triggers a full index refresh. Fresh child processes perform their startup index; cached worktree/repository children are explicitly reindexed when selected again.
 - `reindexNow: true` blocks until the refresh completes. The default triggers it asynchronously.
 
-### LLM usage recipe
+## LLM usage recipe
 
-Prefer `repo_context` with `intent` for new callers. Keep explicit `mode` only for advanced overrides.
+Run `./bin/memento-mcp print-guidance` for the copyable source of truth. The canonical [LLM guidance and tool-call examples](./clients.md#recommended-llm-guidance) cover intent routing, outlines, changed-file review, anchored memory, native resources, and progressive follow-up calls without duplicating them here.
 
-Use `repo_outline` first when the caller only needs the shape of one file. Follow its line ranges with `repo_read_file`, or switch to `repo_context` when related-file context is needed.
-
-For durable memory, pass `anchors` to `memory_upsert` when a note describes code. Stale notes remain visible in search; reconcile them with `memory_verify` or soft-evict them with `memory_tombstone`. Use `memory_list` to inspect tombstones and reserve `memory_gc`, `memory_delete`, and `memory_clear` for intentional destructive maintenance.
-
-In Claude Code, type `@` and select an active Memento note (`note://memory/...`) or repository file (`repo://file/...`). Type `/mcp__memento__prime` when the server entry is named `memento`; if it has another name, Claude Code substitutes that normalized server name. Pass an optional active file and focus after the command, for example `/mcp__memento__prime internal/mcp/server.go "workspace routing"`.
-
-Navigate or explain:
-
-```json
-{
-  "name": "repo_context",
-  "arguments": {
-    "path": "internal/mcp/context_tool.go",
-    "intent": "navigate"
-  }
-}
-```
-
-Implement or edit:
-
-```json
-{
-  "name": "repo_context",
-  "arguments": {
-    "path": "internal/mcp/context_tool.go",
-    "intent": "implement",
-    "focus": "repoContextOutputSchema"
-  }
-}
-```
-
-Review or debug:
-
-```json
-{
-  "name": "repo_context",
-  "arguments": {
-    "path": "internal/mcp/context_tool.go",
-    "intent": "review"
-  }
-}
-```
-
-Advanced explicit mode override:
-
-```json
-{
-  "name": "repo_context",
-  "arguments": {
-    "path": "internal/mcp/context_tool.go",
-    "mode": "full",
-    "excludePaths": ["internal/mcp/server.go"]
-  }
-}
-```
-
-Migration rule:
-
-- Existing callers that already send `mode` are unchanged.
-- New callers should prefer `intent`.
-- If `suggestedNextCall` is returned, it is the preferred progressive follow-up.
-
-### Index lifecycle & VS Code behavior
+## Index lifecycle & VS Code behavior
 
 The server maintains a background code index on disk, but clients can still control when a full reindex happens:
 
@@ -179,30 +109,6 @@ The server maintains a background code index on disk, but clients can still cont
 - Expose a command such as **“Memento: Force Reindex”** that calls `repo_reindex` (optionally preceded by `repo_clear_index`) against the current workspace when the user wants a deterministic fresh snapshot.
 - Explicit memory (`memory_*`) is independent of the code index: notes remain available even while the index is building or being rebuilt.
 
-### Index tuning (optional)
+## Index tuning (optional)
 
-- `MEMENTO_CHANGE_DETECTOR` (default `auto`) — Change detection strategy: `auto` uses filesystem watcher first with git polling fallback for git repos; `fs` forces filesystem watcher; `git` forces git status polling.
-- `MEMENTO_INDEX_POLL_SECONDS` (default `10`)
-- `MEMENTO_INDEX_MAX_TOTAL_BYTES` (default `20971520`)
-- `MEMENTO_INDEX_MAX_FILE_BYTES` (default `1048576`)
-- `MEMENTO_CONTEXT_MAX_TOKENS` (default `7000`; approximate primary budget for `repo_context`)
-- `MEMENTO_OUTLINE_MAX_FILE_BYTES` (default `1048576`; source file safety limit for `repo_outline`)
-- `MEMENTO_RESOURCE_MAX_BYTES` (default `32000`; maximum text returned by one file resource read)
-- `MEMENTO_PRIME_MAX_BYTES` (default `24000`; complete `prime` prompt cap)
-- `MEMENTO_SEMANTIC_ENABLED` (default `false`; requires a separately installed local Ollama runtime)
-- `MEMENTO_EMBEDDING_MODEL` (default `nomic-embed-text:v1.5`; pull it with Ollama before enabling)
-- `MEMENTO_OLLAMA_URL` (default `http://127.0.0.1:11434`; loopback HTTP only)
-- `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (default `0.65`)
-- `MEMENTO_EMBEDDING_BATCH_SIZE` (default `32`)
-- `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (default `30`)
-- `MEMENTO_REDACTION_ENABLED` (default `true`; set to `false` to opt out)
-- `MEMENTO_REDACTION_ENTROPY_ENABLED` (default `true`)
-- `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (default `4.3`)
-- `MEMENTO_REDACTION_HEX_ENTROPY_THRESHOLD` (default `3.5`)
-- `MEMENTO_REDACTION_MIN_TOKEN_LENGTH` (default `24`)
-- `MEMENTO_REDACTION_ADDITIONAL_PATTERNS` (JSON array of Go regular expressions)
-- `MEMENTO_REDACTION_ALLOW_PATTERNS` (JSON array of fixture/placeholder allow expressions)
-- `MEMENTO_GIT_POLL_SECONDS` (default `2`)
-- `MEMENTO_GIT_DEBOUNCE_MS` (default `500`)
-- `MEMENTO_FS_DEBOUNCE_MS` (default `500`)
-- `MEMENTO_MCP_DEV_LOG` (default `0`, set to `1` to log tool calls)
+The canonical [runtime configuration reference](./clients.md#runtime-configuration) lists every supported environment variable and default. Keep VS Code entries minimal unless a workspace needs a specific limit or opt-in feature.

@@ -292,7 +292,7 @@ Delivered by `8c7865b` in `internal/mcp/py_semantic.go` and `internal/mcp/relate
 
 ### Slice 27 — Canonicalize config and LLM guidance
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `README.md`, `docs/clients.md`, `docs/vscode.md`, `vscode-extension/README.md`
@@ -300,9 +300,11 @@ Delivered by `8c7865b` in `internal/mcp/py_semantic.go` and `internal/mcp/relate
 
 #### Steps
 
-- [ ] Choose one canonical guidance page for config + LLM usage (status: todo)
-- [ ] Shorten duplicated sections in other docs and replace with links (status: todo)
-- [ ] Verify examples match current tool names and arguments (status: todo)
+- [x] Choose one canonical guidance page for config + LLM usage (status: done)
+- [x] Shorten duplicated sections in other docs and replace with links (status: done)
+- [x] Verify examples match current tool names and arguments (status: done)
+
+`docs/clients.md` is now the source of truth for client setup, runtime configuration, and copyable LLM instructions. The root README, VS Code guide, and extension README retain only audience-specific entry points and link back to the canonical page.
 
 ### Slice 10 — Signed macOS packaging + notarization
 
