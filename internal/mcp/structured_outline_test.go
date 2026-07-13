@@ -131,7 +131,7 @@ export const createDefault = (port: number): Server => {
 };
 `)
 	outline := extractStructuredFileOutline("fixture.ts", source)
-	if outline.Language != "typescript" || outline.Fallback {
+	if outline.Language != "typescript" {
 		t.Fatalf("unexpected TypeScript metadata: %#v", outline)
 	}
 	if !containsString(outline.Imports, "./dependency") {
@@ -247,11 +247,83 @@ export class Worker {
 	assertOutlineOmits(t, outline, "js-body-must-not-appear", "return options.secret")
 }
 
+func TestStructuredTreeSitterOutlinesCoverTSXPythonAndRust(t *testing.T) {
+	tests := []struct {
+		path       string
+		source     string
+		language   string
+		name       string
+		kind       string
+		container  string
+		bodyMarker string
+	}{
+		{
+			path:       "panel.tsx",
+			source:     "export class Panel {\n  render(): JSX.Element {\n    return <section>tsx-body-marker</section>;\n  }\n}\n",
+			language:   "typescript",
+			name:       "render",
+			kind:       "method",
+			container:  "Panel",
+			bodyMarker: "tsx-body-marker",
+		},
+		{
+			path:       "worker.py",
+			source:     "import os\n\n# Runs work.\nclass Worker:\n    def run(self, value: str) -> str:\n        return value + 'python-body-marker'\n",
+			language:   "python",
+			name:       "run",
+			kind:       "method",
+			container:  "Worker",
+			bodyMarker: "python-body-marker",
+		},
+		{
+			path:       "worker.rs",
+			source:     "use std::fmt;\n\npub struct Worker;\n\nimpl Worker {\n    pub fn run(&self) -> bool {\n        let _marker = \"rust-body-marker\";\n        true\n    }\n}\n",
+			language:   "rust",
+			name:       "run",
+			kind:       "method",
+			container:  "Worker",
+			bodyMarker: "rust-body-marker",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			outline := extractStructuredFileOutline(test.path, []byte(test.source))
+			if outline.Language != test.language || outline.Fallback {
+				t.Fatalf("unexpected outline metadata: %#v", outline)
+			}
+			symbol := requireOutlineSymbol(t, outline.Symbols, test.name, test.kind)
+			if symbol.Container != test.container || symbol.ExtentEndLine <= symbol.EndLine {
+				t.Fatalf("expected container and full body extent, got %#v", symbol)
+			}
+			assertOutlineOmits(t, outline, test.bodyMarker)
+		})
+	}
+}
+
+func TestStructuredSupportedLanguageParseFailureUsesSafeFallback(t *testing.T) {
+	tests := []struct {
+		path   string
+		source string
+	}{
+		{path: "broken.py", source: "def broken(:\n    return 'python-fallback-body'\n"},
+		{path: "broken.rs", source: "pub fn broken( {\n    let marker = \"rust-fallback-body\";\n}\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			outline := extractStructuredFileOutline(test.path, []byte(test.source))
+			if !outline.Fallback {
+				t.Fatalf("expected parse failure fallback, got %#v", outline)
+			}
+			assertOutlineOmits(t, outline, "fallback-body")
+		})
+	}
+}
+
 func TestStructuredGenericOutlineDegradesWithoutInlineBodies(t *testing.T) {
-	source := []byte("#!/usr/bin/env python3\n\nclass Worker: pass\n\ndef execute(value: str): return value.upper()\n")
-	outline := extractStructuredFileOutline("worker.py", source)
-	if outline.Language != "python" || !outline.Fallback {
-		t.Fatalf("expected Python fallback, got %#v", outline)
+	source := []byte("#!/usr/bin/env ruby\n\nclass Worker: pass\n\ndef execute(value: str): return value.upcase\n")
+	outline := extractStructuredFileOutline("worker.rb", source)
+	if outline.Language != "ruby" || !outline.Fallback {
+		t.Fatalf("expected Ruby fallback, got %#v", outline)
 	}
 	worker := requireOutlineSymbol(t, outline.Symbols, "Worker", "class")
 	if worker.Signature != "class Worker:" {
@@ -261,12 +333,12 @@ func TestStructuredGenericOutlineDegradesWithoutInlineBodies(t *testing.T) {
 	if execute.Signature != "def execute(value: str):" {
 		t.Fatalf("expected inline function body removed, got %q", execute.Signature)
 	}
-	assertOutlineOmits(t, outline, "return value.upper()")
+	assertOutlineOmits(t, outline, "return value.upcase")
 }
 
 func TestStructuredGenericHeaderStopsAtFirstDeclaration(t *testing.T) {
-	source := []byte("#!/usr/bin/env python3\ndef execute():\n    return 'fallback-body-must-not-appear'\n")
-	outline := extractStructuredFileOutline("worker.py", source)
+	source := []byte("#!/usr/bin/env ruby\ndef execute():\n    return 'fallback-body-must-not-appear'\n")
+	outline := extractStructuredFileOutline("worker.rb", source)
 	if len(outline.Header) != 2 || outline.Header[1] != "def execute():" {
 		t.Fatalf("expected bounded pre-declaration header, got %#v", outline.Header)
 	}

@@ -117,6 +117,38 @@ func TestIndexerRequestsRequireStartedWorker(t *testing.T) {
 	}
 }
 
+func TestIndexerDefaultsIncludePythonAndRust(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"worker.py": "def python_needle():\n    return True\n",
+		"worker.rs": "pub fn rust_needle() -> bool { true }\n",
+	}
+	for path, content := range files {
+		if err := os.WriteFile(filepath.Join(root, path), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for path, language := range map[string]string{"worker.py": "python", "worker.rs": "rust"} {
+		chunks, err := idx.FileChunks(path)
+		if err != nil || len(chunks) == 0 {
+			t.Fatalf("expected default indexing for %s: chunks=%#v err=%v", path, chunks, err)
+		}
+		if chunks[0].Language != language {
+			t.Fatalf("language for %s = %q, want %q", path, chunks[0].Language, language)
+		}
+	}
+}
+
 func TestRefreshIgnoreRulesHonorsCancellation(t *testing.T) {
 	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir()})
 	if err != nil {

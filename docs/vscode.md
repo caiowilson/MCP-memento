@@ -24,7 +24,7 @@ Defaults:
 From the repo root:
 
 ```bash
-go build -o ./bin/memento-mcp ./cmd/server
+make build
 ```
 
 ## Run locally (binary)

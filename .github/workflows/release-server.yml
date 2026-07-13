@@ -1,5 +1,8 @@
 name: Release Server
 
+env:
+  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+
 on:
   push:
     tags:
@@ -40,7 +43,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
           VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+            go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
               -o "dist/memento-mcp_${GOOS}_${ARCH_LABEL}${EXT}" ./cmd/server
 
       - name: Generate binary checksum
@@ -82,7 +85,7 @@ jobs:
           GOARCH="${{ matrix.goarch }}"
           VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
-            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+            go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
               -o "dist/memento-mcp" ./cmd/server
 
       - name: Build .deb package
@@ -143,7 +146,7 @@ jobs:
           GOARCH="${{ matrix.goarch }}"
           VERSION="${GITHUB_REF_NAME#server/v}"
           CGO_ENABLED=0 GOOS=darwin GOARCH="$GOARCH" \
-            go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
+            go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
               -o "dist/memento-mcp" ./cmd/server
 
       - name: Build .pkg installer

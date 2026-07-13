@@ -156,7 +156,7 @@ func TestDetachedCheckoutWhereAnchorIsAbsentDoesNotOrphan(t *testing.T) {
 	}
 }
 
-func TestJavaScriptAndPHPMethodAnchorsIncludeBodies(t *testing.T) {
+func TestCrossLanguageMethodAnchorsIncludeBodies(t *testing.T) {
 	tests := []struct {
 		path   string
 		symbol string
@@ -164,14 +164,21 @@ func TestJavaScriptAndPHPMethodAnchorsIncludeBodies(t *testing.T) {
 		after  string
 	}{
 		{path: "service.ts", symbol: "Service.run", before: "export class Service {\n  run(): string {\n    return 'v1';\n  }\n}\n", after: "export class Service {\n  run(): string {\n    return 'v2';\n  }\n}\n"},
+		{path: "service.tsx", symbol: "Service.run", before: "export class Service {\n  run(): JSX.Element {\n    return <div>v1</div>;\n  }\n}\n", after: "export class Service {\n  run(): JSX.Element {\n    return <div>v2</div>;\n  }\n}\n"},
+		{path: "service.py", symbol: "Service.run", before: "class Service:\n    def run(self) -> str:\n        return 'v1'\n", after: "class Service:\n    def run(self) -> str:\n        return 'v2'\n"},
+		{path: "service.rs", symbol: "Service.run", before: "pub struct Service;\nimpl Service {\n    pub fn run(&self) -> &'static str {\n        \"v1\"\n    }\n}\n", after: "pub struct Service;\nimpl Service {\n    pub fn run(&self) -> &'static str {\n        \"v2\"\n    }\n}\n"},
 		{path: "service.php", symbol: "Service.run", before: "<?php\nclass Service {\n  public function run(): string {\n    return 'v1';\n  }\n}\n", after: "<?php\nclass Service {\n  public function run(): string {\n    return 'v2';\n  }\n}\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
 			store, root := newLifecycleTestStore(t, false)
 			writeLifecycleFile(t, root, test.path, test.before)
-			if _, err := store.Upsert(Note{Key: test.path, Text: "body contract", Anchors: []NoteAnchor{{Path: test.path, Symbol: test.symbol}}}); err != nil {
+			created, err := store.Upsert(Note{Key: test.path, Text: "body contract", Anchors: []NoteAnchor{{Path: test.path, Symbol: test.symbol}}})
+			if err != nil {
 				t.Fatal(err)
+			}
+			if len(created.Anchors) != 1 || created.Anchors[0].EndLine <= created.Anchors[0].StartLine {
+				t.Fatalf("expected full symbol extent, got %#v", created.Anchors)
 			}
 			writeLifecycleFile(t, root, test.path, test.after)
 			if err := store.ReconcileChanged([]string{test.path}); err != nil {

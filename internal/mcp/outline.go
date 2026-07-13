@@ -30,27 +30,55 @@ func languageForPath(p string) string {
 // signatures plus doc comments. For Go it uses go/ast; for JS/TS it uses
 // regex; for anything else a generic heuristic.
 func extractFileOutline(absPath string) (string, error) {
-	switch languageForPath(absPath) {
-	case "go":
-		return goOutline(absPath)
-	case "javascript", "typescript":
-		return jsOutline(absPath)
-	default:
-		return genericOutline(absPath)
+	source, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
 	}
+	return renderStructuredFileOutline(extractStructuredFileOutline(absPath, source), false), nil
 }
 
 // extractFileSummary returns a very compact summary: one line per symbol
 // with line numbers, no doc comments.
 func extractFileSummary(absPath string) (string, error) {
-	switch languageForPath(absPath) {
-	case "go":
-		return goSummary(absPath)
-	case "javascript", "typescript":
-		return jsSummary(absPath)
-	default:
-		return genericOutline(absPath)
+	source, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
 	}
+	return renderStructuredFileOutline(extractStructuredFileOutline(absPath, source), true), nil
+}
+
+func renderStructuredFileOutline(outline structuredFileOutline, summary bool) string {
+	var builder strings.Builder
+	if outline.PackageName != "" {
+		fmt.Fprintf(&builder, "package %s\n", outline.PackageName)
+	}
+	for _, symbol := range outline.Symbols {
+		name := symbol.Name
+		if symbol.Container != "" {
+			name = symbol.Container + "." + name
+		}
+		if summary {
+			kind := symbol.Kind
+			if outline.Language == "go" && (kind == "function" || kind == "method") {
+				kind = "func"
+			}
+			fmt.Fprintf(&builder, "L%d: %s %s\n", symbol.StartLine, kind, name)
+			continue
+		}
+		if symbol.Documentation != "" {
+			builder.WriteString(symbol.Documentation)
+			builder.WriteByte('\n')
+		}
+		builder.WriteString(symbol.Signature)
+		builder.WriteByte('\n')
+	}
+	if builder.Len() == 0 {
+		for _, header := range outline.Header {
+			builder.WriteString(header)
+			builder.WriteByte('\n')
+		}
+	}
+	return builder.String()
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 name: Helpfulness Evaluation
 
+env:
+  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+
 on:
   pull_request:
   push:
@@ -29,7 +32,7 @@ jobs:
 
       - name: Run deterministic paired benchmark subset
         run: >-
-          go run ./cmd/helpfulness-eval
+          go run -tags="$TREE_SITTER_TAGS" ./cmd/helpfulness-eval
           -tasks discover-workspace-resolution,onboard-local-validation
           -runs evaluation/fixtures/helpfulness-runs.example.json
           -out evaluation-artifacts/current
@@ -38,12 +41,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go run ./cmd/retrieval-eval -json-out evaluation-artifacts/current/retrieval-report.json |
+          go run -tags="$TREE_SITTER_TAGS" ./cmd/retrieval-eval -json-out evaluation-artifacts/current/retrieval-report.json |
             tee evaluation-artifacts/current/retrieval-report.txt
 
       - name: Render static visual artifacts
         run: >-
-          go run ./cmd/helpfulness-visualize
+          go run -tags="$TREE_SITTER_TAGS" ./cmd/helpfulness-visualize
           -report evaluation-artifacts/current/helpfulness-report.json
           -out evaluation-artifacts/visual
 
@@ -51,7 +54,7 @@ jobs:
         run: cp evaluation/baselines/helpfulness-ci-v1.json evaluation/baselines/retrieval-ci-v1.json evaluation-artifacts/baseline/
 
       - name: Build regression gate
-        run: go build -o "$RUNNER_TEMP/evaluation-gate" ./cmd/evaluation-gate
+        run: go build -tags="$TREE_SITTER_TAGS" -o "$RUNNER_TEMP/evaluation-gate" ./cmd/evaluation-gate
 
       - name: Evaluate regression gates
         id: gates

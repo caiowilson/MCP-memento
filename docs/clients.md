@@ -7,7 +7,7 @@ This is the canonical page for configuring `memento-mcp` in Claude Code, Claude 
 Build the binary from the repo root:
 
 ```bash
-go build -o ./bin/memento-mcp ./cmd/server
+make build
 ```
 
 Let Memento detect supported clients and write their configuration, or preview the proposed changes:

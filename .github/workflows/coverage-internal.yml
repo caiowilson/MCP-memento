@@ -1,5 +1,8 @@
 name: Internal Package Coverage
 
+env:
+  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+
 on:
   pull_request:
   push:
@@ -36,7 +39,7 @@ jobs:
             local output
             local coverage
 
-            output="$(go test -count=1 -cover "$pkg" 2>&1)"
+            output="$(go test -count=1 -cover -tags="$TREE_SITTER_TAGS" "$pkg" 2>&1)"
             echo "$output"
 
             coverage="$(printf '%s\n' "$output" | sed -nE 's/.*coverage: ([0-9]+(\.[0-9]+)?)% of statements.*/\1/p' | tail -n 1)"

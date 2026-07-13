@@ -183,7 +183,7 @@ make build
 ### Rodar Testes
 
 ```bash
-go test ./...
+make test
 ```
 
 ### Desenvolvimento da Extensão VS Code
@@ -198,7 +198,7 @@ npm run build
 
 1. Crie uma branch a partir da `main`.
 2. Faça mudanças focadas com atualização de testes e docs.
-3. Rode `go test ./...` (e build/testes da extensão quando aplicável).
+3. Rode `make test` (e build/testes da extensão quando aplicável).
 4. Abra um PR com:
    - Descrição do problema
    - Abordagem

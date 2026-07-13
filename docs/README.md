@@ -143,9 +143,9 @@ Example anchored upsert:
 
 ## Extractive outlines
 
-`repo_outline` is the discoverable, low-cost structural view. It returns package/module metadata and an ordered `symbols` array. Each symbol includes `name`, `kind`, `signature`, `startLine`, `endLine`, and optional `documentation` and `container`. Function and method bodies are never returned.
+`repo_outline` is the discoverable, low-cost structural view. It returns package/module metadata and an ordered `symbols` array. Each symbol includes `name`, `kind`, `signature`, `startLine`, `endLine`, and optional `documentation` and `container`. Function and method bodies are never returned. `repo_context` outline and summary modes consume this same structural result, so their language coverage and symbol names stay aligned.
 
-Go outlines use the standard Go parser and include complete function, method, struct, interface, type, constant, and variable declarations. TypeScript/JavaScript and PHP use local structural scanners that preserve multiline signatures, class methods, properties, documentation, imports/includes, and namespaces without evaluating code. Other languages return a bounded header plus recognizable declaration lines with `fallback: true`; unsupported syntax does not fail the call.
+Go, JavaScript/JSX, TypeScript/TSX, Python, and Rust first pass through pinned `github.com/odvcencio/gotreesitter` queries. The runtime is pure Go and release builds select only those six grammars, preserving `CGO_ENABLED=0` cross-compilation. Parsing is strict, capped at 1 MiB and 500 ms, and yields body-free signatures plus hidden full declaration extents used by syntax chunking and durable-note anchors. Go and JavaScript/TypeScript retain their richer renderers after the shared parse; Python and Rust render query results directly. PHP retains its local structural scanner. Malformed supported files and other languages return a bounded, sanitized declaration fallback with `fallback: true` instead of failing the call.
 
 Input options:
 
@@ -170,9 +170,9 @@ Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the server default, or pass `maxToken
 
 The `repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
 
-Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
+Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust' ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
 
-Run `go test ./internal/indexing -run '^$' -bench '^BenchmarkIndexerSearch1000Files$' -benchmem` to compare linear chunk scanning with trigram candidate filtering on a generated 1,000-file repository. On an Apple M4 Pro, the final three-run sample improved from 12.7–13.0 ms/op to 71.1–71.8 µs/op while reducing allocations from about 4.56 MB to 292 KB per search. `BenchmarkTrigramIndexHighEntropy1MiB` separately exercises the compact per-file representation against a high-entropy input.
+Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust' ./internal/indexing -run '^$' -bench '^BenchmarkIndexerSearch1000Files$' -benchmem` to compare linear chunk scanning with trigram candidate filtering on a generated 1,000-file repository. On an Apple M4 Pro, the final three-run sample improved from 12.7–13.0 ms/op to 71.1–71.8 µs/op while reducing allocations from about 4.56 MB to 292 KB per search. `BenchmarkTrigramIndexHighEntropy1MiB` separately exercises the compact per-file representation against a high-entropy input.
 
 ## Retrieval evaluation
 
@@ -193,7 +193,7 @@ Fixtures live in `evaluation/fixtures/retrieval.json`. The top-level `k` is the 
 }
 ```
 
-A path-only judgment matches the first retrieved chunk from that file. A line-bounded judgment matches a retrieved chunk whose line range overlaps it. Keep queries representative of real repository navigation, use repo-relative slash-separated paths, and prefer narrow ranges around the relevant symbol or passage. Each judgment can match only once, so duplicate chunks do not inflate recall. After adding or changing a fixture, run `go test ./evaluation -count=1` for fixture/metric coverage and `make retrieval-eval` to inspect the ranking report.
+A path-only judgment matches the first retrieved chunk from that file. A line-bounded judgment matches a retrieved chunk whose line range overlaps it. Keep queries representative of real repository navigation, use repo-relative slash-separated paths, and prefer narrow ranges around the relevant symbol or passage. Each judgment can match only once, so duplicate chunks do not inflate recall. After adding or changing a fixture, run `make test` for fixture/metric coverage and `make retrieval-eval` to inspect the ranking report.
 
 Default include/exclude rules (configurable in code):
 

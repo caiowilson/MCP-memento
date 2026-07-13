@@ -110,7 +110,27 @@ func TestRepoOutlineToolTruncatesLongDocumentation(t *testing.T) {
 
 func TestRepoOutlineToolUnsupportedLanguageFallback(t *testing.T) {
 	root := t.TempDir()
-	source := "#!/usr/bin/env python3\nclass Worker:\n    def run(self):\n        return 'body'\n"
+	source := "#!/usr/bin/env ruby\nclass Worker\n  def run\n    'body'\n  end\nend\n"
+	if err := os.WriteFile(filepath.Join(root, "worker.rb"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resultAny, err := newRepoOutlineTool(root).Handler(context.Background(), rawJSON(t, map[string]any{"path": "worker.rb"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resultAny.(repoOutlineResult)
+	if !result.Fallback || result.Language != "ruby" || result.SymbolCount == 0 {
+		t.Fatalf("expected graceful Ruby fallback, got %#v", result)
+	}
+	encoded, _ := json.Marshal(result)
+	if strings.Contains(string(encoded), "return 'body'") {
+		t.Fatalf("fallback returned a function body: %s", encoded)
+	}
+}
+
+func TestRepoOutlineToolUsesTreeSitterForPython(t *testing.T) {
+	root := t.TempDir()
+	source := "class Worker:\n    def run(self):\n        return 'python-outline-body'\n"
 	if err := os.WriteFile(filepath.Join(root, "worker.py"), []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -119,12 +139,16 @@ func TestRepoOutlineToolUnsupportedLanguageFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := resultAny.(repoOutlineResult)
-	if !result.Fallback || result.Language != "python" || result.SymbolCount == 0 {
-		t.Fatalf("expected graceful Python fallback, got %#v", result)
+	if result.Fallback || result.Language != "python" {
+		t.Fatalf("expected tree-sitter Python outline, got %#v", result)
+	}
+	run := requireOutlineSymbol(t, result.Symbols, "run", "method")
+	if run.Container != "Worker" {
+		t.Fatalf("expected Python method container, got %#v", run)
 	}
 	encoded, _ := json.Marshal(result)
-	if strings.Contains(string(encoded), "return 'body'") {
-		t.Fatalf("fallback returned a function body: %s", encoded)
+	if strings.Contains(string(encoded), "python-outline-body") {
+		t.Fatalf("outline returned a function body: %s", encoded)
 	}
 }
 

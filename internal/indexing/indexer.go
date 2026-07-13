@@ -1464,7 +1464,7 @@ func applyDefaults(cfg *Config) {
 		cfg.EmbeddingBatchSize = embedding.DefaultBatchSize
 	}
 	if len(cfg.PreferredExts) == 0 {
-		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".php", ".md", ".json", ".yaml", ".yml"}
+		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".php", ".md", ".json", ".yaml", ".yml"}
 	}
 	if len(cfg.AllowGlobs) == 0 {
 		cfg.AllowGlobs = []string{
@@ -1504,6 +1504,10 @@ func guessLanguage(rel string) string {
 		return "go"
 	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs":
 		return "ts/js"
+	case ".py":
+		return "python"
+	case ".rs":
+		return "rust"
 	case ".php":
 		return "php"
 	default:

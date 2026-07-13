@@ -9,19 +9,22 @@ DRY_RUN ?= 0
 CHECK_CLEAN ?= 1
 EVALUATION_OUT ?= /tmp/memento-evaluation-ci
 HELPFULNESS_CI_TASKS ?= discover-workspace-resolution,onboard-local-validation
+TREE_SITTER_TAGS ?= grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+GO_TAG_FLAGS := -tags=$(TREE_SITTER_TAGS)
 
 # Parallel agent wave: worktree root and branch names
 WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test plugin-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test coverage-internal plugin-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
 	@printf "Targets:\n"
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
 	@printf "  test      Run Go tests and the retrieval evaluation report\n"
+	@printf "  coverage-internal Run the two blocking internal-package coverage checks\n"
 	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
@@ -55,11 +58,15 @@ help:
 
 build:
 	@mkdir -p $(BIN_DIR)
-	go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=$(VERSION)" -o $(BIN_DIR)/$(BIN_NAME) ./cmd/server
+	go build $(GO_TAG_FLAGS) -ldflags "-X memento-mcp/internal/mcp.serverVersion=$(VERSION)" -o $(BIN_DIR)/$(BIN_NAME) ./cmd/server
 
 test:
-	go test ./...
+	go test $(GO_TAG_FLAGS) ./...
 	$(MAKE) retrieval-eval
+
+coverage-internal:
+	go test -count=1 -cover $(GO_TAG_FLAGS) ./internal/indexing
+	go test -count=1 -cover $(GO_TAG_FLAGS) ./internal/mcp
 
 plugin-test:
 	node --test plugins/memento/test/launcher.test.cjs
@@ -69,21 +76,21 @@ plugin-test:
 	claude plugin validate --strict ./plugins/memento-workflows
 
 retrieval-eval:
-	go run ./cmd/retrieval-eval $(RETRIEVAL_ARGS)
+	go run $(GO_TAG_FLAGS) ./cmd/retrieval-eval $(RETRIEVAL_ARGS)
 
 helpfulness-eval:
-	go run ./cmd/helpfulness-eval $(HELPFULNESS_ARGS)
+	go run $(GO_TAG_FLAGS) ./cmd/helpfulness-eval $(HELPFULNESS_ARGS)
 
 helpfulness-visualize:
-	go run ./cmd/helpfulness-visualize $(HELPFULNESS_VISUAL_ARGS)
+	go run $(GO_TAG_FLAGS) ./cmd/helpfulness-visualize $(HELPFULNESS_VISUAL_ARGS)
 
 evaluation-ci:
 	mkdir -p "$(EVALUATION_OUT)/current" "$(EVALUATION_OUT)/visual" "$(EVALUATION_OUT)/gates" "$(EVALUATION_OUT)/baseline"
 	cp evaluation/baselines/helpfulness-ci-v1.json evaluation/baselines/retrieval-ci-v1.json "$(EVALUATION_OUT)/baseline/"
-	go run ./cmd/helpfulness-eval -tasks "$(HELPFULNESS_CI_TASKS)" -runs evaluation/fixtures/helpfulness-runs.example.json -out "$(EVALUATION_OUT)/current"
-	go run ./cmd/retrieval-eval -json-out "$(EVALUATION_OUT)/current/retrieval-report.json"
-	go run ./cmd/helpfulness-visualize -report "$(EVALUATION_OUT)/current/helpfulness-report.json" -out "$(EVALUATION_OUT)/visual"
-	go run ./cmd/evaluation-gate -current "$(EVALUATION_OUT)/current/helpfulness-report.json" -baseline evaluation/baselines/helpfulness-ci-v1.json -retrieval-current "$(EVALUATION_OUT)/current/retrieval-report.json" -retrieval-baseline evaluation/baselines/retrieval-ci-v1.json -policy evaluation/fixtures/regression-gates.json -out "$(EVALUATION_OUT)/gates"
+	go run $(GO_TAG_FLAGS) ./cmd/helpfulness-eval -tasks "$(HELPFULNESS_CI_TASKS)" -runs evaluation/fixtures/helpfulness-runs.example.json -out "$(EVALUATION_OUT)/current"
+	go run $(GO_TAG_FLAGS) ./cmd/retrieval-eval -json-out "$(EVALUATION_OUT)/current/retrieval-report.json"
+	go run $(GO_TAG_FLAGS) ./cmd/helpfulness-visualize -report "$(EVALUATION_OUT)/current/helpfulness-report.json" -out "$(EVALUATION_OUT)/visual"
+	go run $(GO_TAG_FLAGS) ./cmd/evaluation-gate -current "$(EVALUATION_OUT)/current/helpfulness-report.json" -baseline evaluation/baselines/helpfulness-ci-v1.json -retrieval-current "$(EVALUATION_OUT)/current/retrieval-report.json" -retrieval-baseline evaluation/baselines/retrieval-ci-v1.json -policy evaluation/fixtures/regression-gates.json -out "$(EVALUATION_OUT)/gates"
 
 install: build
 	@install -d $(PREFIX)/bin
@@ -162,11 +169,11 @@ wave-validate:
 			continue; \
 		fi; \
 		(cd "$$dir" && case "$$s" in \
-			20) go test ./internal/indexing/... ;; \
-			21) go test ./... -cover ;; \
+			20) go test $(GO_TAG_FLAGS) ./internal/indexing/... ;; \
+			21) go test $(GO_TAG_FLAGS) ./... -cover ;; \
 			24) echo "--- ref search ---" && (rg -l "README-old" . 2>/dev/null || echo "no references found") ;; \
-			18) go test ./internal/mcp/... ;; \
-			*)  go test ./... ;; \
+			18) go test $(GO_TAG_FLAGS) ./internal/mcp/... ;; \
+			*)  go test $(GO_TAG_FLAGS) ./... ;; \
 		esac) || exit 1; \
 	done
 

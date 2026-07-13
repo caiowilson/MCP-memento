@@ -1,5 +1,8 @@
 name: Claude Code Plugin
 
+env:
+  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+
 on:
   pull_request:
   push:
@@ -73,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -ldflags "-X memento-mcp/internal/mcp.serverVersion=0.8.0" -o dist/memento-mcp ./cmd/server
+          go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=0.8.0" -o dist/memento-mcp ./cmd/server
           request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"plugin-ci","version":"1"}}}'
           printf '%s\n' "$request" | \
             MEMENTO_PLUGIN_BINARY="$PWD/dist/memento-mcp" \

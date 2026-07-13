@@ -20,9 +20,9 @@ Tool names use underscore style (e.g., `repo_context`, `repo_read_file`, `memory
 
 ## Critical workflows
 
-- Build server: `go build -o ./bin/memento-mcp ./cmd/server` (see [README.md](README.md#L20)).
+- Build server: `make build` (this applies the pinned tree-sitter grammar subset; see [README.md](README.md#L20)).
 - Run server: `./bin/memento-mcp` (stdio JSON-RPC).
-- Tests & vet: `go test ./...` and `go vet ./...` (see [README.md](README.md#L73)).
+- Tests: `make test`; for vet, pass the `TREE_SITTER_TAGS` value from the Makefile through `-tags` (see [README.md](README.md#L73)).
 - VS Code extension (WIP): in [vscode-extension/README.md](vscode-extension/README.md#L1) use `npm install` + `npm run build`.
 
 ## Project-specific conventions

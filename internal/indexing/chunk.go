@@ -7,7 +7,7 @@ import (
 
 // ChunkingVersion identifies the persisted chunk-boundary algorithm. Change it
 // whenever identical source and limits can produce different ranges.
-const ChunkingVersion = "syntax-v1"
+const ChunkingVersion = "treesitter-v1"
 
 const (
 	DefaultMaxChunkLines = 200

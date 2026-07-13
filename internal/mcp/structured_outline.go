@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"memento-mcp/internal/parsing"
 	"memento-mcp/internal/redact"
 )
 
@@ -20,6 +21,8 @@ type outlineSymbol struct {
 	Container              string `json:"container,omitempty"`
 	StartLine              int    `json:"startLine"`
 	EndLine                int    `json:"endLine"`
+	ExtentStartLine        int    `json:"-"`
+	ExtentEndLine          int    `json:"-"`
 }
 
 type structuredFileOutline struct {
@@ -32,17 +35,94 @@ type structuredFileOutline struct {
 }
 
 func extractStructuredFileOutline(path string, source []byte) structuredFileOutline {
-	switch languageForStructuredOutline(path) {
-	case "go":
-		if outline, err := structuredGoOutline(path, source); err == nil {
+	if parsing.Supported(path) {
+		if analysis, err := parsing.Analyze(path, source); err == nil {
+			switch analysis.Language {
+			case "go":
+				if outline, goErr := structuredGoOutline(path, source); goErr == nil {
+					attachTreeSitterExtents(&outline, analysis.Symbols)
+					return outline
+				}
+			case "javascript", "typescript":
+				outline := structuredJSOutline(path, source)
+				attachTreeSitterExtents(&outline, analysis.Symbols)
+				return outline
+			case "python", "rust":
+				return structuredTreeSitterOutline(analysis)
+			}
+		}
+		if language := languageForStructuredOutline(path); language == "javascript" || language == "typescript" {
+			outline := structuredJSOutline(path, source)
+			outline.Fallback = true
 			return outline
 		}
-	case "javascript", "typescript":
-		return structuredJSOutline(path, source)
+		return structuredGenericOutline(path, source)
+	}
+	switch languageForStructuredOutline(path) {
 	case "php":
 		return structuredPHPOutline(source)
 	}
 	return structuredGenericOutline(path, source)
+}
+
+func structuredTreeSitterOutline(analysis parsing.Analysis) structuredFileOutline {
+	out := structuredFileOutline{
+		Language:    analysis.Language,
+		PackageName: analysis.PackageName,
+		Imports:     append([]string(nil), analysis.Imports...),
+		Header:      make([]string, 0, len(analysis.Header)),
+		Symbols:     make([]outlineSymbol, 0, len(analysis.Symbols)),
+	}
+	for _, header := range analysis.Header {
+		out.Header = append(out.Header, safeOutlineHeader(header))
+	}
+	for _, symbol := range analysis.Symbols {
+		out.Symbols = append(out.Symbols, outlineSymbol{
+			Name:            symbol.Name,
+			Kind:            symbol.Kind,
+			Signature:       symbol.Signature,
+			Documentation:   symbol.Documentation,
+			Container:       symbol.Container,
+			StartLine:       symbol.StartLine,
+			EndLine:         symbol.EndLine,
+			ExtentStartLine: symbol.ExtentStartLine,
+			ExtentEndLine:   symbol.ExtentEndLine,
+		})
+	}
+	return out
+}
+
+func attachTreeSitterExtents(outline *structuredFileOutline, parsed []parsing.Symbol) {
+	used := make([]bool, len(parsed))
+	for index := range outline.Symbols {
+		symbol := &outline.Symbols[index]
+		best := -1
+		bestDistance := int(^uint(0) >> 1)
+		for candidateIndex, candidate := range parsed {
+			if used[candidateIndex] || candidate.Name != symbol.Name {
+				continue
+			}
+			if symbol.Container != "" && candidate.Container != "" && normalizedOutlineContainer(candidate.Container) != normalizedOutlineContainer(symbol.Container) {
+				continue
+			}
+			distance := candidate.StartLine - symbol.StartLine
+			if distance < 0 {
+				distance = -distance
+			}
+			if distance < bestDistance {
+				best, bestDistance = candidateIndex, distance
+			}
+		}
+		if best >= 0 {
+			symbol.ExtentStartLine = parsed[best].ExtentStartLine
+			symbol.ExtentEndLine = parsed[best].ExtentEndLine
+			used[best] = true
+		}
+	}
+}
+
+func normalizedOutlineContainer(value string) string {
+	return strings.TrimPrefix(strings.TrimSpace(value), "*")
 }
 
 func languageForStructuredOutline(path string) string {

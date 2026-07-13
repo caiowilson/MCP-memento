@@ -16,10 +16,11 @@ This document consolidates all ADRs for this repository.
 - ADR 0004: Automatic codebase indexing (“memorization”) (Accepted, 2026-01-17)
 - ADR 0005: Git-first incremental indexing (with filesystem fallback) (Proposed, 2026-01-17)
 - ADR 0006: Opt-in local hybrid retrieval with Ollama (Accepted, 2026-07-10)
-- ADR 0007: Standalone extractive repository outlines (Accepted, 2026-07-10)
+- ADR 0007: Standalone extractive repository outlines (Accepted; superseded in part by ADR 0011, 2026-07-10)
 - ADR 0008: Anchored memory lifecycle and conservative eviction (Accepted, 2026-07-10)
 - ADR 0009: Native MCP resources and prime prompt (Accepted, 2026-07-11)
 - ADR 0010: Claude Code plugin distribution through verified release binaries (Accepted, 2026-07-11)
+- ADR 0011: Pure-Go tree-sitter as the shared structural parser (Accepted, 2026-07-13)
 
 ---
 
@@ -477,7 +478,7 @@ The persisted chunk index uses exact substring scoring. It is fast and predictab
 
 ## ADR 0007: Standalone extractive repository outlines
 
-- Status: Accepted
+- Status: Accepted (superseded in part by ADR 0011)
 - Date: 2026-07-10
 
 ### Context
@@ -625,6 +626,46 @@ Manual `claude mcp add` and project `.mcp.json` setup require every user to inst
 - [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference)
 - [Claude Code plugin marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
 - [Claude Code plugin-provided MCP servers](https://code.claude.com/docs/en/mcp#plugin-provided-mcp-servers)
+
+---
+
+## ADR 0011: Pure-Go tree-sitter as the shared structural parser
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+Chunking, standalone outlines, repository-context summaries, and durable-note anchors previously used separate Go AST, JavaScript/TypeScript scanner, brace-matching, and generic-regex paths. Their language coverage and declaration extents could drift. ADR 0007 rejected tree-sitter because the then-considered bindings introduced native build and runtime distribution complexity, but a maintained pure-Go runtime now supports pinned embedded grammars and grammar-subset build tags.
+
+### Decision
+
+- Pin `github.com/odvcencio/gotreesitter` at `v0.32.0` and use its pure-Go parser, embedded grammars, and query API. Do not introduce cgo or runtime grammar downloads.
+- Select only Go, JavaScript, TypeScript, TSX, Python, and Rust grammars in local, CI, evaluation, and release commands. JSX uses the TSX grammar; public language labels remain JavaScript or TypeScript.
+- Parse at most 1 MiB with a 500 ms parser-pool timeout. Reject syntax-error, missing, partial, or panicking parses and use the existing bounded deterministic fallback.
+- Extract declarations through per-language tree-sitter queries, exclude symbols nested inside callable bodies, and keep both body-free signature ranges and full declaration extents.
+- Use the shared analysis for syntax-aligned index chunks, `repo_outline`, `repo_context` outline/summary modes, and symbol-anchor hashing. Preserve the richer Go and JavaScript/TypeScript renderers after successful parsing; render Python and Rust directly from shared symbols; retain the PHP scanner.
+- Add Python and Rust to default indexed extensions and change the chunking fingerprint so persisted indexes rebuild under the new boundary algorithm.
+
+### Consequences
+
+- Structural retrieval now covers six grammar families consistently, including JSX/TSX, Python, and Rust, while release binaries remain cross-compilable with `CGO_ENABLED=0`.
+- Note anchors for supported languages hash exact parser extents, including bodies, decorators, and attributes, without exposing those bodies in outline results.
+- Parsing is serialized behind a bounded gate because `gotreesitter v0.32.0` shares GLR scratch state across parser instances; the race suite protects this constraint until an upgrade removes it.
+- Grammar subset tags are part of every supported Go command; bypassing the Makefile or workflows without them produces unnecessarily large binaries.
+- Valid syntax not accepted by the pinned parser version degrades safely through the local renderer or generic declaration fallback. Upgrading the dependency requires rerunning malformed-source, body-omission, retrieval, and six-target cross-build checks.
+
+### Alternatives considered
+
+- `smacker/go-tree-sitter` or the official Go binding: mature native runtimes, but cgo complicates the six-target static release matrix and macOS packaging.
+- Keep independent language-specific paths: no dependency, but perpetuates coverage gaps and inconsistent anchor extents.
+- Ship every embedded grammar: simplest build command, but roughly doubles the tested binary size without improving Memento's supported language contract.
+
+### References
+
+- [gotreesitter repository](https://github.com/odvcencio/gotreesitter)
+- [gotreesitter v0.32.0 release](https://github.com/odvcencio/gotreesitter/releases/tag/v0.32.0)
+- [Tree-sitter query syntax](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html)
 
 ---
 

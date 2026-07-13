@@ -113,10 +113,12 @@ Baseline refresh rationale for Slice 17: documenting automatic path-matched memo
 
 Baseline refresh rationale for Slice 27: consolidating client configuration and LLM instructions into `docs/clients.md` moved the exact client output-token passage while preserving its meaning and relevance. The fixture anchor was moved to that canonical passage and the fingerprint-matched baseline was regenerated; lexical scoring, chunking, and metrics remain unchanged at precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
 
+Baseline refresh rationale for Slice 19: replacing the `syntax-v1` chunk-boundary implementation with strict tree-sitter declaration boundaries changes the persisted configuration fingerprint to `treesitter-v1`. All four retrieval fixtures were re-audited against the resulting chunks; none of their relevance ranges or rankings changed. The fingerprint-matched lexical baseline was regenerated and remains precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
+
 ## Validate the contract
 
 ```bash
-go test ./evaluation
+make test
 ```
 
 This loads the seed benchmark, checks that it has 20 scenarios including five fresh-session memory-recovery tasks, and verifies strict schema validation behavior.

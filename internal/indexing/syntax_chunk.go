@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"memento-mcp/internal/parsing"
 )
 
 var jsTopLevelDeclaration = regexp.MustCompile(`^[\t ]*(?:(?:export|default|declare|async|abstract)\s+)*(?:function\s*\*?\s+[A-Za-z_$]|class\s+[A-Za-z_$]|interface\s+[A-Za-z_$]|type\s+[A-Za-z_$]|enum\s+[A-Za-z_$]|namespace\s+[A-Za-z_$]|module\s+[A-Za-z_$]|(?:const|let|var)\s+[A-Za-z_$])`)
@@ -14,6 +16,11 @@ var jsTopLevelExport = regexp.MustCompile(`^[\t ]*export\b`)
 var jsModifierOnly = regexp.MustCompile(`^[\t ]*(?:export(?:\s+default)?|default|declare|abstract|async)[\t ]*;?[\t ]*$`)
 
 func syntaxChunkStarts(path, language, source string, lines []string) ([]int, bool) {
+	if parsing.Supported(path) {
+		if analysis, err := parsing.Analyze(path, []byte(source)); err == nil && len(analysis.DeclarationStarts) > 0 {
+			return normalizedChunkStarts(analysis.DeclarationStarts, len(lines)), true
+		}
+	}
 	switch chunkLanguage(path, language) {
 	case "go":
 		return goChunkStarts(path, source)

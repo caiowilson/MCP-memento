@@ -91,6 +91,9 @@ func (s *NoteStore) currentAnchorHash(anchor NoteAnchor) (string, int, int, erro
 }
 
 func anchorSymbolExtent(path string, source []byte, symbol outlineSymbol) (int, int) {
+	if symbol.ExtentStartLine > 0 && symbol.ExtentEndLine >= symbol.ExtentStartLine {
+		return symbol.ExtentStartLine, symbol.ExtentEndLine
+	}
 	if languageForStructuredOutline(path) == "go" {
 		fset := token.NewFileSet()
 		if file, err := parser.ParseFile(fset, path, source, 0); err == nil {

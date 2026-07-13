@@ -127,7 +127,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
    - Indexed chunks and scoring
-   - Declaration-aligned Go and JavaScript/TypeScript chunk boundaries, with bounded line fallback
+   - Declaration-aligned Go, JavaScript/JSX, TypeScript/TSX, Python, and Rust chunk boundaries from a pinned pure-Go tree-sitter runtime, with bounded deterministic fallback
    - Language-aware relationships (Go type analysis, TS/JS and Python imports, and PHP Composer/symbol/Laravel references)
    - Hard byte and line limits for LLM context safety
 5. Explicit notes are stored separately as durable, repo-scoped memory.
@@ -137,6 +137,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
 - `cmd/server/` - entrypoint
 - `internal/mcp/` - MCP server and tool handlers
 - `internal/indexing/` - chunking, manifest, search, incremental indexing
+- `internal/parsing/` - bounded tree-sitter queries and shared declaration extents
 - `internal/app/` - app lifecycle wiring
 - `vscode-extension/` - companion extension (installer and MCP config UX)
 - `docs/` - usage docs and ADRs
@@ -168,7 +169,7 @@ make build
 ### Run Tests
 
 ```bash
-go test ./...
+make test
 ```
 
 ### Check Internal Package Coverage
@@ -176,8 +177,7 @@ go test ./...
 Run the same uncached package coverage commands used by CI:
 
 ```bash
-go test -count=1 -cover ./internal/indexing
-go test -count=1 -cover ./internal/mcp
+make coverage-internal
 ```
 
 The blocking floors are `63.0%` for `./internal/indexing` and `45.0%` for `./internal/mcp`. Update the tests when a change would lower either package below its floor; the canonical CI implementation and thresholds live in [`.github/workflows/coverage-internal.yml`](./.github/workflows/coverage-internal.yml).
@@ -194,7 +194,7 @@ npm run build
 
 1. Create a branch from `main`.
 2. Make focused changes with tests and docs updates.
-3. Run `go test ./...` (and extension build/tests when applicable).
+3. Run `make test` (and extension build/tests when applicable).
 4. Open a PR with:
    - Problem statement
    - Approach

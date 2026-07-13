@@ -328,7 +328,7 @@ This is distribution polish for Finder-based installation and managed environmen
 
 ### Slice 19 — Tree-sitter integration for language-agnostic parsing
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: large
 - Scope: `internal/indexing/`, `internal/mcp/`
@@ -336,10 +336,10 @@ This is distribution polish for Finder-based installation and managed environmen
 
 #### Steps
 
-- [ ] Evaluate Go tree-sitter bindings (for example, `smacker/go-tree-sitter`) (status: todo)
-- [ ] Implement generic symbol extraction using tree-sitter queries (status: todo)
-- [ ] Replace language-specific outline/chunk logic with tree-sitter where available (status: todo)
-- [ ] Add tests across Go, JS/TS, Python, and Rust (status: todo)
+- [x] Evaluate Go tree-sitter bindings and pin pure-Go `github.com/odvcencio/gotreesitter` `v0.32.0` (status: done)
+- [x] Implement generic symbol extraction using tree-sitter queries (status: done)
+- [x] Replace language-specific outline/chunk/anchor structure with tree-sitter where available and deterministic fallbacks elsewhere (status: done)
+- [x] Add tests across Go, JS/JSX, TS/TSX, Python, and Rust (status: done)
 
 ## Recently Completed (historical)
 

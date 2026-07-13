@@ -248,16 +248,73 @@ export class Real {}
 	}
 }
 
-func TestChunkFile_JSXUsesLineFallback(t *testing.T) {
+func TestChunkFile_TSXUsesSyntaxBoundaries(t *testing.T) {
 	content := "export function First() {\n\treturn <div>don't split JSX</div>;\n}\nexport function Second() {}\n"
 	got := ChunkFile("fixture.tsx", "ts/js", content, 2, 1<<20)
-	want := ChunkFile("fixture.txt", "text", content, 2, 1<<20)
-	for index := range want {
-		want[index].Path = "fixture.tsx"
-		want[index].Language = "ts/js"
+	want := [][2]int{{1, 2}, {3, 3}, {4, 4}}
+	if len(got) != len(want) {
+		t.Fatalf("expected TSX declaration boundaries, got %#v", got)
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("TSX did not preserve line fallback:\ngot  %#v\nwant %#v", got, want)
+	for index, bounds := range want {
+		assertChunkBounds(t, got[index], bounds[0], bounds[1])
+	}
+}
+
+func TestChunkFile_PythonAndRustUseSyntaxBoundaries(t *testing.T) {
+	tests := []struct {
+		path     string
+		language string
+		content  string
+		want     [][2]int
+	}{
+		{
+			path:     "fixture.py",
+			language: "python",
+			content:  "import os\n\n# First docs.\ndef first():\n    return os.getcwd()\n\nclass Worker:\n    def run(self):\n        return True\n",
+			want:     [][2]int{{1, 2}, {3, 6}, {7, 9}},
+		},
+		{
+			path:     "fixture.rs",
+			language: "rust",
+			content:  "use std::fmt;\n\n/// Worker docs.\npub struct Worker {\n    value: usize,\n}\n\nimpl Worker {\n    pub fn run(&self) {}\n}\n",
+			want:     [][2]int{{1, 2}, {3, 7}, {8, 10}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			chunks := ChunkFile(test.path, test.language, test.content, 5, 1<<20)
+			if len(chunks) != len(test.want) {
+				t.Fatalf("expected %d chunks, got %#v", len(test.want), chunks)
+			}
+			for index, bounds := range test.want {
+				assertChunkBounds(t, chunks[index], bounds[0], bounds[1])
+			}
+		})
+	}
+}
+
+func TestChunkFile_MalformedTreeSitterLanguagesMatchLineFallback(t *testing.T) {
+	tests := []struct {
+		path     string
+		language string
+		content  string
+	}{
+		{path: "fixture.tsx", language: "ts/js", content: "export function broken( {\nreturn <div>;\nline 3\n"},
+		{path: "fixture.py", language: "python", content: "def broken(:\nline 2\nline 3\n"},
+		{path: "fixture.rs", language: "rust", content: "pub fn broken( {\nline 2\nline 3\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			got := ChunkFile(test.path, test.language, test.content, 2, 1<<20)
+			want := ChunkFile("fixture.txt", "text", test.content, 2, 1<<20)
+			for index := range want {
+				want[index].Path = test.path
+				want[index].Language = test.language
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("malformed source did not preserve fallback:\ngot  %#v\nwant %#v", got, want)
+			}
+		})
 	}
 }
 

@@ -143,8 +143,8 @@ func TestRepoContextOutlineRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), secret) || !strings.Contains(string(b), "[REDACTED]") {
-		t.Fatalf("expected outline response to be redacted, got %s", b)
+	if strings.Contains(string(b), secret) {
+		t.Fatalf("expected outline response to omit secret values, got %s", b)
 	}
 }
 
@@ -474,6 +474,73 @@ func TestRepoContextSummaryMode(t *testing.T) {
 				t.Errorf("summary should contain func A, got: %s", f.Outline)
 			}
 		}
+	}
+}
+
+func TestRepoContextUsesSharedPythonAndRustOutlines(t *testing.T) {
+	tests := []struct {
+		path       string
+		source     string
+		symbol     string
+		bodyMarker string
+	}{
+		{path: "worker.py", source: "class Worker:\n    def run(self):\n        return 'python-context-body'\n", symbol: "run", bodyMarker: "python-context-body"},
+		{path: "worker.rs", source: "pub struct Worker;\nimpl Worker {\n    pub fn run(&self) {\n        let _marker = \"rust-context-body\";\n    }\n}\n", symbol: "run", bodyMarker: "rust-context-body"},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/context\n\ngo 1.22\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, test.path), []byte(test.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			idx.Start(ctx)
+			if err := idx.IndexAll(ctx); err != nil {
+				t.Fatal(err)
+			}
+			for _, mode := range []string{"outline", "summary"} {
+				result, err := newRepoContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{
+					"path": test.path, "mode": mode, "includeSameDir": false, "includeImports": false, "includeImporters": false, "includeReferences": false,
+				}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				encoded, err := json.Marshal(result)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var response struct {
+					Files []struct {
+						Path    string `json:"path"`
+						Outline string `json:"outline"`
+					} `json:"files"`
+				}
+				if err := json.Unmarshal(encoded, &response); err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, file := range response.Files {
+					if file.Path != test.path {
+						continue
+					}
+					found = true
+					if !strings.Contains(file.Outline, test.symbol) || strings.Contains(file.Outline, test.bodyMarker) {
+						t.Fatalf("unexpected %s output: %q", mode, file.Outline)
+					}
+				}
+				if !found {
+					t.Fatalf("missing %s from %s response: %s", test.path, mode, encoded)
+				}
+			}
+		})
 	}
 }
 
