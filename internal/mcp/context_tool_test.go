@@ -746,3 +746,113 @@ func TestRepoContextSuggestedNextCall(t *testing.T) {
 		t.Fatal("expected suggestedNextCall reason")
 	}
 }
+
+func TestRepoContextIncludesPathMatchingMemoriesInEveryMode(t *testing.T) {
+	root, idx := setupContextTestRepo(t)
+	store := &NoteStore{
+		path: filepath.Join(t.TempDir(), "notes.json"),
+		repo: root,
+	}
+	if _, err := store.Upsert(Note{
+		Key:  "target-decision",
+		Text: strings.Repeat("x", defaultRepoContextMemoryTextBytes+100),
+		Path: "pkg/a.go",
+		Tags: []string{"decision"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Upsert(Note{
+		Key:  "unrelated-decision",
+		Text: "This belongs to another file.",
+		Path: "pkg/c.go",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Upsert(Note{
+		Key:  "stale-target-decision",
+		Text: "Historical guidance that needs verification.",
+		Path: "pkg/a.go",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkStale("stale-target-decision", "target implementation changed", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Upsert(Note{
+		Key:  "retired-target-decision",
+		Text: "Obsolete guidance that must stay hidden.",
+		Path: "pkg/a.go",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Tombstone("retired-target-decision", "superseded"); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := newRepoContextToolWithMemory(root, idx, store)
+	for _, mode := range []string{"outline", "summary", "auto", "full"} {
+		t.Run(mode, func(t *testing.T) {
+			result, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+				"path":              "pkg/a.go",
+				"mode":              mode,
+				"includeSameDir":    false,
+				"includeImports":    false,
+				"includeImporters":  false,
+				"includeReferences": false,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response struct {
+				Memories []struct {
+					Key           string     `json:"key"`
+					Text          string     `json:"text"`
+					TextTruncated bool       `json:"textTruncated"`
+					Status        NoteStatus `json:"status"`
+					StaleReason   string     `json:"staleReason"`
+				} `json:"memories"`
+			}
+			if err := json.Unmarshal(encoded, &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Memories) != 2 || response.Memories[0].Key != "target-decision" || response.Memories[1].Key != "stale-target-decision" {
+				t.Fatalf("mode %s returned memories %#v", mode, response.Memories)
+			}
+			if response.Memories[1].Status != NoteStatusStale || response.Memories[1].StaleReason == "" {
+				t.Fatalf("mode %s omitted stale memory context: %#v", mode, response.Memories[1])
+			}
+			if !response.Memories[0].TextTruncated || len(response.Memories[0].Text) > defaultRepoContextMemoryTextBytes {
+				t.Fatalf("mode %s returned an unbounded memory: %#v", mode, response.Memories[0])
+			}
+		})
+	}
+
+	notes, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, note := range notes {
+		switch note.Key {
+		case "target-decision":
+			if note.RetrievalCount != 4 {
+				t.Fatalf("target retrieval count = %d, want 4", note.RetrievalCount)
+			}
+		case "unrelated-decision":
+			if note.RetrievalCount != 0 {
+				t.Fatalf("unrelated retrieval count = %d, want 0", note.RetrievalCount)
+			}
+		case "stale-target-decision":
+			if note.RetrievalCount != 4 {
+				t.Fatalf("stale target retrieval count = %d, want 4", note.RetrievalCount)
+			}
+		case "retired-target-decision":
+			if note.RetrievalCount != 0 {
+				t.Fatalf("tombstoned target retrieval count = %d, want 0", note.RetrievalCount)
+			}
+		}
+	}
+}

@@ -109,6 +109,8 @@ Baseline refresh rationale for Slice 14B: the new index eligibility helper and d
 
 Baseline refresh rationale for Slice 16: trigram state and regex-search plumbing moved the two exact ignore-rule judgments and the match-centered truncation call-site judgment. Every fixture range was re-audited to the current declaration, reference comment, and call site. Trigram filtering changes latency rather than lexical scoring or ordering, and the regenerated metrics remain precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
 
+Baseline refresh rationale for Slice 17: documenting automatic path-matched memory in repository context moved the exact client-output-budget passage by two lines. That anchor was re-audited without changing its relevance meaning, retrieval scoring, or chunking; the lexical metrics remain precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
+
 ## Validate the contract
 
 ```bash

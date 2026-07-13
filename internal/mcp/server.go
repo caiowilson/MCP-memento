@@ -273,7 +273,7 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 		newRepoSearchToolWithIndexer(root, idx, s.redactor),
 		newRepoRelatedFilesTool(root),
 		newRepoOutlineTool(root, s.redactor),
-		newRepoContextTool(root, idx, s.redactor),
+		newRepoContextToolWithMemory(root, idx, mem, s.redactor),
 		newRepoDiffContextTool(root, idx, s.redactor),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),

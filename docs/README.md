@@ -23,7 +23,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_search` — literal substring search by default, with explicit regex mode and redacted snippets
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
-- `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
+- `repo_context` — indexed chunks, related files, and path-matching durable memories, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_diff_context` — compact exact-file chunks and a bounded, redacted unified diff summary for auto-detected Git worktree changes or an explicit ordered path override
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
@@ -110,6 +110,8 @@ The redaction configuration is fingerprinted in the index manifest. On the first
 `memory_upsert` accepts optional `anchors`. A code anchor uses a repo-relative `path` and can narrow the referent with `symbol` or `startLine`/`endLine`; a commit-only anchor marks a note stale when the same branch advances. On save, Memento captures the current content hash, Git commit, branch, and resolved symbol lines. The legacy top-level `path` remains descriptive metadata; use `anchors` when deterministic drift detection is required.
 
 Filesystem and Git change notifications reconcile affected anchors. Search and list also reconcile before returning, so missed watcher events do not silently preserve fresh status. Content changes mark a note `stale`; stale notes remain in `memory_search`, carry `staleReason`, and rank after fresh matches. Repeated code churn does not increment `failedAdjudications` and never deletes a note.
+
+`repo_context` automatically queries the active repository's note store with its normalized target-file path and returns up to eight matching fresh-then-stale notes under `memories` in every output mode. Surfaced note text is capped at 1,200 bytes with `textTruncated` reported, tombstoned notes stay hidden, and surfaced notes count as retrievals for the conservative memory lifecycle.
 
 Git lineage makes orphaning deliberately strict. Memento follows working-tree and committed renames, searches for a uniquely moved anchored symbol when Git similarity is inconclusive, does not orphan notes when their anchor is absent on another branch or detached checkout, and only confirms disappearance when the anchor commit remains in the current branch lineage. Confirmed disappearance of a note's single referent produces a recoverable `tombstoned` note; loss of one anchor from a multi-anchor note remains stale for adjudication. Tombstones are visible through `memory_list` but omitted from active search.
 

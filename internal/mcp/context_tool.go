@@ -18,12 +18,32 @@ type contextChunkKey struct {
 	startLine int
 }
 
+const (
+	defaultRepoContextMemoryLimit     = 8
+	defaultRepoContextMemoryTextBytes = 1_200
+)
+
+type repoContextMemory struct {
+	Key           string     `json:"key"`
+	Text          string     `json:"text"`
+	TextTruncated bool       `json:"textTruncated,omitempty"`
+	Tags          []string   `json:"tags,omitempty"`
+	Path          string     `json:"path,omitempty"`
+	UpdatedAt     string     `json:"updatedAt"`
+	Status        NoteStatus `json:"status"`
+	StaleReason   string     `json:"staleReason,omitempty"`
+}
+
 func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact.Redactor) Tool {
+	return newRepoContextToolWithMemory(root, idx, nil, redactors...)
+}
+
+func newRepoContextToolWithMemory(root string, idx *indexing.Indexer, memory *NoteStore, redactors ...*redact.Redactor) Tool {
 	redactor := toolRedactor(redactors)
 	return Tool{
 		Name:        "repo_context",
 		Title:       "Get Repository Context",
-		Description: "Return context for a file plus related files. Prefer `intent` for higher-level LLM workflows: `navigate` resolves to `outline`, while `implement` and `review` resolve to `auto`. Use explicit `mode` only when you need to force a low-level behavior.",
+		Description: "Return context for a file, related files, and path-matching durable memories. Prefer `intent` for higher-level LLM workflows: `navigate` resolves to `outline`, while `implement` and `review` resolve to `auto`. Use explicit `mode` only when you need to force a low-level behavior.",
 		Annotations: readOnlyAnnotations(),
 		Meta:        largeResultToolMeta(),
 		InputSchema: map[string]any{
@@ -202,6 +222,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				"resolvedMode":    resolvedMode,
 				"strategy":        strategy,
 			}
+			memories := repoContextMemories(memory, rel)
 
 			related, err := computeRelatedFiles(ctx, root, rel, relatedOptions{
 				Max:              maxFiles * 3,
@@ -302,6 +323,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					"mode":     resolvedMode,
 					"resolved": resolved,
 					"files":    entries,
+					"memories": memories,
 					"limits":   budget.limits(maxFiles, 0),
 				}
 				relatedPaths := make([]string, 0, len(entries))
@@ -384,6 +406,7 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 					"mode":     "auto",
 					"resolved": resolved,
 					"files":    entries,
+					"memories": memories,
 					"limits":   budget.limits(maxFiles, maxChunksPerFile),
 				}
 				relatedPaths := make([]string, 0, len(entries))
@@ -498,10 +521,37 @@ func newRepoContextTool(root string, idx *indexing.Indexer, redactors ...*redact
 				"mode":     resolvedMode,
 				"resolved": resolved,
 				"files":    files,
+				"memories": memories,
 				"limits":   budget.limits(maxFiles, maxChunksPerFile),
 			}, nil
 		},
 	}
+}
+
+func repoContextMemories(store *NoteStore, path string) []repoContextMemory {
+	memories := []repoContextMemory{}
+	if store == nil {
+		return memories
+	}
+	notes, err := store.Search(path, nil, defaultRepoContextMemoryLimit)
+	if err != nil {
+		return memories
+	}
+	memories = make([]repoContextMemory, 0, len(notes))
+	for _, note := range notes {
+		text, truncated := truncateStringBytes(note.Text, defaultRepoContextMemoryTextBytes)
+		memories = append(memories, repoContextMemory{
+			Key:           note.Key,
+			Text:          text,
+			TextTruncated: truncated,
+			Tags:          append([]string(nil), note.Tags...),
+			Path:          note.Path,
+			UpdatedAt:     note.UpdatedAt,
+			Status:        noteStatus(note),
+			StaleReason:   note.StaleReason,
+		})
+	}
+	return memories
 }
 
 func selectChunks(chunks []indexing.Chunk, focusLower string, maxChunks int) []indexing.Chunk {
@@ -648,6 +698,20 @@ func repoContextOutputSchema() map[string]any {
 		},
 		"required": []any{"path"},
 	}
+	memoryEntry := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"key":           map[string]any{"type": "string"},
+			"text":          map[string]any{"type": "string"},
+			"textTruncated": map[string]any{"type": "boolean"},
+			"tags":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"path":          map[string]any{"type": "string"},
+			"updatedAt":     map[string]any{"type": "string"},
+			"status":        map[string]any{"type": "string"},
+			"staleReason":   map[string]any{"type": "string"},
+		},
+		"required": []any{"key", "text", "updatedAt", "status"},
+	}
 
 	return map[string]any{
 		"type": "object",
@@ -669,6 +733,10 @@ func repoContextOutputSchema() map[string]any {
 			"files": map[string]any{
 				"type":  "array",
 				"items": fileEntry,
+			},
+			"memories": map[string]any{
+				"type":  "array",
+				"items": memoryEntry,
 			},
 			"limits": map[string]any{
 				"type": "object",
@@ -696,6 +764,6 @@ func repoContextOutputSchema() map[string]any {
 				"required": []any{"name", "arguments", "reason"},
 			},
 		},
-		"required": []any{"path", "mode", "resolved", "files", "limits"},
+		"required": []any{"path", "mode", "resolved", "files", "memories", "limits"},
 	}
 }

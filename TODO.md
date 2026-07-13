@@ -260,7 +260,7 @@ Implemented with a restart-safe in-memory trigram index, conservative live-file 
 
 ### Slice 17 — Auto-surface memories in `repo_context`
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `internal/mcp/context_tool.go`, `internal/mcp/memory_tools.go`
@@ -268,9 +268,11 @@ Implemented with a restart-safe in-memory trigram index, conservative live-file 
 
 #### Steps
 
-- [ ] Query `NoteStore` for notes matching the target file path during `repo_context` assembly (status: todo)
-- [ ] Include matching notes under a `memories` key in the response (status: todo)
-- [ ] Add tests (status: todo)
+- [x] Query `NoteStore` for notes matching the target file path during `repo_context` assembly (status: done)
+- [x] Include matching notes under a `memories` key in the response (status: done)
+- [x] Add tests (status: done)
+
+Implemented with lifecycle-aware, fresh-before-stale note search across every `repo_context` output mode; tombstoned and unrelated notes remain excluded.
 
 ### Slice 18 — Python import graph
 
