@@ -24,6 +24,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - Opt-in local aggregate feedback and privacy controls: [`docs/feedback.md`](./docs/feedback.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
+- Credential-free Claude Code workflows: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
 - ADR index and decisions: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
 
@@ -41,6 +42,18 @@ Add this repository as a Claude Code marketplace, install Memento, then reload a
 ```
 
 The enabled plugin starts Memento automatically for each Claude Code project. On first start it downloads the version-pinned prebuilt binary for x64 or arm64 macOS, Linux, or Windows, verifies the release SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory. The first start requires GitHub access; later starts verify the cache and work offline.
+
+### Claude Code workflows plugin (no native binary)
+
+If you cannot or do not want to run the native MCP server, install the companion skills-only plugin instead:
+
+```text
+/plugin marketplace add caiowilson/MCP-memento
+/plugin install memento-workflows@memento-mcp
+/reload-plugins
+```
+
+It provides bounded repository orientation, local change review, and user-confirmed handoffs through Claude Code's built-in tools. It does not provide indexed retrieval, semantic vectors, MCP resources or prompts, background indexing, cross-client support, or structured durable memory. See the [capability matrix](./plugins/memento-workflows/README.md#capability-matrix).
 
 ### Standalone binary
 

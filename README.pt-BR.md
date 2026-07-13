@@ -19,6 +19,7 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 - Claude Code, Claude Desktop e outros clientes MCP: [`docs/clients.md`](./docs/clients.md)
 - Uso com VS Code: [`docs/vscode.md`](./docs/vscode.md)
 - Extensão VS Code: [`vscode-extension/README.md`](./vscode-extension/README.md)
+- Workflows do Claude Code sem binário nativo: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
 - Guia de ADR: [`docs/adr/README.md`](./docs/adr/README.md)
 - Índice e decisões de ADR: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
 
@@ -36,6 +37,18 @@ Adicione este repositório como marketplace do Claude Code, instale o Memento e 
 ```
 
 O plugin habilitado inicia o Memento automaticamente em cada projeto. Na primeira inicialização, ele baixa o binário pré-compilado e versionado para macOS, Linux ou Windows em x64 ou arm64, verifica o checksum SHA-256 da release e o armazena no diretório persistente de dados do plugin. O primeiro uso requer acesso ao GitHub; os próximos verificam o cache e funcionam offline.
+
+### Plugin de workflows do Claude Code (sem binário nativo)
+
+Se você não pode ou não quer executar o servidor MCP nativo, instale o plugin complementar somente com skills:
+
+```text
+/plugin marketplace add caiowilson/MCP-memento
+/plugin install memento-workflows@memento-mcp
+/reload-plugins
+```
+
+Ele oferece orientação limitada do repositório, revisão de mudanças locais e handoffs confirmados pelo usuário usando as ferramentas integradas do Claude Code. Ele não oferece recuperação indexada, vetores semânticos, recursos ou prompts MCP, indexação em segundo plano, suporte entre clientes ou memória durável estruturada. Consulte a [matriz de capacidades](./plugins/memento-workflows/README.md#capability-matrix).
 
 ### Binário independente
 

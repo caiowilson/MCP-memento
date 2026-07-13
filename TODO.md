@@ -188,7 +188,7 @@ type-check, while release lookup and download behavior remain out of scope.
 
 ### Slice 28 — Credential-free Claude workflow skills
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: `.claude-plugin/marketplace.json`, `plugins/memento-workflows/`, plugin docs and validation CI
@@ -204,14 +204,16 @@ This is a companion distribution, not a transparent replacement for the MCP serv
 
 #### Steps
 
-- [ ] Add a separate `memento-workflows` marketplace plugin with skills only and no `.mcp.json`, hooks, native executables, or install-time downloads (status: todo)
-- [ ] Add a `prime` skill that inspects repository instructions, manifests, Git state, and high-signal files with bounded built-in reads (status: todo)
-- [ ] Add a `review-changes` skill grounded in changed paths and `git diff`, with focused reads and test discovery (status: todo)
-- [ ] Add a `handoff` skill with an explicit, user-visible repo-local Markdown storage contract and no hidden writes (status: todo)
-- [ ] Use narrow skill descriptions, progressive disclosure, and minimal pre-approved tool patterns (status: todo)
-- [ ] Document the capability matrix for `memento-workflows` versus the full `memento` MCP plugin (status: todo)
-- [ ] Add strict plugin validation, isolated marketplace installation, and skill smoke tests (status: todo)
-- [ ] Decide after validation whether the same workflow skills should also ship inside the full `memento` plugin (status: todo)
+- [x] Add a separate `memento-workflows` marketplace plugin with skills only and no `.mcp.json`, hooks, native executables, or install-time downloads (status: done)
+- [x] Add a `prime` skill that inspects repository instructions, manifests, Git state, and high-signal files with bounded built-in reads (status: done)
+- [x] Add a `review-changes` skill grounded in changed paths and `git diff`, with focused reads and test discovery (status: done)
+- [x] Add a `handoff` skill with an explicit, user-visible repo-local Markdown storage contract and no hidden writes (status: done)
+- [x] Use narrow skill descriptions, progressive disclosure, and minimal pre-approved tool patterns (status: done)
+- [x] Document the capability matrix for `memento-workflows` versus the full `memento` MCP plugin (status: done)
+- [x] Add strict plugin validation, isolated marketplace installation, and skill smoke tests (status: done)
+- [x] Decide after validation whether the same workflow skills should also ship inside the full `memento` plugin (status: done)
+
+Delivered in `plugins/memento-workflows/` with three skills, portable-content and storage-contract smoke tests, strict validation, and isolated marketplace installation in CI. The skills remain exclusive to the companion plugin for now because duplicating them inside `memento` would blur its indexed MCP surface and its existing `prime` prompt.
 
 ## P2 — Capability Expansion
 

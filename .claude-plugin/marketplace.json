@@ -13,6 +13,14 @@
       "version": "0.9.0",
       "category": "development",
       "tags": ["mcp", "memory", "repository", "context"]
+    },
+    {
+      "name": "memento-workflows",
+      "source": "./plugins/memento-workflows",
+      "description": "Claude Code repository orientation, change review, and explicit handoff skills with no native binary",
+      "version": "0.9.0",
+      "category": "development",
+      "tags": ["skills", "repository", "review", "handoff", "workflow"]
     }
   ]
 }

@@ -25,6 +25,9 @@ jobs:
       - name: Test launcher
         run: node --test plugins/memento/test/launcher.test.cjs
 
+      - name: Test workflow skills
+        run: node --test test/memento-workflows.test.mjs
+
       - name: Install Claude Code validator
         run: npm install --global @anthropic-ai/claude-code@2.1.207
 
@@ -32,6 +35,33 @@ jobs:
         run: |
           claude plugin validate --strict .
           claude plugin validate --strict ./plugins/memento
+          claude plugin validate --strict ./plugins/memento-workflows
+
+      - name: Test isolated workflows plugin installation
+        shell: bash
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-workflows-config
+        run: |
+          set -euo pipefail
+          rm -rf "$CLAUDE_CONFIG_DIR"
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          claude plugin marketplace add "$GITHUB_WORKSPACE"
+          claude plugin install memento-workflows@memento-mcp --scope user
+          claude plugin list --json > "$RUNNER_TEMP/installed-workflows.json"
+          node - "$RUNNER_TEMP/installed-workflows.json" "$CLAUDE_CONFIG_DIR" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const plugins = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const installed = plugins.find((plugin) => plugin.id === "memento-workflows@memento-mcp");
+          if (!installed || !installed.enabled || installed.scope !== "user") {
+            throw new Error("isolated workflows plugin was not enabled at user scope");
+          }
+          const cacheRoot = path.resolve(process.argv[3], "plugins", "cache");
+          const relative = path.relative(cacheRoot, path.resolve(installed.installPath));
+          if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+            throw new Error("workflows plugin was installed outside the isolated cache");
+          }
+          NODE
 
       - name: Set up Go
         uses: actions/setup-go@v5

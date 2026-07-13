@@ -63,8 +63,10 @@ test:
 
 plugin-test:
 	node --test plugins/memento/test/launcher.test.cjs
+	node --test test/memento-workflows.test.mjs
 	claude plugin validate --strict .
 	claude plugin validate --strict ./plugins/memento
+	claude plugin validate --strict ./plugins/memento-workflows
 
 retrieval-eval:
 	go run ./cmd/retrieval-eval $(RETRIEVAL_ARGS)

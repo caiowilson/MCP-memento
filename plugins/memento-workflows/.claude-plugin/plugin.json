@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "memento-workflows",
+  "displayName": "Memento Workflows",
+  "version": "0.9.0",
+  "description": "Credential-free Claude Code skills for bounded repository orientation, change review, and explicit handoffs",
+  "author": {
+    "name": "Memento MCP maintainers"
+  },
+  "homepage": "https://github.com/caiowilson/MCP-memento",
+  "repository": "https://github.com/caiowilson/MCP-memento",
+  "license": "MIT",
+  "keywords": ["skills", "repository", "review", "handoff", "workflow"]
+}
