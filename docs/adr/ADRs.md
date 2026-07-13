@@ -450,7 +450,7 @@ The persisted chunk index uses exact substring scoring. It is fast and predictab
 - Embed redacted chunks in batches and store normalized float32 vectors as binary `.vec` sidecars beside the JSONL chunk files.
 - Fingerprint the embedding input format and model. Remove incompatible sidecars and re-embed unchanged chunks when the fingerprint changes.
 - Rank with a configurable weighted combination of normalized lexical score and cosine similarity. Preserve the previous lexical score and ordering when semantic retrieval is disabled or unavailable.
-- Apply hybrid focus retrieval to `repo_context`; retain literal substring semantics for `repo_search`.
+- Apply hybrid focus retrieval to `repo_context`; retain literal substring semantics as the `repo_search` default, with regex matching available only through explicit opt-in.
 - Treat embedding failures as degradations: record the error, fall back to lexical retrieval, and use a short retry backoff.
 
 ### Consequences

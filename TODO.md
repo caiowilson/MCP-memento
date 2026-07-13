@@ -237,10 +237,10 @@ Superseded by the richer `repo_outline` tool delivered in `3942370` for GitHub i
 
 ### Slice 16 — Trigram search index
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
-- Scope: `internal/indexing/`
+- Scope: `internal/indexing/`, `internal/mcp/`
 - Priority: P2
 
 #### Problem
@@ -249,10 +249,12 @@ Superseded by the richer `repo_outline` tool delivered in `3942370` for GitHub i
 
 #### Steps
 
-- [ ] Build a trigram index during `indexAll` and `indexOne` (status: todo)
-- [ ] Use trigram index to pre-filter candidate files before substring matching (status: todo)
-- [ ] Add optional regex mode to `repo_search` (status: todo)
-- [ ] Benchmark search latency before/after on a 1000-file repo (status: todo)
+- [x] Build a trigram index during `indexAll` and `indexOne` (status: done)
+- [x] Use trigram index to pre-filter candidate files before substring matching (status: done)
+- [x] Add optional regex mode to `repo_search` (status: done)
+- [x] Benchmark search latency before/after on a 1000-file repo (status: done)
+
+Implemented with a restart-safe in-memory trigram index, conservative live-file filtering, explicit regex opt-in, and a reproducible 1,000-file benchmark in `internal/indexing/trigram_test.go`.
 
 ## P3 — Context and Docs Cohesion
 

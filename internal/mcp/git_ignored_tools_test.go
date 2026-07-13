@@ -48,7 +48,8 @@ func TestRepositoryToolsExcludeGitIgnoredPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count, _ := searched.(map[string]any)["count"].(int); count != 0 {
+	matches, _ := searched.(map[string]any)["matches"].([]map[string]any)
+	if len(matches) != 0 {
 		t.Fatalf("repo_search returned Git-ignored content: %#v", searched)
 	}
 

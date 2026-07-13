@@ -324,6 +324,53 @@ func TestRepoSearchRedactsSecretsAndSkipsEnvFiles(t *testing.T) {
 	if strings.Contains(snippet, secret) || !strings.Contains(snippet, "[REDACTED]") {
 		t.Fatalf("expected search snippet to be redacted, got %q", snippet)
 	}
+	for _, regexMode := range []bool{false, true} {
+		secretResult, err := newRepoSearchTool(root).Handler(context.Background(), rawJSON(t, map[string]any{
+			"query": secret,
+			"regex": regexMode,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matches := secretResult.(map[string]any)["matches"].([]map[string]any); len(matches) != 0 {
+			t.Fatalf("regex=%v searched content that should have been redacted: %#v", regexMode, matches)
+		}
+	}
+}
+
+func TestRepoSearchRedactsWholeFileBeforeLiteralOrRegexMatching(t *testing.T) {
+	root := t.TempDir()
+	content := "package fixture\n\nconst key = `-----BEGIN PRIVATE KEY-----\nabc123\ndef456\n-----END PRIVATE KEY-----`\n"
+	if err := os.WriteFile(filepath.Join(root, "fixture.go"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for name, tool := range map[string]Tool{
+		"filesystem": newRepoSearchTool(root),
+		"indexed":    newRepoSearchToolWithIndexer(root, idx),
+	} {
+		for _, regexMode := range []bool{false, true} {
+			result, err := tool.Handler(ctx, rawJSON(t, map[string]any{
+				"query": "abc123",
+				"regex": regexMode,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if matches := result.(map[string]any)["matches"].([]map[string]any); len(matches) != 0 {
+				t.Fatalf("%s regex=%v exposed private-key body: %#v", name, regexMode, matches)
+			}
+		}
+	}
 }
 
 func TestRepoSearchRedactsTruncatedQuotedSecret(t *testing.T) {
@@ -347,6 +394,125 @@ func TestRepoSearchRedactsTruncatedQuotedSecret(t *testing.T) {
 	snippet := matches[0]["snippet"].(string)
 	if strings.Contains(snippet, strings.Repeat("a", 20)) || !strings.Contains(snippet, "[REDACTED]") {
 		t.Fatalf("expected truncated search snippet to be redacted, got %q", snippet)
+	}
+}
+
+func TestRepoSearchRegexIsOptionalAndCaseAware(t *testing.T) {
+	root := t.TempDir()
+	content := "literal value.+ marker\nPrefix value-123 suffix\n"
+	if err := os.WriteFile(filepath.Join(root, "search.txt"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := newRepoSearchTool(root)
+
+	literal, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{"query": "value.+"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	literalMatches := literal.(map[string]any)["matches"].([]map[string]any)
+	if len(literalMatches) != 1 || literalMatches[0]["line"] != 1 {
+		t.Fatalf("metacharacters should remain literal by default: %#v", literalMatches)
+	}
+
+	regexResult, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"query": "VALUE-[0-9]+",
+		"regex": true,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	regexMatches := regexResult.(map[string]any)["matches"].([]map[string]any)
+	if len(regexMatches) != 1 || regexMatches[0]["line"] != 2 {
+		t.Fatalf("case-insensitive regex did not find the variable-width match: %#v", regexMatches)
+	}
+
+	caseSensitive, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"query":         "VALUE-[0-9]+",
+		"regex":         true,
+		"caseSensitive": true,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches := caseSensitive.(map[string]any)["matches"].([]map[string]any); len(matches) != 0 {
+		t.Fatalf("case-sensitive regex unexpectedly matched: %#v", matches)
+	}
+}
+
+func TestRepoSearchRegexValidationAndZeroWidthMatch(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "search.txt"), []byte("first line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := newRepoSearchTool(root)
+	if _, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"query": "[",
+		"regex": true,
+	})); err == nil || !strings.Contains(err.Error(), "invalid regular expression") {
+		t.Fatalf("invalid regex error = %v", err)
+	}
+	result, err := tool.Handler(context.Background(), rawJSON(t, map[string]any{
+		"query":           "^",
+		"regex":           true,
+		"maxSnippetBytes": 5,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := result.(map[string]any)["matches"].([]map[string]any)
+	if len(matches) != 1 || matches[0]["line"] != 1 {
+		t.Fatalf("zero-width regex did not produce a stable match: %#v", matches)
+	}
+}
+
+func TestRepoSearchIndexerPrefilterFallsBackForChangedFiles(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "fixture.go")
+	if err := os.WriteFile(path, []byte("package fixture\n\nconst Existing = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package fixture\n\nconst NewlyAddedNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newRepoSearchToolWithIndexer(root, idx).Handler(ctx, rawJSON(t, map[string]any{
+		"query": "NewlyAddedNeedle",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := result.(map[string]any)["matches"].([]map[string]any)
+	if len(matches) != 1 || matches[0]["path"] != "fixture.go" {
+		t.Fatalf("stale index suppressed a live filesystem match: %#v", matches)
+	}
+}
+
+func TestRepoSearchSkipsSymlinkedFiles(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("SymlinkEscapeNeedle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked.txt")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newRepoSearchTool(root).Handler(context.Background(), rawJSON(t, map[string]any{
+		"query": "SymlinkEscapeNeedle",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches := result.(map[string]any)["matches"].([]map[string]any); len(matches) != 0 {
+		t.Fatalf("repo_search followed a symlink outside the workspace: %#v", matches)
 	}
 }
 

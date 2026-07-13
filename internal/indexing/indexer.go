@@ -64,6 +64,7 @@ type Indexer struct {
 	manifest              manifest
 	status                Status
 	embeddingBackoffUntil time.Time
+	trigrams              trigramIndex
 
 	reqCh         chan request
 	startOnce     sync.Once
@@ -126,6 +127,7 @@ func New(cfg Config) (*Indexer, error) {
 		defaultDeny:   useDefaultDeny,
 		redactor:      cfg.Redactor,
 		embedder:      cfg.Embedder,
+		trigrams:      newTrigramIndex(),
 		reqCh:         make(chan request, 8),
 		workerStarted: make(chan struct{}),
 		workerDone:    make(chan struct{}),
@@ -148,6 +150,7 @@ func New(cfg Config) (*Indexer, error) {
 			return nil, err
 		}
 	}
+	idx.rebuildTrigramIndex()
 	return idx, nil
 }
 
@@ -330,6 +333,7 @@ func (i *Indexer) RemovePaths(relPaths []string) error {
 		i.removeVectorFile(ent.ID)
 		i.manifest.TotalBytes -= ent.Size
 		delete(i.manifest.Files, rel)
+		i.trigrams.remove(rel)
 	}
 	i.mu.Unlock()
 	return i.saveManifest()
@@ -412,6 +416,7 @@ func (i *Indexer) Clear() error {
 	}
 	i.manifest = manifest{}
 	i.status = Status{}
+	i.trigrams = newTrigramIndex()
 	i.mu.Unlock()
 
 	for _, id := range ids {
@@ -447,22 +452,6 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 		restrict[p] = struct{}{}
 	}
 
-	i.mu.Lock()
-	entries := make(map[string]fileEntry, len(i.manifest.Files))
-	paths := make([]string, 0, len(i.manifest.Files))
-	for p, entry := range i.manifest.Files {
-		if len(restrict) > 0 {
-			if _, ok := restrict[p]; !ok {
-				continue
-			}
-		}
-		paths = append(paths, p)
-		entries[p] = entry
-	}
-	i.mu.Unlock()
-
-	sort.Strings(paths)
-
 	var queryVector []float32
 	if i.embedder != nil && i.embeddingRetryReady() {
 		vectors, err := i.embedder.Embed(ctx, embedding.TaskQuery, []string{q})
@@ -486,6 +475,30 @@ func (i *Indexer) SearchContext(ctx context.Context, query string, maxResults in
 			i.setError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
 		}
 	}
+
+	i.mu.Lock()
+	entries := make(map[string]fileEntry, len(i.manifest.Files))
+	paths := make([]string, 0, len(i.manifest.Files))
+	lexicalCandidates, prefilter := i.trigrams.candidates(qLower)
+	for p, entry := range i.manifest.Files {
+		if len(restrict) > 0 {
+			if _, ok := restrict[p]; !ok {
+				continue
+			}
+		}
+		if len(queryVector) == 0 && prefilter {
+			if _, ready := i.trigrams.byPath[p]; ready {
+				if _, candidate := lexicalCandidates[p]; !candidate {
+					continue
+				}
+			}
+		}
+		paths = append(paths, p)
+		entries[p] = entry
+	}
+	i.mu.Unlock()
+
+	sort.Strings(paths)
 
 	type scored struct {
 		chunk    Chunk
@@ -674,6 +687,7 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 			i.removeVectorFile(ent.ID)
 			i.manifest.TotalBytes -= ent.Size
 			delete(i.manifest.Files, rel)
+			i.trigrams.remove(rel)
 		}
 		i.mu.Unlock()
 		if ok {
@@ -761,6 +775,7 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		i.removeVectorFile(ent.ID)
 		i.manifest.TotalBytes -= ent.Size
 		delete(i.manifest.Files, rel)
+		i.trigrams.remove(rel)
 	}
 	i.mu.Unlock()
 
@@ -975,6 +990,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 	syntaxSource := string(b)
 	content := i.redactor.Redact(syntaxSource)
 	chunks := chunkFileWithSyntaxSource(rel, guessLanguage(rel), content, syntaxSource, i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
+	trigrams := trigramKeysForChunks(chunks)
 	var vectors []chunkVector
 	vectorCount := 0
 	if i.embedder != nil && len(chunks) > 0 {
@@ -1011,6 +1027,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 			oldSize = current.Size
 			i.manifest.TotalBytes -= current.Size
 			delete(i.manifest.Files, rel)
+			i.trigrams.remove(rel)
 		}
 		_ = os.Remove(i.chunkFilePath(id))
 		i.removeVectorFile(id)
@@ -1040,6 +1057,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 	}
 	i.manifest.Files[rel] = newEntry
 	i.manifest.TotalBytes = i.manifest.TotalBytes - oldSize + newEntry.Size
+	i.trigrams.replace(rel, trigrams)
 	i.mu.Unlock()
 
 	return true, newEntry.Size - oldSize, nil
@@ -1269,6 +1287,7 @@ func (i *Indexer) resetIndexFiles() error {
 		EmbeddingFingerprint: i.embeddingFingerprint(),
 		Files:                map[string]fileEntry{},
 	}
+	i.trigrams = newTrigramIndex()
 	return nil
 }
 

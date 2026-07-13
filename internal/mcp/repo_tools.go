@@ -8,11 +8,15 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"memento-mcp/internal/indexing"
 	"memento-mcp/internal/redact"
+	"memento-mcp/internal/safefs"
 )
 
 func newRepoListFilesTool(root string) Tool {
@@ -247,11 +251,15 @@ func readFileContent(ctx context.Context, r io.Reader, startLine, endLine, maxBy
 }
 
 func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
+	return newRepoSearchToolWithIndexer(root, nil, redactors...)
+}
+
+func newRepoSearchToolWithIndexer(root string, idx *indexing.Indexer, redactors ...*redact.Redactor) Tool {
 	redactor := toolRedactor(redactors)
 	return Tool{
 		Name:        "repo_search",
 		Title:       "Search Repository",
-		Description: "Search for a substring across non-ignored files in the workspace root.",
+		Description: "Search for a substring or optional regular expression across non-ignored files in the workspace root.",
 		Annotations: readOnlyAnnotations(),
 		Meta:        largeResultToolMeta(),
 		InputSchema: map[string]any{
@@ -260,7 +268,7 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 			"properties": map[string]any{
 				"query": map[string]any{
 					"type":        "string",
-					"description": "Substring query to search for.",
+					"description": "Literal substring query by default, or a regular expression when regex is true.",
 				},
 				"glob": map[string]any{
 					"type":        "string",
@@ -269,6 +277,10 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 				"caseSensitive": map[string]any{
 					"type":        "boolean",
 					"description": "Default false.",
+				},
+				"regex": map[string]any{
+					"type":        "boolean",
+					"description": "Interpret query as a regular expression (default false).",
 				},
 				"maxResults": map[string]any{
 					"type":        "integer",
@@ -303,6 +315,10 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 			if v, ok := args["caseSensitive"].(bool); ok {
 				caseSensitive = v
 			}
+			regexMode := false
+			if v, ok := args["regex"].(bool); ok {
+				regexMode = v
+			}
 
 			maxResults := 50
 			if f, ok := asFloat(args, "maxResults"); ok && int(f) > 0 {
@@ -324,6 +340,21 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 			needle := query
 			if !caseSensitive {
 				needle = strings.ToLower(query)
+			}
+			var expression *regexp.Regexp
+			if regexMode {
+				pattern := query
+				if !caseSensitive {
+					pattern = "(?i:" + pattern + ")"
+				}
+				expression, err = regexp.Compile(pattern)
+				if err != nil {
+					return nil, fmt.Errorf("invalid regular expression: %w", err)
+				}
+			}
+			var candidateSnapshot indexing.SubstringCandidateSnapshot
+			if idx != nil && !regexMode {
+				candidateSnapshot = idx.SubstringCandidates(query)
 			}
 
 			type match struct {
@@ -363,22 +394,41 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 					}
 				}
 
-				info, err := d.Info()
-				if err != nil {
-					return nil
-				}
-				if info.Size() > maxFileBytes {
+				if d.Type()&os.ModeSymlink != 0 {
 					return nil
 				}
 
-				fh, err := os.Open(path)
+				fh, err := safefs.OpenRegular(root, rel)
 				if err != nil {
 					return nil
 				}
 				defer fh.Close()
+				info, err := fh.Stat()
+				if err != nil {
+					return nil
+				}
+				if info.Size() > maxFileBytes || !info.Mode().IsRegular() {
+					return nil
+				}
+				if idx != nil && !regexMode && !candidateSnapshot.MayContain(rel, info.Size(), info.ModTime()) {
+					return nil
+				}
 
-				sc := bufio.NewScanner(fh)
-				sc.Buffer(make([]byte, 1024), int(min64(int64(10_000_000), maxFileBytes+1024)))
+				var reader io.Reader = fh
+				if maxFileBytes < math.MaxInt64 {
+					reader = io.LimitReader(fh, maxFileBytes+1)
+				}
+				content, err := io.ReadAll(reader)
+				if err != nil || int64(len(content)) > maxFileBytes {
+					return nil
+				}
+				redactedContent := redactor.Redact(string(content))
+				sc := bufio.NewScanner(strings.NewReader(redactedContent))
+				maxScannerBytes := int64(10_000_000)
+				if maxFileBytes < maxScannerBytes-1024 {
+					maxScannerBytes = maxFileBytes + 1024
+				}
+				sc.Buffer(make([]byte, 1024), int(maxScannerBytes))
 
 				var prev []string
 				lineNo := 0
@@ -395,7 +445,16 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 					if !caseSensitive {
 						hay = strings.ToLower(line)
 					}
-					matchStart := strings.Index(hay, needle)
+					matchStart := -1
+					matchLength := len(query)
+					if expression != nil {
+						if location := expression.FindStringIndex(line); location != nil {
+							matchStart = location[0]
+							matchLength = location[1] - location[0]
+						}
+					} else {
+						matchStart = strings.Index(hay, needle)
+					}
 					if matchStart < 0 {
 						if contextLines > 0 {
 							prev = append(prev, line)
@@ -412,7 +471,7 @@ func newRepoSearchTool(root string, redactors ...*redact.Redactor) Tool {
 						snippet = prefix + line
 						matchStart += len(prefix)
 					}
-					snippet, snippetTruncated := truncateStringAroundBytes(snippet, matchStart, len(query), maxSnippetBytes)
+					snippet, snippetTruncated := truncateStringAroundBytes(snippet, matchStart, matchLength, maxSnippetBytes)
 
 					snippet = redactor.Redact(snippet)
 					matches = append(matches, match{

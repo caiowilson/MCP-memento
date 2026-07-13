@@ -20,7 +20,7 @@ This directory collects the main project documentation, including client setup, 
 
 - `repo_list_files` — list files under workspace root
 - `repo_read_file` — read redacted file content (optionally line-bounded)
-- `repo_search` — substring search across files with redacted snippets
+- `repo_search` — literal substring search by default, with explicit regex mode and redacted snippets
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
@@ -61,7 +61,7 @@ The `prime` prompt front-loads up to eight fresh-then-stale durable notes and bo
 
 ## Optional semantic retrieval
 
-Semantic retrieval is opt-in. The default remains deterministic substring scoring and does not require a model runtime. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines lexical and cosine scores. A focused `repo_context` call can then include conceptually related chunks even when they do not share the query text. `repo_search` remains a literal substring search.
+Semantic retrieval is opt-in. The default remains deterministic substring scoring and does not require a model runtime. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines lexical and cosine scores. A focused `repo_context` call can then include conceptually related chunks even when they do not share the query text. `repo_search` remains literal by default; pass `regex: true` for explicit regular-expression matching.
 
 Memento defaults to `nomic-embed-text:v1.5`, a roughly 274 MB general-purpose embedding model with enough context for the current 8 KiB chunk ceiling. Install Ollama separately and pull the model explicitly:
 
@@ -169,6 +169,8 @@ Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the server default, or pass `maxToken
 The `repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
 
 Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
+
+Run `go test ./internal/indexing -run '^$' -bench '^BenchmarkIndexerSearch1000Files$' -benchmem` to compare linear chunk scanning with trigram candidate filtering on a generated 1,000-file repository. On an Apple M4 Pro, the final three-run sample improved from 12.7–13.0 ms/op to 71.1–71.8 µs/op while reducing allocations from about 4.56 MB to 292 KB per search. `BenchmarkTrigramIndexHighEntropy1MiB` separately exercises the compact per-file representation against a high-entropy input.
 
 ## Retrieval evaluation
 

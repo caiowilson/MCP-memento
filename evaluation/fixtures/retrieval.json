@@ -6,8 +6,8 @@
       "id": "ignore-rule-reload",
       "query": "ReloadIgnoreRules",
       "relevant": [
-        { "path": "internal/indexing/indexer.go", "startLine": 154, "endLine": 155 },
-        { "path": "internal/indexing/indexer.go", "startLine": 839, "endLine": 839 },
+        { "path": "internal/indexing/indexer.go", "startLine": 157, "endLine": 158 },
+        { "path": "internal/indexing/indexer.go", "startLine": 854, "endLine": 854 },
         { "path": "internal/indexing/fs_change.go", "startLine": 142, "endLine": 142 }
       ]
     },
@@ -17,7 +17,7 @@
       "relevant": [
         { "path": "internal/mcp/output_limits.go", "startLine": 42, "endLine": 42 },
         { "path": "internal/mcp/output_limits_test.go", "startLine": 35, "endLine": 35 },
-        { "path": "internal/mcp/repo_tools.go", "startLine": 415, "endLine": 415 }
+        { "path": "internal/mcp/repo_tools.go", "startLine": 474, "endLine": 474 }
       ]
     },
     {
