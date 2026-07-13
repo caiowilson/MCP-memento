@@ -47,12 +47,18 @@ func extractStructuredFileOutline(path string, source []byte) structuredFileOutl
 				outline := structuredJSOutline(path, source)
 				attachTreeSitterExtents(&outline, analysis.Symbols)
 				return outline
-			case "python", "rust":
+			case "python", "rust", "php":
 				return structuredTreeSitterOutline(analysis)
 			}
 		}
-		if language := languageForStructuredOutline(path); language == "javascript" || language == "typescript" {
+		language := languageForStructuredOutline(path)
+		if language == "javascript" || language == "typescript" {
 			outline := structuredJSOutline(path, source)
+			outline.Fallback = true
+			return outline
+		}
+		if language == "php" {
+			outline := structuredPHPOutline(source)
 			outline.Fallback = true
 			return outline
 		}
@@ -126,6 +132,9 @@ func normalizedOutlineContainer(value string) string {
 }
 
 func languageForStructuredOutline(path string) string {
+	if parsing.IsPHPPath(path) {
+		return "php"
+	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".go":
 		return "go"
@@ -133,8 +142,6 @@ func languageForStructuredOutline(path string) string {
 		return "javascript"
 	case ".ts", ".tsx", ".mts", ".cts":
 		return "typescript"
-	case ".php":
-		return "php"
 	case ".py":
 		return "python"
 	case ".rs":

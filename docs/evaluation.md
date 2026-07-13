@@ -115,6 +115,8 @@ Baseline refresh rationale for Slice 27: consolidating client configuration and 
 
 Baseline refresh rationale for Slice 19: replacing the `syntax-v1` chunk-boundary implementation with strict tree-sitter declaration boundaries changes the persisted configuration fingerprint to `treesitter-v1`. All four retrieval fixtures were re-audited against the resulting chunks; none of their relevance ranges or rankings changed. The fingerprint-matched lexical baseline was regenerated and remains precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
 
+Baseline refresh rationale for first-class PHP parsing: adding PHP tree-sitter declaration boundaries changes the persisted chunking version to `treesitter-php-v2`. The existing four lexical fixtures do not target PHP, and their fixture fingerprint, relevance ranges, rankings, and metrics are unchanged. The fingerprint-matched baseline was regenerated and remains precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`.
+
 ## Validate the contract
 
 ```bash

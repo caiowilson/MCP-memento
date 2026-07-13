@@ -1464,7 +1464,7 @@ func applyDefaults(cfg *Config) {
 		cfg.EmbeddingBatchSize = embedding.DefaultBatchSize
 	}
 	if len(cfg.PreferredExts) == 0 {
-		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".php", ".md", ".json", ".yaml", ".yml"}
+		cfg.PreferredExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".php", ".php3", ".php4", ".php5", ".phps", ".phpt", ".phtml", ".inc", ".module", ".install", ".theme", ".profile", ".engine", ".twig", ".md", ".json", ".yaml", ".yml"}
 	}
 	if len(cfg.AllowGlobs) == 0 {
 		cfg.AllowGlobs = []string{
@@ -1499,6 +1499,9 @@ func applyDefaults(cfg *Config) {
 }
 
 func guessLanguage(rel string) string {
+	if isPHPIndexExtension(filepath.Ext(rel)) {
+		return "php"
+	}
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".go":
 		return "go"
@@ -1508,10 +1511,17 @@ func guessLanguage(rel string) string {
 		return "python"
 	case ".rs":
 		return "rust"
-	case ".php":
-		return "php"
 	default:
 		return "text"
+	}
+}
+
+func isPHPIndexExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".php", ".php3", ".php4", ".php5", ".phps", ".phpt", ".phtml", ".inc", ".module", ".install", ".theme", ".profile", ".engine":
+		return true
+	default:
+		return false
 	}
 }
 

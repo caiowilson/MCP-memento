@@ -1,0 +1,3 @@
+report_index:
+  path: /reports
+  controller: App\Controller\ReportController::index

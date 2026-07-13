@@ -21,6 +21,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0009: Native MCP resources and prime prompt (Accepted, 2026-07-11)
 - ADR 0010: Claude Code plugin distribution through verified release binaries (Accepted, 2026-07-11)
 - ADR 0011: Pure-Go tree-sitter as the shared structural parser (Accepted, 2026-07-13)
+- ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 
 ---
 
@@ -666,6 +667,46 @@ Chunking, standalone outlines, repository-context summaries, and durable-note an
 - [gotreesitter repository](https://github.com/odvcencio/gotreesitter)
 - [gotreesitter v0.32.0 release](https://github.com/odvcencio/gotreesitter/releases/tag/v0.32.0)
 - [Tree-sitter query syntax](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html)
+
+---
+
+## ADR 0012: First-class PHP parsing and Composer resolution
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+PHP was indexed and outlined through a local scanner while the other primary languages shared exact tree-sitter declaration extents. Composer resolution supported only a subset of PSR-4, and PHP compatibility had no versioned or framework-shaped measurement corpus. That left chunk boundaries, note anchors, namespace resolution, and autoload relationships vulnerable to silent drift.
+
+### Decision
+
+- Add the embedded PHP grammar from the existing pinned pure-Go `gotreesitter v0.32.0` dependency and include `grammar_subset_php` in local, CI, evaluation, and release commands.
+- Use strict PHP syntax trees for outlines, declaration-aligned chunks, namespace-scoped class relationships, and complete hidden note-anchor extents. Preserve the local scanner as the parse-error fallback.
+- Index Composer classmap `.inc` files and common PHP-bearing extensions used by templates and Drupal modules.
+- Resolve root-package `autoload` and `autoload-dev` PSR-4, PSR-0, classmap, exclusion, and files entries without executing Composer or traversing ignored `vendor` dependencies.
+- Keep Composer mappings case-sensitive and ordered, make configured-prefix misses fail closed, and keep all path resolution inside the repository root.
+- Maintain an original, dependency-free PHP 7.4–8.4 and Composer/Laravel/Symfony/WordPress/Drupal fixture suite with explicit structural, relationship, retrieval, and negative expectations.
+- Change the chunking fingerprint so existing indexes rebuild with PHP declaration boundaries.
+
+### Consequences
+
+- PHP declarations now share exact parser extents across outlines, indexing, and durable-note verification.
+- Bracketed namespaces and reused aliases resolve independently instead of relying on one file-wide regex map.
+- Composer graph coverage is broader without requiring PHP, Composer, framework installation, or network access during tests.
+- Blade and valid syntax rejected by the pinned grammar degrade to the scanner. The known grouped-import trailing-comma gap remains a measured upgrade canary.
+- Framework configuration and template relationships remain bounded conventions rather than full framework containers or runtime interpretation.
+
+### Alternatives considered
+
+- Keep the PHP scanner: smaller change, but it cannot provide trustworthy syntax extents or namespace-scoped reference resolution.
+- Execute Composer and framework tooling: highest runtime fidelity, but violates dependency-free, local-first indexing and introduces arbitrary project-code execution.
+- Index installed `vendor` trees: resolves third-party classes, but adds noise, latency, and a large retrieval surface that is intentionally ignored today.
+
+### References
+
+- [tree-sitter-php](https://github.com/tree-sitter/tree-sitter-php)
+- [Composer autoload schema](https://getcomposer.org/doc/04-schema.md#autoload)
 
 ---
 

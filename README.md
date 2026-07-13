@@ -23,6 +23,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - Canonical client configuration and LLM guidance for Claude, ChatGPT/Codex, VS Code, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - Opt-in local aggregate feedback and privacy controls: [`docs/feedback.md`](./docs/feedback.md)
+- PHP compatibility, Composer autoloading, fixtures, and accuracy metrics: [`docs/php-compatibility.md`](./docs/php-compatibility.md)
 - macOS release signing and notarization: [`docs/macos-signing.md`](./docs/macos-signing.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - Credential-free Claude Code workflows: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
@@ -128,8 +129,8 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
    - Indexed chunks and scoring
-   - Declaration-aligned Go, JavaScript/JSX, TypeScript/TSX, Python, and Rust chunk boundaries from a pinned pure-Go tree-sitter runtime, with bounded deterministic fallback
-   - Language-aware relationships (Go type analysis, TS/JS and Python imports, and PHP Composer/symbol/Laravel references)
+   - Declaration-aligned Go, JavaScript/JSX, TypeScript/TSX, Python, Rust, and PHP chunk boundaries from a pinned pure-Go tree-sitter runtime, with bounded deterministic fallback
+   - Language-aware relationships (Go type analysis, TS/JS and Python imports, and PHP Composer, symbol, include, and framework references)
    - Hard byte and line limits for LLM context safety
 5. Explicit notes are stored separately as durable, repo-scoped memory.
 

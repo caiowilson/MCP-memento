@@ -1,0 +1,369 @@
+{
+  "version": 1,
+  "thresholds": {
+    "parseSuccess": 1,
+    "symbolRecall": 1,
+    "signatureRecall": 1,
+    "declarationBoundaryRecall": 1,
+    "anchorAccuracy": 1,
+    "composerResolutionAccuracy": 1,
+    "relationshipRecall": 0.95,
+    "relationshipPrecision": 0.98,
+    "retrievalRecallAt5": 0.95,
+    "retrievalMRR": 0.9,
+    "retrievalNDCGAt5": 0.9
+  },
+  "corpora": [
+    {
+      "id": "php-7.4",
+      "kind": "language",
+      "phpVersion": "7.4",
+      "root": "corpora/php74",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 9, 14, 22, 48],
+          "symbols": [
+            {"name": "Producer", "kind": "interface", "signatureContains": ["interface Producer"]},
+            {"name": "produce", "kind": "method", "container": "Producer", "signatureContains": [": object"]},
+            {"name": "NormalizesNames", "kind": "trait", "signatureContains": ["trait NormalizesNames"]},
+            {"name": "normalizeName", "kind": "method", "container": "NormalizesNames", "signatureContains": ["string $value", ": string"]},
+            {"name": "LanguageFeatures", "kind": "class", "signatureContains": ["implements Producer"]},
+            {"name": "name", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["private string $name"]},
+            {"name": "afterNormalize", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["?Closure $afterNormalize"]},
+            {"name": "__construct", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["string $name"]},
+            {"name": "produce", "kind": "method", "container": "LanguageFeatures", "signatureContains": [": LanguageFeatures"]},
+            {"name": "label", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["?string $override", ": string"]},
+            {"name": "php74_amount", "kind": "function", "signatureContains": [": float"]}
+          ],
+          "forbiddenSymbols": ["normalize", "override"]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures", "startLine": 22, "endLine": 46},
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.label", "startLine": 39, "endLine": 45}
+      ],
+      "retrieval": [
+        {"id": "php74-null-coalesce", "query": "where is the fallback name normalized", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "php-8.0",
+      "kind": "language",
+      "phpVersion": "8.0",
+      "root": "corpora/php80",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 9, 17, 22],
+          "symbols": [
+            {"name": "Route", "kind": "class", "signatureContains": ["final class Route"]},
+            {"name": "path", "kind": "property", "container": "Route", "signatureContains": ["public string $path"]},
+            {"name": "Logger", "kind": "interface", "signatureContains": ["interface Logger"]},
+            {"name": "LanguageFeatures", "kind": "class", "signatureContains": ["final class LanguageFeatures"]},
+            {"name": "name", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["public string $name"]},
+            {"name": "logger", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["Logger|string|null $logger"]},
+            {"name": "status", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["int|string $code", ": string"]}
+          ],
+          "forbiddenSymbols": ["bodyLocalOnly", "message"]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.status", "startLine": 31, "endLine": 45}
+      ],
+      "retrieval": [
+        {"id": "php80-match", "query": "where is a status code matched to a message", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "php-8.1",
+      "kind": "language",
+      "phpVersion": "8.1",
+      "root": "corpora/php81",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 12, 17, 23],
+          "symbols": [
+            {"name": "JsonValue", "kind": "interface", "signatureContains": ["interface JsonValue"]},
+            {"name": "Renderable", "kind": "interface", "signatureContains": ["interface Renderable"]},
+            {"name": "Status", "kind": "enum", "signatureContains": ["enum Status: string"]},
+            {"name": "Draft", "kind": "case", "container": "Status", "signatureContains": ["case Draft"]},
+            {"name": "Published", "kind": "case", "container": "Status", "signatureContains": ["case Published"]},
+            {"name": "LanguageFeatures", "kind": "class", "signatureContains": ["final class LanguageFeatures"]},
+            {"name": "id", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["readonly string $id"]},
+            {"name": "serialize", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["JsonValue&Renderable $value"]},
+            {"name": "stop", "kind": "method", "container": "LanguageFeatures", "signatureContains": [": never"]}
+          ],
+          "forbiddenSymbols": ["callable"]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "Status", "startLine": 17, "endLine": 21},
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.serialize", "startLine": 32, "endLine": 37}
+      ],
+      "retrieval": [
+        {"id": "php81-intersection", "query": "where is a renderable JSON value serialized", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "php-8.2",
+      "kind": "language",
+      "phpVersion": "8.2",
+      "root": "corpora/php82",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 8, 10, 15],
+          "symbols": [
+            {"name": "HasKind", "kind": "trait", "signatureContains": ["trait HasKind"]},
+            {"name": "KIND", "kind": "const", "container": "HasKind", "signatureContains": ["const KIND"]},
+            {"name": "Packet", "kind": "class", "signatureContains": ["readonly class Packet"]},
+            {"name": "id", "kind": "property", "container": "Packet", "signatureContains": ["public string $id"]},
+            {"name": "items", "kind": "property", "container": "Packet", "signatureContains": ["Countable&IteratorAggregate", "$items"]},
+            {"name": "ready", "kind": "method", "container": "Packet", "signatureContains": [": true"]},
+            {"name": "missing", "kind": "method", "container": "Packet", "signatureContains": [": null"]}
+          ]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "Packet", "startLine": 15, "endLine": 34},
+        {"path": "src/LanguageFeatures.php", "symbol": "Packet.__construct", "startLine": 19, "endLine": 23}
+      ],
+      "retrieval": [
+        {"id": "php82-dnf", "query": "where can packet items be countable and iterable", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "php-8.3",
+      "kind": "language",
+      "phpVersion": "8.3",
+      "root": "corpora/php83",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 15],
+          "symbols": [
+            {"name": "BaseFormatter", "kind": "class", "signatureContains": ["class BaseFormatter"]},
+            {"name": "LanguageFeatures", "kind": "class", "signatureContains": ["extends BaseFormatter"]},
+            {"name": "PREFIX", "kind": "const", "container": "LanguageFeatures", "signatureContains": ["const string PREFIX"]},
+            {"name": "RETRIES", "kind": "const", "container": "LanguageFeatures", "signatureContains": ["const int RETRIES"]},
+            {"name": "format", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["string $value", ": string"]},
+            {"name": "constant", "kind": "method", "container": "LanguageFeatures", "signatureContains": ["string $name", ": mixed"]}
+          ]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.format", "startLine": 20, "endLine": 24}
+      ],
+      "retrieval": [
+        {"id": "php83-typed-constant", "query": "where is the report prefix typed", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "php-8.4",
+      "kind": "language",
+      "phpVersion": "8.4",
+      "root": "corpora/php84",
+      "files": [
+        {
+          "path": "src/LanguageFeatures.php",
+          "language": "php",
+          "declarationStarts": [7, 12, 34],
+          "symbols": [
+            {"name": "Titled", "kind": "interface", "signatureContains": ["interface Titled"]},
+            {"name": "title", "kind": "property", "container": "Titled", "signatureContains": ["string $title"]},
+            {"name": "LanguageFeatures", "kind": "class", "signatureContains": ["implements Titled"]},
+            {"name": "slug", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["private(set)", "string $slug"]},
+            {"name": "title", "kind": "property", "container": "LanguageFeatures", "signatureContains": ["string $title"]},
+            {"name": "legacyTitle", "kind": "method", "container": "LanguageFeatures", "signatureContains": [": string"]},
+            {"name": "php84_title", "kind": "function", "signatureContains": [": string"]}
+          ],
+          "forbiddenSymbols": ["get", "set", "value"]
+        }
+      ],
+      "anchors": [
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.title", "startLine": 16, "endLine": 19},
+        {"path": "src/LanguageFeatures.php", "symbol": "LanguageFeatures.legacyTitle", "startLine": 27, "endLine": 31}
+      ],
+      "retrieval": [
+        {"id": "php84-property-hook", "query": "where is the title trimmed by a property setter", "relevant": ["src/LanguageFeatures.php"]}
+      ]
+    },
+    {
+      "id": "composer-autoload",
+      "kind": "composer",
+      "phpVersion": "8.2",
+      "root": "corpora/composer",
+      "modelledOn": "Composer 2 autoload schema",
+      "files": [
+        {
+          "path": "app/Consumer.php",
+          "language": "php",
+          "symbols": [
+            {"name": "Consumer", "kind": "class", "signatureContains": ["final class Consumer"]},
+            {"name": "service", "kind": "property", "container": "Consumer", "signatureContains": ["Service $service"]},
+            {"name": "handler", "kind": "property", "container": "Consumer", "signatureContains": ["Handler $handler"]},
+            {"name": "dependencies", "kind": "method", "container": "Consumer", "signatureContains": [": array"]}
+          ]
+        },
+        {
+          "path": "bootstrap/helpers.php",
+          "language": "php",
+          "symbols": [
+            {"name": "composer_fixture_helper", "kind": "function", "signatureContains": ["string $value", ": string"]}
+          ]
+        }
+      ],
+      "relations": [
+        {"from": "app/Consumer.php", "to": "src/Service.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "special/Handler.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "fallback/FallbackOnly.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "classmap/MappedThing.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "psr0/Old/Domain/Report.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "legacy/Legacy/Controller/Admin.php", "reasons": ["semantic_reference"]},
+        {"from": "app/Consumer.php", "to": "bootstrap/helpers.php", "reasons": ["imports"]}
+      ],
+      "forbiddenRelations": [
+        {"from": "app/Consumer.php", "to": "classmap/Excluded.php"}
+      ],
+      "composerResolutions": [
+        {"class": "Fixture\\Composer\\Service", "path": "src/Service.php"},
+        {"class": "Fixture\\Composer\\Special\\Handler", "path": "special/Handler.php"},
+        {"class": "Fixture\\Composer\\FallbackOnly", "path": "fallback/FallbackOnly.php"},
+        {"class": "Legacy_Controller_Admin", "path": "legacy/Legacy/Controller/Admin.php"},
+        {"class": "Old\\Domain\\Report", "path": "psr0/Old/Domain/Report.php"},
+        {"class": "Odd\\Location\\MappedThing", "path": "classmap/MappedThing.php"},
+        {"class": "Flat\\Map\\RootMapped", "path": "classmap.php"},
+        {"class": "Fixture\\Composer\\Tests\\ComposerTest", "path": "tests/ComposerTest.php"},
+        {"class": "Odd\\Location\\Excluded", "missing": true}
+      ],
+      "autoloadFiles": ["bootstrap/helpers.php"],
+      "retrieval": [
+        {"id": "composer-consumer", "query": "where are all autoload strategies consumed", "relevant": ["app/Consumer.php"]},
+        {"id": "composer-classmap", "query": "where is the oddly located mapped thing", "relevant": ["classmap/MappedThing.php"]}
+      ]
+    },
+    {
+      "id": "laravel-app",
+      "kind": "framework",
+      "phpVersion": "8.2",
+      "root": "corpora/laravel",
+      "modelledOn": "Laravel 11 application conventions",
+      "files": [
+        {"path": "app/Http/Controllers/DashboardController.php", "language": "php", "symbols": [{"name": "DashboardController", "kind": "class", "signatureContains": ["final class DashboardController"]}, {"name": "show", "kind": "method", "container": "DashboardController", "signatureContains": ["ReportService $reports", ": View"]}]},
+        {"path": "app/Providers/AppServiceProvider.php", "language": "php", "symbols": [{"name": "AppServiceProvider", "kind": "class", "signatureContains": ["extends ServiceProvider"]}, {"name": "register", "kind": "method", "container": "AppServiceProvider", "signatureContains": [": void"]}]},
+        {"path": "app/Models/Report.php", "language": "php", "symbols": [{"name": "Report", "kind": "class", "signatureContains": ["extends Model"]}, {"name": "owner", "kind": "method", "container": "Report", "signatureContains": [": BelongsTo"]}]}
+      ],
+      "relations": [
+        {"from": "routes/web.php", "to": "app/Http/Controllers/DashboardController.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Http/Controllers/DashboardController.php", "to": "app/Services/ReportService.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Http/Controllers/DashboardController.php", "to": "resources/views/dashboard/index.blade.php", "reasons": ["semantic_reference"]},
+        {"from": "app/Http/Controllers/DashboardController.php", "to": "config/services.php", "reasons": ["semantic_reference"]},
+        {"from": "app/Providers/AppServiceProvider.php", "to": "app/Contracts/ReportRepository.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Providers/AppServiceProvider.php", "to": "app/Repositories/DatabaseReportRepository.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Models/Report.php", "to": "app/Models/User.php", "reasons": ["semantic_reference"]},
+        {"from": "app/Listeners/SendReportNotification.php", "to": "app/Events/ReportCreated.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Providers/AuthServiceProvider.php", "to": "app/Models/Report.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "app/Providers/AuthServiceProvider.php", "to": "app/Policies/ReportPolicy.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "resources/views/dashboard/index.blade.php", "to": "resources/views/layouts/app.blade.php", "reasons": ["semantic_reference"]},
+        {"from": "resources/views/dashboard/index.blade.php", "to": "resources/views/dashboard/partials/stats.blade.php", "reasons": ["semantic_reference"]},
+        {"from": "resources/views/dashboard/index.blade.php", "to": "resources/views/components/alert.blade.php", "reasons": ["semantic_reference"]}
+      ],
+      "retrieval": [
+        {"id": "laravel-dashboard", "query": "where does the dashboard load recent reports", "relevant": ["app/Http/Controllers/DashboardController.php", "app/Services/ReportService.php"]},
+        {"id": "laravel-binding", "query": "where is the report repository bound to its database implementation", "relevant": ["app/Providers/AppServiceProvider.php"]},
+        {"id": "laravel-view", "query": "which Blade view extends the app layout and shows report stats", "relevant": ["resources/views/dashboard/index.blade.php"]}
+      ]
+    },
+    {
+      "id": "symfony-app",
+      "kind": "framework",
+      "phpVersion": "8.2",
+      "root": "corpora/symfony",
+      "modelledOn": "Symfony 7 application conventions",
+      "files": [
+        {"path": "src/Controller/ReportController.php", "language": "php", "symbols": [{"name": "ReportController", "kind": "class", "signatureContains": ["extends AbstractController"]}, {"name": "index", "kind": "method", "container": "ReportController", "signatureContains": ["ReportService $reports", ": Response"]}]},
+        {"path": "src/Entity/Report.php", "language": "php", "symbols": [{"name": "Report", "kind": "class", "signatureContains": ["final class Report"]}, {"name": "id", "kind": "property", "container": "Report", "signatureContains": ["private int $id"]}]},
+        {"path": "src/MessageHandler/GenerateReportHandler.php", "language": "php", "symbols": [{"name": "GenerateReportHandler", "kind": "class", "signatureContains": ["final class GenerateReportHandler"]}, {"name": "__invoke", "kind": "method", "container": "GenerateReportHandler", "signatureContains": ["GenerateReport $message"]}]}
+      ],
+      "relations": [
+        {"from": "src/Controller/ReportController.php", "to": "src/Service/ReportService.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "src/Controller/ReportController.php", "to": "templates/report/index.html.twig", "reasons": ["semantic_reference"]},
+        {"from": "src/Entity/Report.php", "to": "src/Repository/ReportRepository.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "src/MessageHandler/GenerateReportHandler.php", "to": "src/Message/GenerateReport.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "src/MessageHandler/GenerateReportHandler.php", "to": "src/Service/ReportService.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "config/routes.yaml", "to": "src/Controller/ReportController.php", "reasons": ["semantic_reference"]},
+        {"from": "config/services.yaml", "to": "src/Repository/ReportRepository.php", "reasons": ["semantic_reference"]},
+        {"from": "config/services.yaml", "to": "src/Service/ReportService.php", "reasons": ["semantic_reference"]},
+        {"from": "templates/report/index.html.twig", "to": "templates/base.html.twig", "reasons": ["semantic_reference"]},
+        {"from": "templates/report/index.html.twig", "to": "templates/report/_summary.html.twig", "reasons": ["semantic_reference"]}
+      ],
+      "retrieval": [
+        {"id": "symfony-route", "query": "where is the reports route handled", "relevant": ["src/Controller/ReportController.php", "config/routes.yaml"]},
+        {"id": "symfony-message", "query": "where is a generate report message handled", "relevant": ["src/MessageHandler/GenerateReportHandler.php"]},
+        {"id": "symfony-template", "query": "which Twig view includes the report summary", "relevant": ["templates/report/index.html.twig"]}
+      ]
+    },
+    {
+      "id": "wordpress-plugin-theme",
+      "kind": "framework",
+      "phpVersion": "7.4",
+      "root": "corpora/wordpress",
+      "modelledOn": "WordPress 6 plugin and theme conventions",
+      "files": [
+        {"path": "report-plugin.php", "language": "php", "symbols": []},
+        {"path": "includes/class-report-plugin.php", "language": "php", "symbols": [{"name": "Report_Plugin", "kind": "class", "signatureContains": ["final class Report_Plugin"]}, {"name": "boot", "kind": "method", "container": "Report_Plugin", "signatureContains": [": void"]}]},
+        {"path": "includes/functions.php", "language": "php", "symbols": [{"name": "memento_register_report_type", "kind": "function", "signatureContains": [": void"]}, {"name": "memento_render_reports", "kind": "function", "signatureContains": [": string"]}]}
+      ],
+      "relations": [
+        {"from": "report-plugin.php", "to": "includes/class-report-repository.php", "reasons": ["imports"]},
+        {"from": "report-plugin.php", "to": "includes/class-report-plugin.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "report-plugin.php", "to": "includes/functions.php", "reasons": ["imports"]},
+        {"from": "includes/class-report-plugin.php", "to": "includes/class-report-repository.php", "reasons": ["semantic_reference"]},
+        {"from": "includes/class-report-plugin.php", "to": "includes/functions.php", "reasons": ["semantic_reference"]},
+        {"from": "theme/functions.php", "to": "includes/functions.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "theme/single-report.php", "to": "theme/template-parts/content-report.php", "reasons": ["semantic_reference"]}
+      ],
+      "retrieval": [
+        {"id": "wordpress-hooks", "query": "where are report hooks and shortcode callbacks registered", "relevant": ["includes/class-report-plugin.php"]},
+        {"id": "wordpress-template-part", "query": "where is a single report template rendered", "relevant": ["theme/single-report.php", "theme/template-parts/content-report.php"]}
+      ]
+    },
+    {
+      "id": "drupal-module",
+      "kind": "framework",
+      "phpVersion": "8.3",
+      "root": "corpora/drupal",
+      "modelledOn": "Drupal 11 custom module conventions",
+      "files": [
+        {"path": "report.module", "language": "php", "symbols": [{"name": "report_theme", "kind": "function", "signatureContains": [": array"]}]},
+        {"path": "report.install", "language": "php", "symbols": [{"name": "report_install", "kind": "function", "signatureContains": [": void"]}]},
+        {"path": "report.theme", "language": "php", "symbols": [{"name": "report_preprocess_report_summary", "kind": "function", "signatureContains": ["array &$variables", ": void"]}]},
+        {"path": "includes/report.inc", "language": "php", "symbols": [{"name": "report_fixture_label", "kind": "function", "signatureContains": ["int $count", ": string"]}]},
+        {"path": "src/Controller/ReportController.php", "language": "php", "symbols": [{"name": "ReportController", "kind": "class", "signatureContains": ["extends ControllerBase"]}, {"name": "summary", "kind": "method", "container": "ReportController", "signatureContains": [": array"]}]},
+        {"path": "src/Plugin/Block/ReportBlock.php", "language": "php", "symbols": [{"name": "ReportBlock", "kind": "class", "signatureContains": ["extends BlockBase"]}, {"name": "build", "kind": "method", "container": "ReportBlock", "signatureContains": [": array"]}]}
+      ],
+      "relations": [
+        {"from": "report.services.yml", "to": "src/Service/ReportRepository.php", "reasons": ["semantic_reference"]},
+        {"from": "report.services.yml", "to": "src/Controller/ReportController.php", "reasons": ["semantic_reference"]},
+        {"from": "report.routing.yml", "to": "src/Controller/ReportController.php", "reasons": ["semantic_reference"]},
+        {"from": "src/Controller/ReportController.php", "to": "src/Service/ReportRepository.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "src/Controller/ReportController.php", "to": "templates/report-summary.html.twig", "reasons": ["semantic_reference"]},
+        {"from": "src/Plugin/Block/ReportBlock.php", "to": "src/Service/ReportRepository.php", "reasons": ["imports", "semantic_reference"]},
+        {"from": "src/Plugin/Block/ReportBlock.php", "to": "templates/report-summary.html.twig", "reasons": ["semantic_reference"]},
+        {"from": "report.module", "to": "templates/report-summary.html.twig", "reasons": ["semantic_reference"]}
+      ],
+      "retrieval": [
+        {"id": "drupal-route", "query": "where is the report summary route implemented", "relevant": ["report.routing.yml", "src/Controller/ReportController.php"]},
+        {"id": "drupal-theme-hook", "query": "where is the report summary theme hook declared", "relevant": ["report.module"]},
+        {"id": "drupal-block", "query": "where does the report summary block load reports", "relevant": ["src/Plugin/Block/ReportBlock.php"]}
+      ]
+    }
+  ]
+}

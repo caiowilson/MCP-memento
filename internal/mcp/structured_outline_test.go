@@ -307,6 +307,7 @@ func TestStructuredSupportedLanguageParseFailureUsesSafeFallback(t *testing.T) {
 	}{
 		{path: "broken.py", source: "def broken(:\n    return 'python-fallback-body'\n"},
 		{path: "broken.rs", source: "pub fn broken( {\n    let marker = \"rust-fallback-body\";\n}\n"},
+		{path: "broken.php", source: "<?php\nclass Broken {\n    public function nope( {\n        return 'php-fallback-body';\n    }\n}\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
@@ -316,6 +317,13 @@ func TestStructuredSupportedLanguageParseFailureUsesSafeFallback(t *testing.T) {
 			}
 			assertOutlineOmits(t, outline, "fallback-body")
 		})
+	}
+}
+
+func TestStructuredBladeTemplateUsesPHPScannerFallback(t *testing.T) {
+	outline := extractStructuredFileOutline("resources/views/dashboard.blade.php", []byte("@extends('layouts.app')\n<div>{{ $value }}</div>\n"))
+	if outline.Language != "php" || !outline.Fallback {
+		t.Fatalf("expected bounded PHP fallback for Blade, got %#v", outline)
 	}
 }
 

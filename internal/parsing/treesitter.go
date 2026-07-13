@@ -36,6 +36,15 @@ type Symbol struct {
 	ExtentEndLine   int
 }
 
+// Relation is a parser-backed dependency or declaration used by language-aware
+// related-file analysis. PHP class-like names are namespace- and alias-resolved
+// so callers can apply project configuration such as Composer autoload mappings.
+type Relation struct {
+	Kind  string
+	Name  string
+	Alias string
+}
+
 // Analysis is the shared structural result consumed by indexing and MCP
 // outline paths.
 type Analysis struct {
@@ -45,6 +54,7 @@ type Analysis struct {
 	Header            []string
 	Symbols           []Symbol
 	DeclarationStarts []int
+	Relations         []Relation
 }
 
 type languageSpec struct {
@@ -56,7 +66,7 @@ var parserPools sync.Map   // map[string]*gotreesitter.ParserPool
 var symbolQueries sync.Map // map[string]*gotreesitter.Query
 var parseGate = make(chan struct{}, 1)
 
-// Analyze parses supported Go, JavaScript/TypeScript, Python, and Rust source.
+// Analyze parses supported Go, JavaScript/TypeScript, Python, Rust, and PHP source.
 // It rejects partial/error trees so callers never receive guessed structure.
 func Analyze(path string, source []byte) (analysis Analysis, err error) {
 	defer func() {
@@ -104,6 +114,9 @@ func Analyze(path string, source []byte) (analysis Analysis, err error) {
 
 	analysis = Analysis{Language: publicLanguage(path, spec.name)}
 	analysis.PackageName, analysis.Imports = sourceMetadata(root, lang, source, spec.name)
+	if spec.name == "php" {
+		analysis.PackageName, analysis.Imports, analysis.Relations = analyzePHPRelations(root, lang, source)
+	}
 	analysis.DeclarationStarts = declarationStarts(root, lang, source, spec.name)
 	analysis.Symbols, err = collectSymbols(tree, root, lang, source, spec.name)
 	if err != nil {
@@ -149,7 +162,21 @@ func Supported(path string) bool {
 	return ok
 }
 
+// IsPHPPath reports whether path uses a PHP-bearing extension supported by
+// Memento, including Composer classmap and common Drupal source extensions.
+func IsPHPPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".php", ".php3", ".php4", ".php5", ".phps", ".phpt", ".phtml", ".inc", ".module", ".install", ".theme", ".profile", ".engine":
+		return true
+	default:
+		return false
+	}
+}
+
 func specForPath(path string) (languageSpec, bool) {
+	if strings.HasSuffix(strings.ToLower(filepath.ToSlash(path)), ".blade.php") {
+		return languageSpec{}, false
+	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".go":
 		return languageSpec{name: "go", load: grammars.GoLanguage}, true
@@ -165,6 +192,8 @@ func specForPath(path string) (languageSpec, bool) {
 		return languageSpec{name: "python", load: grammars.PythonLanguage}, true
 	case ".rs":
 		return languageSpec{name: "rust", load: grammars.RustLanguage}, true
+	case ".php", ".php3", ".php4", ".php5", ".phps", ".phpt", ".phtml", ".inc", ".module", ".install", ".theme", ".profile", ".engine":
+		return languageSpec{name: "php", load: grammars.PhpLanguage}, true
 	default:
 		return languageSpec{}, false
 	}
@@ -184,8 +213,7 @@ func publicLanguage(path, parserLanguage string) string {
 func declarationStarts(root *gotreesitter.Node, lang *gotreesitter.Language, source []byte, language string) []int {
 	starts := make([]int, 0, root.NamedChildCount())
 	lines := strings.Split(string(source), "\n")
-	for index := 0; index < root.NamedChildCount(); index++ {
-		child := root.NamedChild(index)
+	for _, child := range topLevelDeclarationNodes(root, lang, language) {
 		if child == nil || !isTopLevelDeclaration(child, lang, language) {
 			continue
 		}
@@ -203,6 +231,30 @@ func declarationStarts(root *gotreesitter.Node, lang *gotreesitter.Language, sou
 		}
 		out = append(out, line)
 	}
+	return out
+}
+
+func topLevelDeclarationNodes(root *gotreesitter.Node, lang *gotreesitter.Language, language string) []*gotreesitter.Node {
+	out := make([]*gotreesitter.Node, 0, root.NamedChildCount())
+	var appendChildren func(*gotreesitter.Node)
+	appendChildren = func(parent *gotreesitter.Node) {
+		for index := 0; index < parent.NamedChildCount(); index++ {
+			child := parent.NamedChild(index)
+			if child == nil {
+				continue
+			}
+			if isTopLevelDeclaration(child, lang, language) {
+				out = append(out, child)
+				continue
+			}
+			if language == "php" && child.Type(lang) == "namespace_definition" {
+				if body := child.ChildByFieldName("body", lang); body != nil {
+					appendChildren(body)
+				}
+			}
+		}
+	}
+	appendChildren(root)
 	return out
 }
 
@@ -229,6 +281,11 @@ func isTopLevelDeclaration(node *gotreesitter.Node, lang *gotreesitter.Language,
 	case "rust":
 		switch typ {
 		case "use_declaration", "function_item", "struct_item", "enum_item", "trait_item", "impl_item", "type_item", "const_item", "static_item", "mod_item", "union_item", "macro_definition":
+			return true
+		}
+	case "php":
+		switch typ {
+		case "namespace_use_declaration", "const_declaration", "class_declaration", "interface_declaration", "trait_declaration", "enum_declaration", "function_definition":
 			return true
 		}
 	}
@@ -291,12 +348,17 @@ func symbolQuery(language string) string {
 		return `[(function_definition) (class_definition)] @symbol`
 	case "rust":
 		return `[(function_item) (function_signature_item) (struct_item) (enum_item) (trait_item) (impl_item) (union_item) (type_item) (const_item) (static_item) (mod_item) (field_declaration)] @symbol`
+	case "php":
+		return `[(class_declaration) (interface_declaration) (trait_declaration) (enum_declaration) (function_definition) (method_declaration) (property_element) (property_promotion_parameter) (const_element) (enum_case)] @symbol`
 	default:
 		return `(_) @symbol`
 	}
 }
 
 func visibleSymbol(node *gotreesitter.Node, lang *gotreesitter.Language) bool {
+	if node != nil && node.Type(lang) == "property_promotion_parameter" {
+		return true
+	}
 	for current := node.Parent(); current != nil; current = current.Parent() {
 		switch current.Type(lang) {
 		case "function_declaration", "generator_function_declaration", "function_expression", "arrow_function", "method_declaration", "method_definition", "function_definition", "function_item", "closure_expression":
@@ -390,6 +452,27 @@ func symbolKind(node *gotreesitter.Node, lang *gotreesitter.Language, language s
 		case "field_declaration":
 			return "property"
 		}
+	case "php":
+		switch typ {
+		case "class_declaration":
+			return "class"
+		case "interface_declaration":
+			return "interface"
+		case "trait_declaration":
+			return "trait"
+		case "enum_declaration":
+			return "enum"
+		case "function_definition":
+			return "function"
+		case "method_declaration":
+			return "method"
+		case "property_element", "property_promotion_parameter":
+			return "property"
+		case "const_element":
+			return "const"
+		case "enum_case":
+			return "case"
+		}
 	}
 	return ""
 }
@@ -400,16 +483,27 @@ func symbolFromNode(node *gotreesitter.Node, lang *gotreesitter.Language, source
 		nameNode = node.ChildByFieldName("type", lang)
 	}
 	if nameNode == nil {
-		nameNode = firstNamedDescendant(node, lang, "identifier", "type_identifier", "field_identifier", "property_identifier", "private_property_identifier")
+		nameNode = firstNamedDescendant(node, lang, "identifier", "type_identifier", "field_identifier", "property_identifier", "private_property_identifier", "name", "variable_name")
 	}
 	if nameNode == nil {
 		return Symbol{}, false
 	}
 	name := strings.TrimSpace(nameNode.Text(source))
+	if language == "php" {
+		name = strings.TrimLeft(name, "&$")
+	}
 	if name == "" {
 		return Symbol{}, false
 	}
 	extent := node
+	if language == "php" {
+		switch node.Type(lang) {
+		case "property_element", "const_element":
+			if parent := node.Parent(); parent != nil {
+				extent = parent
+			}
+		}
+	}
 	if parent := node.Parent(); parent != nil && parent.Type(lang) == "decorated_definition" {
 		extent = parent
 	}
@@ -447,13 +541,29 @@ func declarationSignature(node *gotreesitter.Node, lang *gotreesitter.Language, 
 			body = value.ChildByFieldName("body", lang)
 		}
 	}
+	if node.Type(lang) == "property_element" || node.Type(lang) == "const_element" {
+		if parent := node.Parent(); parent != nil {
+			signatureNode = parent
+		}
+	}
 	start, end := int(signatureNode.StartByte()), int(signatureNode.EndByte())
+	if node.Type(lang) == "property_element" {
+		end = int(node.EndByte())
+		if value := node.ChildByFieldName("default_value", lang); value != nil {
+			end = int(value.StartByte())
+		}
+	}
+	if node.Type(lang) == "const_element" {
+		if name := firstNamedDescendant(node, lang, "name"); name != nil {
+			end = int(name.EndByte())
+		}
+	}
 	if body == nil {
 		body = node.ChildByFieldName("body", lang)
 	}
 	if body != nil {
 		end = int(body.StartByte())
-	} else if body := firstDirectChild(node, lang, "block", "statement_block", "class_body", "declaration_list", "field_declaration_list", "interface_body", "enum_body"); body != nil {
+	} else if body := firstDirectChild(node, lang, "block", "statement_block", "class_body", "declaration_list", "field_declaration_list", "interface_body", "enum_body", "enum_declaration_list", "property_hook_list"); body != nil {
 		end = int(body.StartByte())
 	}
 	if start < 0 || end <= start || end > len(source) {
@@ -490,7 +600,7 @@ func symbolContainer(node *gotreesitter.Node, lang *gotreesitter.Language, sourc
 func nearestContainer(node *gotreesitter.Node, lang *gotreesitter.Language, source []byte, language string) string {
 	for current := node; current != nil; current = current.Parent() {
 		typ := current.Type(lang)
-		isContainer := typ == "class_declaration" || typ == "class_definition" || typ == "interface_declaration" || typ == "trait_item" || typ == "impl_item" || typ == "struct_item"
+		isContainer := typ == "class_declaration" || typ == "class_definition" || typ == "interface_declaration" || typ == "trait_declaration" || typ == "enum_declaration" || typ == "trait_item" || typ == "impl_item" || typ == "struct_item"
 		if !isContainer {
 			continue
 		}
@@ -508,7 +618,7 @@ func nearestContainer(node *gotreesitter.Node, lang *gotreesitter.Language, sour
 func hasContainer(node *gotreesitter.Node, lang *gotreesitter.Language) bool {
 	for current := node; current != nil; current = current.Parent() {
 		switch current.Type(lang) {
-		case "class_declaration", "class_definition", "interface_declaration", "trait_item", "impl_item", "struct_item":
+		case "class_declaration", "class_definition", "interface_declaration", "trait_declaration", "enum_declaration", "trait_item", "impl_item", "struct_item":
 			return true
 		}
 	}
@@ -634,6 +744,9 @@ func leadingDeclarationLine(lines []string, line int, language string) int {
 		}
 		if language == "rust" {
 			isLeading = isLeading || strings.HasPrefix(previous, "#[") || strings.HasPrefix(previous, "#![")
+		}
+		if language == "php" {
+			isLeading = isLeading || strings.HasPrefix(previous, "#[")
 		}
 		if !isLeading {
 			break

@@ -1,0 +1,6 @@
+services:
+  report.repository:
+    class: Drupal\report\Service\ReportRepository
+
+  Drupal\report\Controller\ReportController:
+    arguments: ['@report.repository']

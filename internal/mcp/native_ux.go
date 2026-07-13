@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"memento-mcp/internal/parsing"
 	"memento-mcp/internal/redact"
 )
 
@@ -318,6 +319,9 @@ func resourceFileAllowed(rel string) bool {
 }
 
 func resourceMIMEType(path string) string {
+	if parsing.IsPHPPath(path) {
+		return "application/x-httpd-php"
+	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".md":
 		return "text/markdown"
@@ -331,8 +335,6 @@ func resourceMIMEType(path string) string {
 		return "text/javascript"
 	case ".ts", ".tsx", ".mts", ".cts":
 		return "text/typescript"
-	case ".php":
-		return "application/x-httpd-php"
 	default:
 		return "text/plain"
 	}

@@ -1,0 +1,8 @@
+<?php
+
+declare(strict_types=1);
+
+function report_preprocess_report_summary(array &$variables): void
+{
+    $variables['count'] = count($variables['reports']);
+}

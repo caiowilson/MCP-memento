@@ -343,6 +343,24 @@ The versioned workflow signs raw binaries with the hardened runtime, signs the i
 - [x] Replace language-specific outline/chunk/anchor structure with tree-sitter where available and deterministic fallbacks elsewhere (status: done)
 - [x] Add tests across Go, JS/JSX, TS/TSX, Python, and Rust (status: done)
 
+### Slice 29 — First-class PHP parsing and compatibility
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: large
+- Scope: `internal/parsing/`, `internal/indexing/`, `internal/mcp/`, `evaluation/php-compat/`
+- Priority: P4
+
+#### Steps
+
+- [x] Add the pinned PHP tree-sitter grammar to local, CI, evaluation, and release builds (status: done)
+- [x] Use PHP syntax trees for outlines, declaration chunks, relationships, and note-anchor extents with scanner fallback (status: done)
+- [x] Expand root Composer support across PSR-4, PSR-0, classmap, exclusions, autoload files, and development mappings (status: done)
+- [x] Index Composer `.inc` files plus common template and Drupal PHP-bearing extensions (status: done)
+- [x] Add dependency-free PHP 7.4–8.4 and Composer/Laravel/Symfony/WordPress/Drupal fixture suites (status: done)
+- [x] Add reproducible structural, Composer, and relationship accuracy reporting (status: done)
+- [ ] Score the seeded PHP retrieval judgments with a term-aware lexical or hybrid corpus adapter (status: follow-up)
+
 ## Recently Completed (historical)
 
 - Slice 1: VS Code happy path (done)

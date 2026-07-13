@@ -22,7 +22,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_list_files` — list files under workspace root
 - `repo_read_file` — read redacted file content (optionally line-bounded)
 - `repo_search` — literal substring search by default, with explicit regex mode and redacted snippets
-- `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
+- `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves includes, Composer PSR-4/PSR-0/classmap/files autoloading, symbol references, and bounded framework conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks, related files, and path-matching durable memories, with intent-aware routing for `navigate`, `implement`, and `review`
 - `repo_diff_context` — compact exact-file chunks and a bounded, redacted unified diff summary for auto-detected Git worktree changes or an explicit ordered path override
@@ -146,7 +146,7 @@ Example anchored upsert:
 
 `repo_outline` is the discoverable, low-cost structural view. It returns package/module metadata and an ordered `symbols` array. Each symbol includes `name`, `kind`, `signature`, `startLine`, `endLine`, and optional `documentation` and `container`. Function and method bodies are never returned. `repo_context` outline and summary modes consume this same structural result, so their language coverage and symbol names stay aligned.
 
-Go, JavaScript/JSX, TypeScript/TSX, Python, and Rust first pass through pinned `github.com/odvcencio/gotreesitter` queries. The runtime is pure Go and release builds select only those six grammars, preserving `CGO_ENABLED=0` cross-compilation. Parsing is strict, capped at 1 MiB and 500 ms, and yields body-free signatures plus hidden full declaration extents used by syntax chunking and durable-note anchors. Go and JavaScript/TypeScript retain their richer renderers after the shared parse; Python and Rust render query results directly. PHP retains its local structural scanner. Malformed supported files and other languages return a bounded, sanitized declaration fallback with `fallback: true` instead of failing the call.
+Go, JavaScript/JSX, TypeScript/TSX, Python, Rust, and PHP first pass through pinned `github.com/odvcencio/gotreesitter` queries. The runtime is pure Go and release builds select only those seven grammars, preserving `CGO_ENABLED=0` cross-compilation. Parsing is strict, capped at 1 MiB and 500 ms, and yields body-free signatures plus hidden full declaration extents used by syntax chunking and durable-note anchors. Go and JavaScript/TypeScript retain their richer renderers after the shared parse; Python, Rust, and PHP render query results directly. Malformed supported files use their bounded language-aware scanner where available, then the sanitized generic declaration fallback with `fallback: true` instead of failing the call.
 
 Input options:
 
@@ -171,9 +171,9 @@ Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the server default, or pass `maxToken
 
 The `repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
 
-Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust' ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
+Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust,grammar_subset_php' ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
 
-Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust' ./internal/indexing -run '^$' -bench '^BenchmarkIndexerSearch1000Files$' -benchmem` to compare linear chunk scanning with trigram candidate filtering on a generated 1,000-file repository. On an Apple M4 Pro, the final three-run sample improved from 12.7–13.0 ms/op to 71.1–71.8 µs/op while reducing allocations from about 4.56 MB to 292 KB per search. `BenchmarkTrigramIndexHighEntropy1MiB` separately exercises the compact per-file representation against a high-entropy input.
+Run `go test -tags='grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust,grammar_subset_php' ./internal/indexing -run '^$' -bench '^BenchmarkIndexerSearch1000Files$' -benchmem` to compare linear chunk scanning with trigram candidate filtering on a generated 1,000-file repository. On an Apple M4 Pro, the final three-run sample improved from 12.7–13.0 ms/op to 71.1–71.8 µs/op while reducing allocations from about 4.56 MB to 292 KB per search. `BenchmarkTrigramIndexHighEntropy1MiB` separately exercises the compact per-file representation against a high-entropy input.
 
 ## Retrieval evaluation
 
@@ -198,7 +198,7 @@ A path-only judgment matches the first retrieved chunk from that file. A line-bo
 
 Default include/exclude rules (configurable in code):
 
-- Include by extension: `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.php`, `.md`, `.json`, `.yaml`, `.yml`
+- Include by extension: `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.rs`, PHP-bearing `.php`/`.phtml`/`.inc`/Drupal extensions, `.twig`, `.md`, `.json`, `.yaml`, `.yml`
 - Include by high-signal path: `go.mod`, `go.sum`, `README*`, `Makefile`, `Dockerfile`, `.github/workflows/*`, `Taskfile.yml`
 - Exclude by pattern: `.env*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.crt`, `*.der`, `*.ppk`, `id_rsa`, `id_ed25519`, `*.sqlite`, `*.db`, `*.bin`, `*.exe`
 

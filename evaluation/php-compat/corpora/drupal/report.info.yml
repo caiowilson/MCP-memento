@@ -1,0 +1,4 @@
+name: Report fixture
+type: module
+description: Original Drupal-shaped compatibility fixture.
+core_version_requirement: ^11

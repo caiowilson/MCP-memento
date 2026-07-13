@@ -766,7 +766,7 @@ func touchesPHPRelations(paths []string) bool {
 
 func isPHPRelationPath(rel string) bool {
 	rel = filepath.ToSlash(filepath.Clean(rel))
-	return strings.EqualFold(filepath.Ext(rel), ".php") || filepath.Base(rel) == "composer.json"
+	return isPHPRelationFile(rel) || isPHPFrameworkRelationFile(rel) || filepath.Base(rel) == "composer.json"
 }
 
 func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {

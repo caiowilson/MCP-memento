@@ -1,7 +1,7 @@
 name: Claude Code Plugin
 
 env:
-  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+  TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust,grammar_subset_php
 
 on:
   pull_request:

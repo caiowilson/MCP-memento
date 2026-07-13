@@ -1,0 +1,26 @@
+{
+  "name": "memento-fixtures/composer-autoload",
+  "config": {
+    "platform": {
+      "php": "8.2.0"
+    }
+  },
+  "autoload": {
+    "psr-4": {
+      "Fixture\\Composer\\Special\\": "special/",
+      "Fixture\\Composer\\": ["src/", "fallback/"]
+    },
+    "psr-0": {
+      "Legacy_": "legacy/",
+      "Old\\": "psr0/"
+    },
+    "classmap": ["classmap/", "classmap.php"],
+    "files": ["bootstrap/helpers.php"],
+    "exclude-from-classmap": ["/classmap/Excluded.php"]
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Fixture\\Composer\\Tests\\": "tests/"
+    }
+  }
+}

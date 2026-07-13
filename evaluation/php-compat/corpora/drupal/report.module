@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Implements hook_theme().
+ */
+function report_theme(): array
+{
+    return [
+        'report_summary' => [
+            'template' => 'report-summary'
+        ]
+    ];
+}

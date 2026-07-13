@@ -620,9 +620,9 @@ func relationScore(reasons []string) int {
 		switch r {
 		case "go_types_refs_target", "go_types_used_by_target":
 			score += 6
-		case "imports_target_package", "imported_by":
+		case "imports_target_package", "imported_by", "autoloaded_by":
 			score += 4
-		case "imports", "imported_package", "includes", "included_by":
+		case "imports", "imported_package", "includes", "included_by", "autoloads":
 			score += 3
 		case "same_dir":
 			score += 2

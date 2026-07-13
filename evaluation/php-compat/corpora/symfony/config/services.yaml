@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  App\:
+    resource: '../src/'
+
+  App\Service\ReportService:
+    arguments:
+      $reports: '@App\Repository\ReportRepository'

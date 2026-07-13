@@ -2,41 +2,32 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
+
+	"memento-mcp/internal/parsing"
 )
 
 var phpGraphCache sync.Map // key: cleaned rootAbs, value: *importGraph
 
 type phpFileRelations struct {
-	abs       string
-	rel       string
-	source    string
-	masked    string
-	namespace string
-	declared  []string
-	uses      map[string]string // local alias -> fully-qualified class name
-	traitUses []string
-}
-
-type composerAutoload struct {
-	Autoload struct {
-		PSR4 map[string]json.RawMessage `json:"psr-4"`
-	} `json:"autoload"`
-	AutoloadDev struct {
-		PSR4 map[string]json.RawMessage `json:"psr-4"`
-	} `json:"autoload-dev"`
-}
-
-type psr4Prefix struct {
-	namespace string
-	dirs      []string
+	abs        string
+	rel        string
+	source     string
+	masked     string
+	namespace  string
+	declared   []string
+	functions  []string
+	uses       map[string]string // local alias -> fully-qualified class name
+	imports    []string          // canonical parser-backed namespace imports
+	traitUses  []string
+	references []string
+	includes   []string
+	parsed     bool
 }
 
 func getPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, error) {
@@ -62,9 +53,12 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 		importers:    map[string][]string{},
 		references:   map[string][]string{},
 		referencedBy: map[string][]string{},
+		autoloads:    map[string][]string{},
+		autoloadedBy: map[string][]string{},
 	}
 	files := make([]phpFileRelations, 0, 128)
-	classFiles := map[string]string{}
+	filesByRel := map[string]phpFileRelations{}
+	frameworkSources := map[string][]byte{}
 	ignored := loadGitIgnored(rootAbs)
 
 	walkErr := filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, err error) error {
@@ -82,7 +76,9 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 			return filepath.SkipDir
 		case d.IsDir() && rel != "." && ignored.Matches(rel):
 			return filepath.SkipDir
-		case d.IsDir() || shouldIgnoreFile(d.Name()) || !strings.EqualFold(filepath.Ext(d.Name()), ".php"):
+		case d.Type()&os.ModeSymlink != 0:
+			return nil
+		case d.IsDir() || shouldIgnoreFile(d.Name()) || (!isPHPRelationFile(rel) && !isPHPFrameworkRelationFile(rel)):
 			return nil
 		case ignored.Matches(rel):
 			return nil
@@ -95,36 +91,106 @@ func buildPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, er
 		if err != nil {
 			return nil
 		}
+		if !isPHPRelationFile(rel) {
+			frameworkSources[rel] = b
+			return nil
+		}
 		file := parsePHPFileRelations(path, rel, string(b))
 		files = append(files, file)
-		for _, class := range file.declared {
-			classFiles[strings.ToLower(class)] = file.rel
-		}
+		filesByRel[file.rel] = file
 		return nil
 	})
 	if walkErr != nil {
 		return nil, walkErr
 	}
 
-	psr4 := readComposerPSR4(rootAbs)
+	composer := readComposerAutoload(rootAbs)
+	resolver := buildComposerResolver(rootAbs, composer, filesByRel)
+	classFiles := map[string]string{}
+	functionFiles := map[string]string{}
 	for _, file := range files {
-		for _, spec := range parsePHPIncludeSpecifiers(file.source) {
+		if _, excluded := resolver.excluded[file.rel]; excluded {
+			continue
+		}
+		for _, class := range file.declared {
+			key := strings.ToLower(class)
+			if _, exists := classFiles[key]; !exists {
+				classFiles[key] = file.rel
+			}
+		}
+		for _, function := range file.functions {
+			key := strings.ToLower(function)
+			if _, exists := functionFiles[key]; !exists {
+				functionFiles[key] = file.rel
+			}
+		}
+	}
+	for _, rel := range composerAutoloadFiles(rootAbs, composer.files, ignored) {
+		addPHPAutoloadEdge(g, "composer.json", rel)
+	}
+	for _, file := range files {
+		includeSpecifiers := file.includes
+		if !file.parsed {
+			includeSpecifiers = parsePHPIncludeSpecifiers(file.source)
+		}
+		for _, spec := range includeSpecifiers {
 			if rel := resolvePHPIncludeToRel(rootAbs, file.abs, spec); rel != "" {
 				addPHPImportEdge(g, file.rel, rel)
 			}
 		}
-		for _, class := range file.uses {
-			if rel := resolvePHPClassToRel(rootAbs, class, classFiles, psr4); rel != "" {
+		importClasses := file.imports
+		if !file.parsed {
+			for _, class := range file.uses {
+				importClasses = appendUnique(importClasses, class)
+			}
+		}
+		for _, class := range importClasses {
+			if rel := resolvePHPClassToRel(class, classFiles, resolver); rel != "" {
 				addPHPImportEdge(g, file.rel, rel)
 			}
 		}
 		for _, class := range referencedPHPClasses(file) {
-			if rel := resolvePHPClassToRel(rootAbs, class, classFiles, psr4); rel != "" {
+			if rel := resolvePHPClassToRel(class, classFiles, resolver); rel != "" {
 				addPHPReferenceEdge(g, file.rel, rel)
 			}
 		}
 		for _, rel := range laravelConventionReferences(rootAbs, file.source) {
 			addPHPReferenceEdge(g, file.rel, rel)
+		}
+		for _, rel := range symfonyPHPTemplateReferences(rootAbs, file.rel, []byte(file.source)) {
+			addPHPReferenceEdge(g, file.rel, rel)
+		}
+		for _, rel := range drupalPHPTemplateReferences(rootAbs, file.rel, []byte(file.source)) {
+			addPHPReferenceEdge(g, file.rel, rel)
+		}
+		for _, rel := range laravelBladeTemplateReferences(rootAbs, file.rel, []byte(file.source)) {
+			addPHPReferenceEdge(g, file.rel, rel)
+		}
+		for _, rel := range wordpressTemplatePartReferences(rootAbs, file.rel, []byte(file.source)) {
+			addPHPReferenceEdge(g, file.rel, rel)
+		}
+		for _, callback := range wordpressHookCallbacks([]byte(file.source)) {
+			if callback.Receiver != "" {
+				continue // class receivers are already parser-backed references
+			}
+			if rel := functionFiles[strings.ToLower(callback.Callback)]; rel != "" {
+				addPHPReferenceEdge(g, file.rel, rel)
+			}
+		}
+	}
+	for rel, source := range frameworkSources {
+		switch strings.ToLower(filepath.Ext(rel)) {
+		case ".twig":
+			for _, target := range twigTemplateReferences(rootAbs, rel, source) {
+				addPHPReferenceEdge(g, rel, target)
+			}
+		case ".yaml", ".yml":
+			resolve := func(class string) string {
+				return resolvePHPClassToRel(class, classFiles, resolver)
+			}
+			for _, target := range yamlPHPClassReferences(rootAbs, source, resolve) {
+				addPHPReferenceEdge(g, rel, target)
+			}
 		}
 	}
 	return g, nil
@@ -138,6 +204,11 @@ func addPHPImportEdge(g *importGraph, from, to string) {
 func addPHPReferenceEdge(g *importGraph, from, to string) {
 	g.references[from] = appendUnique(g.references[from], to)
 	g.referencedBy[to] = appendUnique(g.referencedBy[to], from)
+}
+
+func addPHPAutoloadEdge(g *importGraph, from, to string) {
+	g.autoloads[from] = appendUnique(g.autoloads[from], to)
+	g.autoloadedBy[to] = appendUnique(g.autoloadedBy[to], from)
 }
 
 var (
@@ -154,9 +225,40 @@ var (
 
 func parsePHPFileRelations(abs, rel, source string) phpFileRelations {
 	masked := string(maskPHPNonCode([]byte(source)))
+	file := phpFileRelations{abs: abs, rel: rel, source: source, masked: masked, uses: map[string]string{}}
+	analysis, err := parsing.Analyze(rel, []byte(source))
+	if err == nil && analysis.Language == "php" {
+		file.parsed = true
+		file.namespace = normalizePHPClass(analysis.PackageName)
+		for _, relation := range analysis.Relations {
+			switch relation.Kind {
+			case parsing.RelationDeclaration:
+				file.declared = appendUnique(file.declared, normalizePHPClass(relation.Name))
+			case parsing.RelationFunction:
+				file.functions = appendUnique(file.functions, normalizePHPClass(relation.Name))
+			case parsing.RelationImport:
+				class := normalizePHPClass(relation.Name)
+				if class != "" {
+					file.imports = appendUnique(file.imports, class)
+				}
+			case parsing.RelationTraitUse:
+				file.traitUses = appendUnique(file.traitUses, relation.Name)
+			case parsing.RelationReference:
+				file.references = appendUnique(file.references, relation.Name)
+			case parsing.RelationInclude:
+				file.includes = appendUnique(file.includes, relation.Name)
+			}
+		}
+		return file
+	}
+	return parsePHPFileRelationsFallback(file)
+}
+
+func parsePHPFileRelationsFallback(file phpFileRelations) phpFileRelations {
+	source := file.source
+	masked := file.masked
 	starts, depths := outlineLineLayout([]byte(masked))
 	lines := splitOutlineLines([]byte(source), starts)
-	file := phpFileRelations{abs: abs, rel: rel, source: source, masked: masked, uses: map[string]string{}}
 	for i, line := range lines {
 		if depths[i] != 0 {
 			continue
@@ -166,6 +268,9 @@ func parsePHPFileRelations(abs, rel, source string) phpFileRelations {
 		}
 		if match := phpTypeDeclRe.FindStringSubmatch(line); match != nil {
 			file.declared = append(file.declared, qualifyPHPClass(file.namespace, match[2]))
+		}
+		if match := phpFunctionRe.FindStringSubmatch(line); match != nil {
+			file.functions = appendUnique(file.functions, qualifyPHPClass(file.namespace, match[1]))
 		}
 	}
 	for _, match := range rePHPTopLevelUse.FindAllStringSubmatchIndex(masked, -1) {
@@ -242,6 +347,15 @@ func addPHPUse(out map[string]string, item string) {
 }
 
 func referencedPHPClasses(file phpFileRelations) []string {
+	if file.parsed {
+		out := []string{}
+		for _, name := range append(append([]string{}, file.traitUses...), file.references...) {
+			if class := normalizePHPClass(name); class != "" {
+				out = appendUnique(out, class)
+			}
+		}
+		return out
+	}
 	names := append([]string{}, file.traitUses...)
 	for _, match := range rePHPClassContext.FindAllStringSubmatch(file.masked, -1) {
 		names = append(names, match[1])
@@ -284,6 +398,9 @@ func resolvePHPClassName(file phpFileRelations, name string) string {
 	if strings.HasPrefix(name, "\\") {
 		return normalizePHPClass(name)
 	}
+	if strings.HasPrefix(strings.ToLower(name), "namespace\\") {
+		return qualifyPHPClass(file.namespace, name[len("namespace\\"):])
+	}
 	first, rest := name, ""
 	if slash := strings.Index(name, "\\"); slash >= 0 {
 		first, rest = name[:slash], name[slash:]
@@ -306,52 +423,27 @@ func qualifyPHPClass(namespace, name string) string {
 	return normalizePHPClass(namespace) + "\\" + name
 }
 
-func readComposerPSR4(root string) []psr4Prefix {
-	b, err := os.ReadFile(filepath.Join(root, "composer.json"))
-	if err != nil {
-		return nil
-	}
-	var composer composerAutoload
-	if json.Unmarshal(b, &composer) != nil {
-		return nil
-	}
-	out := []psr4Prefix{}
-	add := func(values map[string]json.RawMessage) {
-		for namespace, raw := range values {
-			dirs := []string{}
-			var one string
-			if json.Unmarshal(raw, &one) == nil {
-				dirs = append(dirs, one)
-			} else {
-				_ = json.Unmarshal(raw, &dirs)
-			}
-			out = append(out, psr4Prefix{namespace: normalizePHPClass(namespace), dirs: dirs})
+func resolvePHPClassToRel(class string, classFiles map[string]string, resolver *composerResolver) string {
+	class = normalizePHPClass(class)
+	if resolver != nil {
+		if rel, claimed := resolver.resolveClass(class); rel != "" || claimed {
+			return rel
 		}
 	}
-	add(composer.Autoload.PSR4)
-	add(composer.AutoloadDev.PSR4)
-	sort.SliceStable(out, func(i, j int) bool { return len(out[i].namespace) > len(out[j].namespace) })
-	return out
+	return classFiles[strings.ToLower(class)]
 }
 
-func resolvePHPClassToRel(root, class string, classFiles map[string]string, prefixes []psr4Prefix) string {
-	class = normalizePHPClass(class)
-	if rel := classFiles[strings.ToLower(class)]; rel != "" {
-		return rel
+func isPHPRelationFile(path string) bool {
+	return parsing.IsPHPPath(path)
+}
+
+func isPHPFrameworkRelationFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(filepath.ToSlash(filepath.Clean(path)))) {
+	case ".twig", ".yaml", ".yml":
+		return true
+	default:
+		return false
 	}
-	for _, prefix := range prefixes {
-		if !strings.EqualFold(class, prefix.namespace) && !strings.HasPrefix(strings.ToLower(class), strings.ToLower(prefix.namespace+"\\")) {
-			continue
-		}
-		suffix := strings.TrimPrefix(class[len(prefix.namespace):], "\\")
-		for _, dir := range prefix.dirs {
-			candidate := filepath.Join(root, filepath.FromSlash(dir), filepath.FromSlash(strings.ReplaceAll(suffix, "\\", "/"))) + ".php"
-			if rel := existingRepoFile(root, candidate); rel != "" {
-				return rel
-			}
-		}
-	}
-	return ""
 }
 
 func laravelConventionReferences(root, source string) []string {

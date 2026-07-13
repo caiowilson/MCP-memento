@@ -9,7 +9,7 @@ DRY_RUN ?= 0
 CHECK_CLEAN ?= 1
 EVALUATION_OUT ?= /tmp/memento-evaluation-ci
 HELPFULNESS_CI_TASKS ?= discover-workspace-resolution,onboard-local-validation
-TREE_SITTER_TAGS ?= grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust
+TREE_SITTER_TAGS ?= grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust,grammar_subset_php
 GO_TAG_FLAGS := -tags=$(TREE_SITTER_TAGS)
 
 # Parallel agent wave: worktree root and branch names
@@ -17,7 +17,7 @@ WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test coverage-internal plugin-test release-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test coverage-internal plugin-test release-test retrieval-eval php-compat-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
@@ -28,6 +28,7 @@ help:
 	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
 	@printf "  release-test Validate release workflow and macOS signing contracts\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
+	@printf "  php-compat-eval Run PHP structural, Composer, and relationship accuracy gates\n"
 	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
 	@printf "  helpfulness-visualize Render local paired helpfulness visual artifacts\n"
 	@printf "  evaluation-ci Reproduce CI reports and regression gates locally\n"
@@ -82,6 +83,10 @@ release-test:
 
 retrieval-eval:
 	go run $(GO_TAG_FLAGS) ./cmd/retrieval-eval $(RETRIEVAL_ARGS)
+
+php-compat-eval:
+	go run $(GO_TAG_FLAGS) ./cmd/php-compat-eval $(PHP_COMPAT_ARGS)
+	go test -count=1 $(GO_TAG_FLAGS) ./internal/mcp -run '^TestPHPCompatibilityRelationshipMetrics$$' -v
 
 helpfulness-eval:
 	go run $(GO_TAG_FLAGS) ./cmd/helpfulness-eval $(HELPFULNESS_ARGS)

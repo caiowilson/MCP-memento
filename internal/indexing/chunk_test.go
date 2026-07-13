@@ -260,6 +260,42 @@ func TestChunkFile_TSXUsesSyntaxBoundaries(t *testing.T) {
 	}
 }
 
+func TestChunkFile_PHPAlignsTopLevelDeclarations(t *testing.T) {
+	content := `<?php
+namespace App;
+
+use Vendor\Clock;
+
+/** Service docs. */
+class Service {
+	public function run(): void {}
+}
+
+function helper(): void {}
+`
+	chunks := ChunkFile("fixture.php", "php", content, 5, 1<<20)
+	want := [][2]int{{1, 5}, {6, 10}, {11, 11}}
+	if len(chunks) != len(want) {
+		t.Fatalf("expected PHP declaration chunks, got %#v", chunks)
+	}
+	for index, bounds := range want {
+		assertChunkBounds(t, chunks[index], bounds[0], bounds[1])
+	}
+}
+
+func TestChunkFile_InvalidPHPMatchesLineFallback(t *testing.T) {
+	content := "<?php\nclass Broken {\nfunction nope( {\nline 4\nline 5\n"
+	got := ChunkFile("fixture.php", "php", content, 2, 1<<20)
+	want := ChunkFile("fixture.txt", "text", content, 2, 1<<20)
+	for index := range want {
+		want[index].Path = "fixture.php"
+		want[index].Language = "php"
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("invalid PHP did not preserve line fallback:\ngot  %#v\nwant %#v", got, want)
+	}
+}
+
 func TestChunkFile_PythonAndRustUseSyntaxBoundaries(t *testing.T) {
 	tests := []struct {
 		path     string

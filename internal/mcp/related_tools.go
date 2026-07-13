@@ -166,17 +166,23 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 				}
 			}
 		}
-	} else if ext == ".php" {
+	} else if isPHPRelationFile(relClean) || isPHPFrameworkRelationFile(relClean) || relClean == "composer.json" {
 		g, err := getPHPIncludeGraph(ctx, root)
 		if err == nil && g != nil {
 			if opts.IncludeImports {
 				for _, p := range g.imports[relClean] {
 					collector.add(p, 9, "imports")
 				}
+				for _, p := range g.autoloads[relClean] {
+					collector.add(p, 9, "autoloads")
+				}
 			}
 			if opts.IncludeImporters {
 				for _, p := range g.importers[relClean] {
 					collector.add(p, 10, "imported_by")
+				}
+				for _, p := range g.autoloadedBy[relClean] {
+					collector.add(p, 10, "autoloaded_by")
 				}
 			}
 			if opts.IncludeRefs {
@@ -187,6 +193,11 @@ func computeRelatedFiles(ctx context.Context, root, relClean string, opts relate
 					collector.add(p, 8, "referenced_by")
 				}
 			}
+		}
+		if isPHPFrameworkRelationFile(relClean) {
+			// Preserve generic text-reference discovery for YAML/Twig files that
+			// are not part of a PHP project while adding framework-aware edges.
+			addGenericMentionsRelated(ctx, root, relClean, collector, ignored)
 		}
 	} else if ext == ".py" {
 		g, err := getPythonImportGraph(ctx, root)
