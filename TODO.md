@@ -308,21 +308,23 @@ Delivered by `8c7865b` in `internal/mcp/py_semantic.go` and `internal/mcp/relate
 
 ### Slice 10 — Signed macOS packaging + notarization
 
-- Status: blocked
+- Status: done
 - Owner: @caiowilson
 - Difficulty: hard
 - Scope: release workflows, Apple signing assets, notarization pipeline
 - Priority: P3
 
-This is distribution polish for Finder-based installation and managed environments, not a prerequisite for Memento's terminal, Codex, or Claude Code MCP/plugin paths. It remains blocked on Apple Developer ID Installer credentials, notarization credentials, and GitHub Actions secrets.
+This is distribution polish for Finder-based installation and managed environments, not a prerequisite for Memento's terminal, Codex, or Claude Code MCP/plugin paths. The implementation is complete; the first credentialed `server/v*` tag remains the external validation of the configured Apple account, certificate chain, and notary access.
 
 #### Steps
 
-- [ ] Add Developer ID signing for macOS `.pkg` in release workflows (status: todo)
-- [ ] Add notarization submit + staple steps for generated `.pkg` assets (status: todo)
-- [ ] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: todo)
-- [ ] Add CI verification (`pkgutil --check-signature` and `spctl --assess`) before upload (status: todo)
-- [ ] Document local and CI troubleshooting for signing/notarization failures (status: todo)
+- [x] Add Developer ID signing for macOS `.pkg` in release workflows (status: done)
+- [x] Add notarization submit + staple steps for generated `.pkg` assets (status: done)
+- [x] Add secure GitHub secrets documentation for cert + keychain + notarization credentials (status: done)
+- [x] Add CI verification (`pkgutil --check-signature` and `spctl --assess`) before upload (status: done)
+- [x] Document local and CI troubleshooting for signing/notarization failures (status: done)
+
+The versioned workflow signs raw binaries with the hardened runtime, signs the installer with a separate Developer ID Installer identity, submits through a temporary keychain-backed App Store Connect profile, staples accepted tickets, and verifies the result before upload. `server/latest` now waits for and checksum-verifies the exact 16 versioned assets before mirroring them, so it cannot replace signed artifacts with an independent unsigned rebuild. `docs/macos-signing.md` is the credential setup, local validation, troubleshooting, and rotation runbook.
 
 ## P4 — Long-term Architecture
 

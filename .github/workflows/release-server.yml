@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        goos: [darwin, linux, windows]
+        goos: [linux, windows]
         goarch: [amd64, arm64]
 
     steps:
@@ -123,6 +123,11 @@ jobs:
 
   package-macos-pkg:
     runs-on: macos-latest
+    environment:
+      name: macos-release-signing
+    env:
+      APPLICATION_IDENTITY: ${{ vars.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
+      INSTALLER_IDENTITY: ${{ vars.APPLE_DEVELOPER_ID_INSTALLER_IDENTITY }}
     strategy:
       fail-fast: false
       matrix:
@@ -139,6 +144,82 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Import signing and notarization credentials
+        shell: bash
+        env:
+          APPLICATION_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          APPLICATION_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          INSTALLER_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER_P12_BASE64 }}
+          INSTALLER_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER_P12_PASSWORD }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for name in \
+            APPLICATION_IDENTITY \
+            INSTALLER_IDENTITY \
+            APPLICATION_P12_BASE64 \
+            APPLICATION_P12_PASSWORD \
+            INSTALLER_P12_BASE64 \
+            INSTALLER_P12_PASSWORD \
+            NOTARY_KEY_P8_BASE64 \
+            NOTARY_KEY_ID \
+            NOTARY_ISSUER_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required macOS release setting: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          KEYCHAIN="$RUNNER_TEMP/memento-signing-${{ matrix.goarch }}.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          NOTARY_PROFILE="memento-notary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.goarch }}"
+          APPLICATION_P12="$RUNNER_TEMP/application-${{ matrix.goarch }}.p12"
+          INSTALLER_P12="$RUNNER_TEMP/installer-${{ matrix.goarch }}.p12"
+          NOTARY_KEY="$RUNNER_TEMP/AuthKey-${{ matrix.goarch }}.p8"
+          cleanup_secret_files() {
+            rm -f "$APPLICATION_P12" "$INSTALLER_P12" "$NOTARY_KEY"
+          }
+          trap cleanup_secret_files EXIT
+
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "NOTARY_PROFILE=$NOTARY_PROFILE" >> "$GITHUB_ENV"
+
+          printf '%s' "$APPLICATION_P12_BASE64" | base64 -D > "$APPLICATION_P12"
+          printf '%s' "$INSTALLER_P12_BASE64" | base64 -D > "$INSTALLER_P12"
+          printf '%s' "$NOTARY_KEY_P8_BASE64" | base64 -D > "$NOTARY_KEY"
+          chmod 600 "$APPLICATION_P12" "$INSTALLER_P12" "$NOTARY_KEY"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$APPLICATION_P12" -k "$KEYCHAIN" -f pkcs12 \
+            -P "$APPLICATION_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security import "$INSTALLER_P12" -k "$KEYCHAIN" -f pkcs12 \
+            -P "$INSTALLER_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+
+          security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep -F "\"${APPLICATION_IDENTITY}\""
+          security find-identity -v -p basic "$KEYCHAIN" \
+            | grep -F "\"${INSTALLER_IDENTITY}\""
+
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --key "$NOTARY_KEY" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER_ID" \
+            --keychain "$KEYCHAIN" \
+            --validate
+
       - name: Build macOS binary
         shell: bash
         run: |
@@ -149,30 +230,49 @@ jobs:
             go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" \
               -o "dist/memento-mcp" ./cmd/server
 
-      - name: Build .pkg installer
+      - name: Sign, notarize, and package macOS artifacts
         shell: bash
         run: |
           set -euo pipefail
 
           VERSION="${GITHUB_REF_NAME#server/v}"
           GOARCH="${{ matrix.goarch }}"
+          ARCH_LABEL="$GOARCH"
+          if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
+          PACKAGE="dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
+          RAW_BINARY="dist/memento-mcp_darwin_${ARCH_LABEL}"
 
-          PKG_ROOT="pkgroot"
-          mkdir -p "$PKG_ROOT/usr/local/bin"
-          install -m 0755 dist/memento-mcp "$PKG_ROOT/usr/local/bin/memento-mcp"
-
-          pkgbuild \
-            --root "$PKG_ROOT" \
-            --identifier "com.caiowilson.memento-mcp" \
+          ./scripts/macos-sign-and-notarize.sh \
+            --binary dist/memento-mcp \
+            --package "$PACKAGE" \
             --version "$VERSION" \
-            --install-location "/" \
-            "dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
+            --application-identity "$APPLICATION_IDENTITY" \
+            --installer-identity "$INSTALLER_IDENTITY" \
+            --keychain "$SIGNING_KEYCHAIN" \
+            --notary-profile "$NOTARY_PROFILE"
+
+          cp dist/memento-mcp "$RAW_BINARY"
+          (
+            cd dist
+            shasum -a 256 "$(basename "$RAW_BINARY")" \
+              > "$(basename "$RAW_BINARY").sha256"
+          )
+
+      - name: Remove temporary signing keychain
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.goarch }}
-          path: dist/*.pkg
+          path: |
+            dist/memento-mcp_darwin_*
+            dist/*.pkg
 
   publish:
     needs: [build-binaries, package-deb, package-macos-pkg]

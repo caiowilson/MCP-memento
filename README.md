@@ -23,6 +23,7 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - Canonical client configuration and LLM guidance for Claude, ChatGPT/Codex, VS Code, and other MCP clients: [`docs/clients.md`](./docs/clients.md)
 - VS Code usage: [`docs/vscode.md`](./docs/vscode.md)
 - Opt-in local aggregate feedback and privacy controls: [`docs/feedback.md`](./docs/feedback.md)
+- macOS release signing and notarization: [`docs/macos-signing.md`](./docs/macos-signing.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
 - Credential-free Claude Code workflows: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)

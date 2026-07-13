@@ -12,6 +12,7 @@ This directory collects the main project documentation, including client setup, 
 - VS Code usage: `vscode.md`
 - Retrieval and agent helpfulness evaluation: `evaluation.md`
 - Opt-in local aggregate feedback and privacy controls: `feedback.md`
+- macOS release signing, notarization, and credential rotation: `macos-signing.md`
 - Canonical backlog: `../TODO.md`
 - VS Code extension: `../vscode-extension/README.md`
 - Architecture decisions (ADRs): `adr/README.md`

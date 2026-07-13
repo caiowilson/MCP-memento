@@ -17,15 +17,16 @@ WAVE_ROOT   ?= $(shell dirname $(CURDIR))
 WAVE_SLICES ?= 20 21 24 18
 MERGE_ORDER ?= 20 21 24 18
 
-.PHONY: build test coverage-internal plugin-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
+.PHONY: build test coverage-internal plugin-test release-test retrieval-eval helpfulness-eval helpfulness-visualize evaluation-ci install install-dev uninstall clean help release release-server release-extension release-both \
 	wave-status wave-validate wave-merge wave-clean wave-run
 
 help:
 	@printf "Targets:\n"
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
-	@printf "  test      Run Go tests and the retrieval evaluation report\n"
+	@printf "  test      Run Go, release-contract, and retrieval evaluation tests\n"
 	@printf "  coverage-internal Run the two blocking internal-package coverage checks\n"
 	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
+	@printf "  release-test Validate release workflow and macOS signing contracts\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  helpfulness-eval Run selected paired helpfulness observations locally\n"
 	@printf "  helpfulness-visualize Render local paired helpfulness visual artifacts\n"
@@ -62,6 +63,7 @@ build:
 
 test:
 	go test $(GO_TAG_FLAGS) ./...
+	$(MAKE) release-test
 	$(MAKE) retrieval-eval
 
 coverage-internal:
@@ -74,6 +76,9 @@ plugin-test:
 	claude plugin validate --strict .
 	claude plugin validate --strict ./plugins/memento
 	claude plugin validate --strict ./plugins/memento-workflows
+
+release-test:
+	node --test test/release-workflows.test.mjs
 
 retrieval-eval:
 	go run $(GO_TAG_FLAGS) ./cmd/retrieval-eval $(RETRIEVAL_ARGS)

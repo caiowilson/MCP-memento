@@ -1,0 +1,38 @@
+name: Release Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-contracts.yml"
+      - ".github/workflows/release-server.yml"
+      - ".github/workflows/move-server-latest.yml"
+      - "scripts/macos-sign-and-notarize.sh"
+      - "test/release-workflows.test.mjs"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-contracts.yml"
+      - ".github/workflows/release-server.yml"
+      - ".github/workflows/move-server-latest.yml"
+      - "scripts/macos-sign-and-notarize.sh"
+      - "test/release-workflows.test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Test release workflow contracts
+        run: node --test test/release-workflows.test.mjs
