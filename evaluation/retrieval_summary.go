@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"memento-mcp/internal/indexing"
 )
 
 const RetrievalSummaryVersion = 1
@@ -24,6 +26,8 @@ type RetrievalSummaryConfig struct {
 	Mode           string
 	Embedder       string
 	SemanticWeight float64
+	MaxChunkLines  int
+	MaxChunkBytes  int
 }
 
 func NewRetrievalSummary(fixtures FixtureSet, report Report, cfg RetrievalSummaryConfig) (RetrievalSummary, error) {
@@ -37,8 +41,9 @@ func NewRetrievalSummary(fixtures FixtureSet, report Report, cfg RetrievalSummar
 			Mode           string  `json:"mode"`
 			Embedder       string  `json:"embedder,omitempty"`
 			SemanticWeight float64 `json:"semanticWeight,omitempty"`
+			Chunking       string  `json:"chunking"`
 			K              int     `json:"k"`
-		}{cfg.Mode, cfg.Embedder, cfg.SemanticWeight, report.K}),
+		}{cfg.Mode, cfg.Embedder, cfg.SemanticWeight, indexing.ChunkingFingerprint(cfg.MaxChunkLines, cfg.MaxChunkBytes), report.K}),
 		FixtureFingerprint: fingerprint(fixtures),
 		QueryCount:         len(report.Queries),
 		K:                  report.K,

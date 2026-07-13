@@ -100,6 +100,60 @@ func TestIndexerRedactsPersistedChunksAndIgnoresEnvFiles(t *testing.T) {
 	}
 }
 
+func TestChunkingFingerprintChangeReindexesUnchangedFiles(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	content := "package fixture\n\nfunc One() {\n\tprintln(1)\n}\nfunc Two() {}\n"
+	path := filepath.Join(root, "fixture.go")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := New(Config{RootAbs: root, StoreDir: store, MaxChunkLines: 2, MaxChunkBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstContext, firstCancel := context.WithCancel(context.Background())
+	first.Start(firstContext)
+	if err := first.IndexAll(firstContext); err != nil {
+		firstCancel()
+		t.Fatal(err)
+	}
+	firstCancel()
+	entry := first.manifest.Files["fixture.go"]
+	chunkPath := first.chunkFilePath(entry.ID)
+	if entry.Chunks < 2 {
+		t.Fatalf("expected small chunk limit to create multiple chunks, got %#v", entry)
+	}
+
+	second, err := New(Config{RootAbs: root, StoreDir: store, MaxChunkLines: 20, MaxChunkBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(chunkPath); !os.IsNotExist(err) {
+		t.Fatalf("expected changed chunking configuration to invalidate persisted chunks, got %v", err)
+	}
+	secondContext, secondCancel := context.WithCancel(context.Background())
+	defer secondCancel()
+	second.Start(secondContext)
+	if err := second.IndexAll(secondContext); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := second.FileChunks("fixture.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 || chunks[0].StartLine != 1 || chunks[0].EndLine != 6 {
+		t.Fatalf("expected unchanged file to be rebuilt with new chunking limits, got %#v", chunks)
+	}
+	if second.manifest.ChunkingFingerprint != second.chunkingFingerprint() {
+		t.Fatalf("manifest chunking fingerprint = %q, want %q", second.manifest.ChunkingFingerprint, second.chunkingFingerprint())
+	}
+	if second.DebugInfo().ChunkingIdentity != second.chunkingFingerprint() {
+		t.Fatalf("debug info omitted effective chunking identity: %#v", second.DebugInfo())
+	}
+}
+
 func TestIndexerPurgesChunksWhenRedactionConfigurationChanges(t *testing.T) {
 	root := t.TempDir()
 	store := t.TempDir()

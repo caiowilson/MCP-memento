@@ -6,8 +6,8 @@
       "id": "ignore-rule-reload",
       "query": "ReloadIgnoreRules",
       "relevant": [
-        { "path": "internal/indexing/indexer.go", "startLine": 136, "endLine": 137 },
-        { "path": "internal/indexing/indexer.go", "startLine": 641, "endLine": 641 },
+        { "path": "internal/indexing/indexer.go", "startLine": 138, "endLine": 139 },
+        { "path": "internal/indexing/indexer.go", "startLine": 650, "endLine": 650 },
         { "path": "internal/indexing/fs_change.go", "startLine": 142, "endLine": 142 }
       ]
     },

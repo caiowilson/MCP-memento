@@ -121,7 +121,9 @@ func New(cfg Config) (*Indexer, error) {
 	}
 	idx.ignoreRules = rules
 
-	if err := idx.loadManifest(); err != nil || idx.manifest.RedactionFingerprint != idx.redactor.Fingerprint() {
+	if err := idx.loadManifest(); err != nil ||
+		idx.manifest.RedactionFingerprint != idx.redactor.Fingerprint() ||
+		idx.manifest.ChunkingFingerprint != idx.chunkingFingerprint() {
 		if err := idx.resetIndexFiles(); err != nil {
 			return nil, err
 		}
@@ -206,6 +208,8 @@ type DebugInfo struct {
 	SemanticEnabled  bool     `json:"semanticEnabled"`
 	EmbeddingModel   string   `json:"embeddingModel,omitempty"`
 	SemanticWeight   float64  `json:"semanticWeight,omitempty"`
+	ChunkingVersion  string   `json:"chunkingVersion"`
+	ChunkingIdentity string   `json:"chunkingFingerprint"`
 	VectorsIndexed   int      `json:"vectorsIndexed"`
 	LastError        string   `json:"lastError,omitempty"`
 }
@@ -238,6 +242,8 @@ func (i *Indexer) DebugInfo() DebugInfo {
 		ExtraIgnoreDirs:  append([]string{}, i.cfg.ExtraIgnoreDirs...),
 		ExtraIgnoreGlobs: append([]string{}, i.cfg.ExtraIgnoreGlobs...),
 		SemanticEnabled:  i.embedder != nil,
+		ChunkingVersion:  ChunkingVersion,
+		ChunkingIdentity: i.chunkingFingerprint(),
 		VectorsIndexed:   vectorsIndexed,
 		LastError:        i.status.Error,
 	}
@@ -742,8 +748,9 @@ func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInf
 	hash := hex.EncodeToString(sum[:16])
 
 	id := fileID(rel)
-	content := i.redactor.Redact(string(b))
-	chunks := ChunkFile(rel, guessLanguage(rel), content, i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
+	syntaxSource := string(b)
+	content := i.redactor.Redact(syntaxSource)
+	chunks := chunkFileWithSyntaxSource(rel, guessLanguage(rel), content, syntaxSource, i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
 	if err := i.writeChunksFile(id, chunks); err != nil {
 		return false, 0, err
 	}
@@ -922,6 +929,7 @@ func (i *Indexer) saveManifest() error {
 	i.manifest.Version = 1
 	i.manifest.Root = i.rootAbs
 	i.manifest.RedactionFingerprint = i.redactor.Fingerprint()
+	i.manifest.ChunkingFingerprint = i.chunkingFingerprint()
 	i.manifest.EmbeddingFingerprint = i.embeddingFingerprint()
 	i.manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	b, err := json.MarshalIndent(i.manifest, "", "  ")
@@ -988,6 +996,7 @@ type manifest struct {
 	Root                 string               `json:"root"`
 	UpdatedAt            string               `json:"updatedAt"`
 	RedactionFingerprint string               `json:"redactionFingerprint"`
+	ChunkingFingerprint  string               `json:"chunkingFingerprint"`
 	EmbeddingFingerprint string               `json:"embeddingFingerprint"`
 	TotalBytes           int64                `json:"totalBytes"`
 	Files                map[string]fileEntry `json:"files"`
@@ -1008,6 +1017,7 @@ func (i *Indexer) resetIndexFiles() error {
 	}
 	i.manifest = manifest{
 		RedactionFingerprint: i.redactor.Fingerprint(),
+		ChunkingFingerprint:  i.chunkingFingerprint(),
 		EmbeddingFingerprint: i.embeddingFingerprint(),
 		Files:                map[string]fileEntry{},
 	}
@@ -1029,6 +1039,10 @@ func (i *Indexer) embeddingFingerprint() string {
 		return "disabled"
 	}
 	return i.embedder.Fingerprint()
+}
+
+func (i *Indexer) chunkingFingerprint() string {
+	return ChunkingFingerprint(i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
 }
 
 func repoIndexDir(rootAbs string) (string, error) {
@@ -1141,10 +1155,10 @@ func applyDefaults(cfg *Config) {
 		cfg.MaxFileBytes = 1 * 1024 * 1024
 	}
 	if cfg.MaxChunkBytes <= 0 {
-		cfg.MaxChunkBytes = 8 * 1024
+		cfg.MaxChunkBytes = DefaultMaxChunkBytes
 	}
 	if cfg.MaxChunkLines <= 0 {
-		cfg.MaxChunkLines = 200
+		cfg.MaxChunkLines = DefaultMaxChunkLines
 	}
 	if math.IsNaN(cfg.SemanticWeight) || math.IsInf(cfg.SemanticWeight, 0) || cfg.SemanticWeight <= 0 || cfg.SemanticWeight > 1 {
 		cfg.SemanticWeight = embedding.DefaultSemanticWeight
