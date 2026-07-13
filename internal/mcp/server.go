@@ -80,6 +80,7 @@ type Server struct {
 
 	backgroundParentCtx context.Context
 	backgroundCancel    context.CancelFunc
+	backgroundStartOnce sync.Once
 
 	executable        string
 	childIdleTimeout  time.Duration
@@ -211,19 +212,21 @@ func resolveStartupWorkspaceRoot(configRoot string) (string, workspaceRootSource
 }
 
 func (s *Server) StartBackgroundIndexing(ctx context.Context) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	s.backgroundParentCtx = ctx
-	if s.mode == serverModeBroker {
-		go s.reapIdleChildren(ctx)
-		go func() {
-			<-ctx.Done()
-			s.shutdown()
-		}()
-		return
-	}
-	s.restartBackgroundIndexing()
+	s.backgroundStartOnce.Do(func() {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		s.backgroundParentCtx = ctx
+		if s.mode == serverModeBroker {
+			go s.reapIdleChildren(ctx)
+			go func() {
+				<-ctx.Done()
+				s.shutdown()
+			}()
+			return
+		}
+		s.restartBackgroundIndexing()
+	})
 }
 
 func normalizeWorkspaceRoot(root string) (string, error) {
@@ -271,6 +274,7 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 		newRepoRelatedFilesTool(root),
 		newRepoOutlineTool(root, s.redactor),
 		newRepoContextTool(root, idx, s.redactor),
+		newRepoDiffContextTool(root, idx),
 		newRepoIndexStatusTool(idx),
 		newRepoReindexTool(idx),
 		newRepoClearIndexTool(idx),
@@ -1075,6 +1079,7 @@ const serverInstructions = `Use when a coding task needs repository-specific con
 
 Repository context:
 - Start with repo_context for an active file; set intent to navigate, implement, or review.
+- Use repo_diff_context when the caller already knows the changed repo-relative paths and needs compact context from only those files.
 - Use repo_outline to inspect signatures and file structure without function bodies before requesting full source.
 - Use repo_search to find text or symbols across workspace files, repo_read_file for an exact path, repo_list_files to map structure, and repo_related_files for imports, importers, same-directory files, and semantic references.
 - If context looks stale or incomplete, use repo_index_status, repo_reindex, or repo_index_debug. repo_clear_index is destructive.

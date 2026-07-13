@@ -104,11 +104,23 @@ func (m *GitChangeMonitor) flush() {
 	}
 	m.mu.Unlock()
 
-	if len(del) > 0 {
-		_ = m.idx.RemovePaths(del)
+	ignoreFileChanged := false
+	for _, changed := range append(add, del...) {
+		base := filepath.Base(changed)
+		if base == ".gitignore" || base == ".mementoignore" {
+			ignoreFileChanged = true
+			break
+		}
 	}
-	if len(add) > 0 {
-		_ = m.idx.EnsureIndexed(context.Background(), add)
+	if ignoreFileChanged {
+		_ = m.idx.IndexAll(context.Background())
+	} else {
+		if len(del) > 0 {
+			_ = m.idx.RemovePaths(del)
+		}
+		if len(add) > 0 {
+			_ = m.idx.EnsureIndexed(context.Background(), add)
+		}
 	}
 	if m.onChange != nil {
 		m.onChange(add, del)

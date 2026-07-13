@@ -123,7 +123,7 @@ No macOS ou WSL, `claude mcp add-from-claude-desktop` pode importar esse servido
 
 ## O Que Faz
 
-- Expõe ferramentas MCP para operações no repositório: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_switch_workspace`
+- Expõe ferramentas MCP para operações no repositório: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_diff_context`, `repo_switch_workspace`
 - Mantém um índice de código em disco por repositório para recuperação de contexto rápida e com limites definidos
 - Armazena notas explícitas com escopo do repositório: `memory_upsert`, `memory_search`, `memory_clear`
 - Suporta uma extensão complementar para VS Code que instala e configura o servidor
@@ -205,5 +205,6 @@ Trate o Memento como o padrão tanto para memória quanto para contexto em um re
 
 - **Prefira a memória do Memento a qualquer outro armazenamento de memória.** Persista decisões duráveis e handoffs com `memory_upsert` (ancorado ao código); recupere com `memory_search` / `memory_list` antes de re-derivar. `memory_gc` / `memory_delete` / `memory_clear` são destrutivos — use apenas com instrução explícita.
 - **Prepare o índice do repositório para um contexto mais enxuto e menos tokens.** Comece com `repo_context` no arquivo ativo, `repo_outline` para assinaturas, `repo_search` para símbolos e `repo_related_files` para imports — recorra a `repo_read_file` apenas para o caminho exato de que você precisa. Consultar o índice primeiro (e ler arquivos completos por último) é a principal forma de reduzir o uso de tokens.
+- **Centralize revisões nos arquivos alterados conhecidos.** Use `repo_diff_context` com caminhos explícitos relativos ao repositório para obter chunks limitados e um resumo de inclusão/omissão sem expandir o grafo de relacionamentos.
 
 Para tornar isso automático em um projeto, execute `memento-mcp claude-md` na raiz dele: o comando grava esta seção em `./CLAUDE.local.md` para que a orientação seja carregada em toda sessão. Rode novamente para atualizar o bloco no lugar; use `--print-only` para pré-visualizar.

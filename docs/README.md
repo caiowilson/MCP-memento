@@ -24,6 +24,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
+- `repo_diff_context` — compact indexed chunks from only an explicit ordered list of changed repo-relative paths, plus inclusion/omission counts
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
 - `repo_reindex` — trigger full re-index
@@ -132,6 +133,7 @@ Example anchored upsert:
 
 - Use `repo_outline` when you need a file's structure before deciding which source ranges to read.
 - Prefer `repo_context` with `intent` for normal workflows.
+- Use `repo_diff_context` when changed paths are already known and related-file expansion would add noise. Slice 14A requires explicit `paths`; automatic dirty-worktree detection and unified diff summaries belong to Slice 14B.
 - Use `intent: "navigate"` for lighter outlines and `intent: "implement"` or `intent: "review"` for mixed full+outline context.
 - Omit `mode` unless you need to force `full`, `outline`, or `summary`.
 - Existing callers that already send `mode` are unchanged.
@@ -158,12 +160,13 @@ Cross-file edges intentionally remain in `repo_related_files`; use that tool to 
 Defaults are sized to stay below Claude Code's roughly 10k-token MCP result warning in normal use:
 
 - `repo_context` defaults to `maxTokens: 7000`, using a conservative `ceil(UTF-8 bytes / 4)` estimate, with `maxTotalBytes: 32000` retained as a hard ceiling.
+- `repo_diff_context` defaults to three chunks per file, `maxTokens: 4000`, `maxTotalBytes: 16000`, and at most 20 explicit paths. It reports indexed, included, skipped, and omitted counts instead of silently expanding scope.
 - `repo_read_file` defaults to `maxBytes: 32000`.
 - `repo_search` caps each returned snippet to `maxSnippetBytes: 500`.
 
 Set `MEMENTO_CONTEXT_MAX_TOKENS` to change the server default, or pass `maxTokens` on an individual `repo_context` call. The token budget is the primary packing constraint; full-mode candidates are ordered by weighted relevance per estimated token, and an oversized chunk is skipped so smaller later candidates can still fit. Callers can still change the hard byte ceiling with `maxTotalBytes`.
 
-The `repo_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
+The `repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` tool definitions advertise `_meta["anthropic/maxResultSizeChars"] = 500000` so Claude Code can handle intentional large reads without its smaller default persistence threshold surprising the caller. Client-side settings such as `MAX_MCP_OUTPUT_TOKENS` may still impose a stricter display/context budget; lower the tool arguments when you want compact responses, or raise the client setting when you intentionally need larger results.
 
 Run `go test ./internal/mcp -run '^$' -bench BenchmarkContextPacking -benchmem` to compare the previous byte-only accounting baseline with token-primary packing overhead.
 

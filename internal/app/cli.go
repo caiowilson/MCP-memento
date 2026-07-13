@@ -101,6 +101,7 @@ func buildMCPServersConfigJSON(command string) (string, error) {
 
 func clientGuidanceText() string {
 	return `When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+Use repo_diff_context when changed repo-relative paths are already known and you want compact context from only those files.
 Use repo_outline when you need signatures and file structure without implementation bodies.
 Anchor durable notes to code when possible. Verify stale notes before refreshing or tombstoning them.
 Use the prime MCP prompt at session start and explicit note/file resources when the client supports native prompts and @-mentions.

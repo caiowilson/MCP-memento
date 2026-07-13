@@ -83,7 +83,7 @@ Implemented in `internal/indexing/chunk.go` and `internal/indexing/syntax_chunk.
 
 ### Slice 14A — `repo_diff_context` MVP (explicit paths)
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: `internal/mcp/` (new tool)
@@ -95,10 +95,12 @@ Edit/review workflows need context centered on changed files, not full graph con
 
 #### Steps
 
-- [ ] Add `repo_diff_context` tool that accepts explicit repo-relative paths (status: todo)
-- [ ] Return only chunks overlapping those paths with compact nearby context (status: todo)
-- [ ] Include a concise summary block in the response (status: todo)
-- [ ] Add tests for explicit-path behavior (status: todo)
+- [x] Add `repo_diff_context` tool that accepts explicit repo-relative paths (status: done)
+- [x] Return only chunks overlapping those paths with compact nearby context (status: done)
+- [x] Include a concise summary block in the response (status: done)
+- [x] Add tests for explicit-path behavior (status: done)
+
+Implemented in `internal/mcp/diff_context_tool.go` with ordered path normalization, exact-file-only chunk selection, token/byte and per-file limits, skipped/omitted accounting, and explicit-path regression coverage.
 
 ### Slice 14B — `repo_diff_context` dirty-worktree auto-detection
 

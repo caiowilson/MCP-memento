@@ -155,7 +155,7 @@ ChatGPT on the web does not load local Codex configuration or launch local STDIO
 
 ## What It Does
 
-- Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_switch_workspace`
+- Exposes MCP tools for repo operations: `repo_list_files`, `repo_read_file`, `repo_search`, `repo_related_files`, `repo_context`, `repo_diff_context`, `repo_switch_workspace`
 - Maintains an on-disk code index per repository for fast, bounded context retrieval
 - Stores explicit repo-scoped notes: `memory_upsert`, `memory_search`, `memory_clear`
 - Can record strictly aggregate, local-only helpfulness feedback after explicit opt-in
@@ -246,5 +246,6 @@ Treat Memento as the default for both memory and context in a repository:
 
 - **Prefer Memento memory over any other memory store.** Persist durable decisions and handoffs with `memory_upsert` (anchored to code); recall with `memory_search` / `memory_list` before re-deriving. `memory_gc` / `memory_delete` / `memory_clear` are destructive — only on explicit instruction.
 - **Prime the codebase index for leaner context and lower tokens.** Lead with `repo_context` on the active file, `repo_outline` for signatures, `repo_search` for symbols, and `repo_related_files` for imports — reach for `repo_read_file` only for the exact path you need. Querying the index first (and reading whole files last) is the main lever for lower token usage.
+- **Center reviews on known changed files.** Use `repo_diff_context` with explicit repo-relative paths to get bounded chunks and an inclusion/omission summary without expanding into the relationship graph.
 
 To make this automatic in a project, run `memento-mcp claude-md` in its root: it writes this section into `./CLAUDE.local.md` so the guidance loads every session. Rerun it to update the block in place; use `--print-only` to preview.
