@@ -12,6 +12,9 @@ import (
 
 func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	suite := loadCheckedInSuite(t)
+	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v2" || suite.RetrievalPolicy.K != 5 {
+		t.Fatalf("unexpected retrieval policy: version=%d policy=%#v", suite.Version, suite.RetrievalPolicy)
+	}
 	wantIDs := []string{
 		"composer-autoload",
 		"drupal-module",
@@ -31,12 +34,28 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 
 	versions := map[string]bool{}
 	frameworks := map[string]bool{}
+	retrievalSplits := map[string]int{}
+	retrievalQueries := 0
+	retrievalJudgments := 0
 	for _, corpus := range suite.Corpora {
 		if corpus.Kind == "language" {
 			versions[corpus.PHPVersion] = true
 		}
 		if corpus.Kind == "framework" {
 			frameworks[corpus.ID] = true
+		}
+		for _, query := range corpus.Retrieval {
+			retrievalQueries++
+			retrievalSplits[query.Split]++
+			retrievalJudgments += len(query.Relevant)
+			for _, relevant := range query.Relevant {
+				if relevant.StartLine <= 0 || relevant.EndLine < relevant.StartLine {
+					t.Errorf("query %s has unbounded relevance: %#v", query.ID, relevant)
+				}
+			}
+			if query.Split != RetrievalSplitTrain && len(query.HardNegatives) == 0 {
+				t.Errorf("%s query %s has no hard negative", query.Split, query.ID)
+			}
 		}
 	}
 	for _, version := range []string{"7.4", "8.0", "8.1", "8.2", "8.3", "8.4"} {
@@ -47,6 +66,42 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	for _, framework := range []string{"laravel-app", "symfony-app", "wordpress-plugin-theme", "drupal-module"} {
 		if !frameworks[framework] {
 			t.Errorf("missing framework corpus %s", framework)
+		}
+	}
+	if retrievalQueries != 30 || retrievalJudgments != 35 || retrievalSplits[RetrievalSplitTrain] != 19 || retrievalSplits[RetrievalSplitValidate] != 11 {
+		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
+	}
+}
+
+func TestSuiteRejectsOverlappingRetrievalHardNegative(t *testing.T) {
+	suite := loadCheckedInSuite(t)
+	query := &suite.Corpora[0].Retrieval[0]
+	query.HardNegatives = []RetrievalChunkExpectation{query.Relevant[0]}
+	if err := suite.Validate(); err == nil || !strings.Contains(err.Error(), "overlaps relevant") {
+		t.Fatalf("expected overlapping hard-negative failure, got %v", err)
+	}
+}
+
+func TestSuiteRejectsUnboundedRetrievalJudgment(t *testing.T) {
+	suite := loadCheckedInSuite(t)
+	suite.Corpora[0].Retrieval[0].Relevant[0].StartLine = 0
+	if err := suite.Validate(); err == nil || !strings.Contains(err.Error(), "invalid line range") {
+		t.Fatalf("expected unbounded relevance failure, got %v", err)
+	}
+}
+
+func TestSuiteRejectsRepeatedRetrievalPaths(t *testing.T) {
+	for _, mutate := range []func(*RetrievalExpectation){
+		func(query *RetrievalExpectation) { query.Relevant = append(query.Relevant, query.Relevant[0]) },
+		func(query *RetrievalExpectation) {
+			query.HardNegatives = append(query.HardNegatives, query.HardNegatives[0])
+		},
+	} {
+		suite := loadCheckedInSuite(t)
+		query := &suite.Corpora[0].Retrieval[0]
+		mutate(query)
+		if err := suite.Validate(); err == nil || !strings.Contains(err.Error(), "repeats path") {
+			t.Fatalf("expected repeated-path failure, got %v", err)
 		}
 	}
 }
@@ -123,7 +178,7 @@ func loadCheckedInSuite(t *testing.T) Suite {
 		t.Fatal("runtime.Caller failed")
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(current), "../../.."))
-	suite, err := Load(filepath.Join(repoRoot, "evaluation/php-compat/suite.v1.json"))
+	suite, err := Load(filepath.Join(repoRoot, "evaluation/php-compat/suite.v2.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

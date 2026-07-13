@@ -65,6 +65,20 @@ func TestEvaluateMetrics(t *testing.T) {
 	assertNear(t, "nDCG@4", got.NDCG, wantNDCG)
 }
 
+func TestEvaluateDoesNotCreditWrongRangeInCorrectPath(t *testing.T) {
+	fixture := QueryFixture{
+		ID:       "range-sensitive",
+		Query:    "target declaration",
+		Relevant: []RelevantChunk{{Path: "target.php", StartLine: 20, EndLine: 25}},
+	}
+	retrieved := []indexing.Chunk{{Path: "target.php", StartLine: 1, EndLine: 10}}
+
+	got := Evaluate(fixture, retrieved, 1).Metrics
+	if got.Precision != 0 || got.Recall != 0 || got.MRR != 0 || got.NDCG != 0 {
+		t.Fatalf("wrong range in correct path received relevance credit: %#v", got)
+	}
+}
+
 func TestExecuteIsDeterministic(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "alpha.go"), "package fixture\n\n// StableToken marks alpha.\nfunc StableToken() {}\n")

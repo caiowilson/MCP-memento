@@ -13,7 +13,7 @@ import (
 )
 
 func TestPHPCompatibilityRelationshipMetrics(t *testing.T) {
-	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v1.json"))
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

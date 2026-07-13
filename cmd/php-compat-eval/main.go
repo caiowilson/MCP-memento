@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	reportVersion = 2
-	retrievalK    = 5
+	reportVersion = 3
 )
 
 type metric struct {
@@ -50,7 +49,7 @@ type corpusReport struct {
 	Retrieval        *retrievalMetrics      `json:"retrieval,omitempty"`
 	RetrievalDetails []retrievalQueryDetail `json:"-"`
 	Judgments        judgmentCounts         `json:"judgments"`
-	Failures         []string               `json:"failures,omitempty"`
+	Failures         []string               `json:"-"`
 	Passed           bool                   `json:"passed"`
 }
 
@@ -66,20 +65,42 @@ type report struct {
 }
 
 type retrievalMetrics struct {
-	Adapter   string  `json:"adapter"`
-	Queries   int     `json:"queries"`
-	K         int     `json:"k"`
-	Precision float64 `json:"precisionAt5"`
-	Recall    float64 `json:"recallAt5"`
-	MRR       float64 `json:"mrr"`
-	NDCG      float64 `json:"ndcgAt5"`
-	Passed    bool    `json:"passed"`
+	Adapter string `json:"adapter"`
+	K       int    `json:"k"`
+	retrievalScore
+	Splits map[string]retrievalScore `json:"splits"`
+}
+
+type retrievalScore struct {
+	Queries          int     `json:"queries"`
+	Precision        float64 `json:"precisionAt5"`
+	Recall           float64 `json:"recallAt5"`
+	MRR              float64 `json:"mrr"`
+	NDCG             float64 `json:"ndcgAt5"`
+	HardNegativeWins int     `json:"hardNegativeWins"`
+	Passed           bool    `json:"passed"`
 }
 
 type retrievalQueryDetail struct {
-	ID        string
-	Metrics   evaluation.Metrics
-	Retrieved []string
+	ID               string
+	Split            string
+	Metrics          evaluation.Metrics
+	HardNegativeWins int
+	Retrieved        []string
+}
+
+type scoreAccumulator struct {
+	queries          int
+	precision        float64
+	recall           float64
+	mrr              float64
+	ndcg             float64
+	hardNegativeWins int
+}
+
+type retrievalAccumulator struct {
+	overall scoreAccumulator
+	splits  map[string]*scoreAccumulator
 }
 
 type counts struct {
@@ -92,7 +113,7 @@ type counts struct {
 }
 
 func main() {
-	suitePath := flag.String("suite", "evaluation/php-compat/suite.v1.json", "PHP compatibility suite manifest")
+	suitePath := flag.String("suite", "evaluation/php-compat/suite.v2.json", "PHP compatibility suite manifest")
 	jsonOut := flag.String("json-out", "", "optional JSON report path")
 	retrievalDetails := flag.Bool("retrieval-details", false, "print per-query retrieval metrics and ranked paths")
 	flag.Parse()
@@ -117,15 +138,17 @@ func main() {
 }
 
 func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
-	out := report{Version: reportVersion, Suite: filepath.ToSlash(suitePath), Thresholds: suite.Thresholds, Passed: true}
+	if suite.RetrievalPolicy.Adapter != indexing.TermSearchVersion {
+		return report{}, fmt.Errorf("retrieval adapter %q does not match runtime %q", suite.RetrievalPolicy.Adapter, indexing.TermSearchVersion)
+	}
+	out := report{Version: reportVersion, Suite: filepath.Base(suitePath), Thresholds: suite.Thresholds, Passed: true}
 	var overall counts
 	retrievalStore, err := os.MkdirTemp("", "memento-php-retrieval-")
 	if err != nil {
 		return report{}, err
 	}
 	defer os.RemoveAll(retrievalStore)
-	var retrievalPrecision, retrievalRecall, retrievalMRR, retrievalNDCG float64
-	retrievalQueries := 0
+	var overallRetrieval retrievalAccumulator
 	for _, corpus := range suite.Corpora {
 		root, err := suite.CorpusRoot(corpus)
 		if err != nil {
@@ -206,7 +229,7 @@ func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
 		current.Metrics = corpusCounts.metrics()
 		current.Passed = parserThresholdsPass(current.Metrics, suite.Thresholds) && corpusCounts.forbiddenViolations == 0
 		if len(corpus.Retrieval) > 0 {
-			fixtures := phpRetrievalFixtures(corpus)
+			fixtures := phpRetrievalFixtures(corpus, suite.RetrievalPolicy.K)
 			retrievalReport, err := evaluation.ExecuteFixturesWithConfig(
 				context.Background(),
 				root,
@@ -217,21 +240,26 @@ func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
 			if err != nil {
 				return report{}, fmt.Errorf("%s retrieval: %w", corpus.ID, err)
 			}
-			current.Retrieval = newRetrievalMetrics(retrievalReport, suite.Thresholds)
+			var corpusRetrieval retrievalAccumulator
+			corpusRetrieval.add(corpus, retrievalReport)
+			overallRetrieval.add(corpus, retrievalReport)
+			current.Retrieval = corpusRetrieval.metrics(suite.RetrievalPolicy, suite.Thresholds)
+			queries := retrievalQueriesByID(corpus)
 			for _, query := range retrievalReport.Queries {
-				detail := retrievalQueryDetail{ID: query.ID, Metrics: query.Metrics, Retrieved: make([]string, 0, len(query.Retrieved))}
+				expectation := queries[query.ID]
+				detail := retrievalQueryDetail{
+					ID:               query.ID,
+					Split:            expectation.Split,
+					Metrics:          query.Metrics,
+					HardNegativeWins: hardNegativeWins(expectation, query.Retrieved),
+					Retrieved:        make([]string, 0, len(query.Retrieved)),
+				}
 				for _, chunk := range query.Retrieved {
-					detail.Retrieved = append(detail.Retrieved, chunk.Path)
+					detail.Retrieved = append(detail.Retrieved, fmt.Sprintf("%s:%d-%d", chunk.Path, chunk.StartLine, chunk.EndLine))
 				}
 				current.RetrievalDetails = append(current.RetrievalDetails, detail)
 			}
 			current.Passed = current.Passed && current.Retrieval.Passed
-			n := float64(len(retrievalReport.Queries))
-			retrievalPrecision += retrievalReport.Metrics.Precision * n
-			retrievalRecall += retrievalReport.Metrics.Recall * n
-			retrievalMRR += retrievalReport.Metrics.MRR * n
-			retrievalNDCG += retrievalReport.Metrics.NDCG * n
-			retrievalQueries += len(retrievalReport.Queries)
 		}
 		out.Passed = out.Passed && current.Passed
 		out.Corpora = append(out.Corpora, current)
@@ -242,54 +270,129 @@ func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
 		out.Judgments.RetrievalQueries += current.Judgments.RetrievalQueries
 	}
 	out.Metrics = overall.metrics()
-	if retrievalQueries > 0 {
-		n := float64(retrievalQueries)
-		out.Retrieval = &retrievalMetrics{
-			Adapter:   indexing.TermSearchVersion,
-			Queries:   retrievalQueries,
-			K:         retrievalK,
-			Precision: retrievalPrecision / n,
-			Recall:    retrievalRecall / n,
-			MRR:       retrievalMRR / n,
-			NDCG:      retrievalNDCG / n,
-		}
-		out.Retrieval.Passed = retrievalThresholdsPass(*out.Retrieval, suite.Thresholds)
+	if overallRetrieval.overall.queries > 0 {
+		out.Retrieval = overallRetrieval.metrics(suite.RetrievalPolicy, suite.Thresholds)
 		out.Passed = out.Passed && out.Retrieval.Passed
 	}
 	out.Passed = out.Passed && parserThresholdsPass(out.Metrics, suite.Thresholds) && overall.forbiddenViolations == 0
 	return out, nil
 }
 
-func phpRetrievalFixtures(corpus phpcompat.Corpus) evaluation.FixtureSet {
-	fixtures := evaluation.FixtureSet{Version: 1, K: retrievalK, Queries: make([]evaluation.QueryFixture, 0, len(corpus.Retrieval))}
+func phpRetrievalFixtures(corpus phpcompat.Corpus, k int) evaluation.FixtureSet {
+	fixtures := evaluation.FixtureSet{Version: 1, K: k, Queries: make([]evaluation.QueryFixture, 0, len(corpus.Retrieval))}
 	for _, query := range corpus.Retrieval {
 		fixture := evaluation.QueryFixture{ID: query.ID, Query: query.Query, Relevant: make([]evaluation.RelevantChunk, 0, len(query.Relevant))}
-		for _, path := range query.Relevant {
-			fixture.Relevant = append(fixture.Relevant, evaluation.RelevantChunk{Path: path})
+		for _, relevant := range query.Relevant {
+			fixture.Relevant = append(fixture.Relevant, evaluation.RelevantChunk{
+				Path: relevant.Path, StartLine: relevant.StartLine, EndLine: relevant.EndLine,
+			})
 		}
 		fixtures.Queries = append(fixtures.Queries, fixture)
 	}
 	return fixtures
 }
 
-func newRetrievalMetrics(value evaluation.Report, thresholds phpcompat.Thresholds) *retrievalMetrics {
-	out := &retrievalMetrics{
-		Adapter:   indexing.TermSearchVersion,
-		Queries:   len(value.Queries),
-		K:         value.K,
-		Precision: value.Metrics.Precision,
-		Recall:    value.Metrics.Recall,
-		MRR:       value.Metrics.MRR,
-		NDCG:      value.Metrics.NDCG,
+func (a *retrievalAccumulator) add(corpus phpcompat.Corpus, value evaluation.Report) {
+	if a.splits == nil {
+		a.splits = map[string]*scoreAccumulator{}
 	}
-	out.Passed = retrievalThresholdsPass(*out, thresholds)
+	queries := retrievalQueriesByID(corpus)
+	for _, result := range value.Queries {
+		expectation := queries[result.ID]
+		wins := hardNegativeWins(expectation, result.Retrieved)
+		a.overall.add(result.Metrics, wins)
+		if a.splits[expectation.Split] == nil {
+			a.splits[expectation.Split] = &scoreAccumulator{}
+		}
+		a.splits[expectation.Split].add(result.Metrics, wins)
+	}
+}
+
+func (a *scoreAccumulator) add(metrics evaluation.Metrics, hardNegativeWins int) {
+	a.queries++
+	a.precision += metrics.Precision
+	a.recall += metrics.Recall
+	a.mrr += metrics.MRR
+	a.ndcg += metrics.NDCG
+	a.hardNegativeWins += hardNegativeWins
+}
+
+func (a retrievalAccumulator) metrics(policy phpcompat.RetrievalPolicy, thresholds phpcompat.Thresholds) *retrievalMetrics {
+	out := &retrievalMetrics{
+		Adapter:        policy.Adapter,
+		K:              policy.K,
+		retrievalScore: a.overall.score(thresholds),
+		Splits:         make(map[string]retrievalScore, len(policy.RequiredSplits)),
+	}
+	for _, split := range policy.RequiredSplits {
+		out.Splits[split] = a.splits[split].score(thresholds)
+		out.Passed = out.Passed && out.Splits[split].Passed
+	}
 	return out
 }
 
-func retrievalThresholdsPass(actual retrievalMetrics, threshold phpcompat.Thresholds) bool {
+func (a *scoreAccumulator) score(thresholds phpcompat.Thresholds) retrievalScore {
+	if a == nil || a.queries == 0 {
+		return retrievalScore{}
+	}
+	n := float64(a.queries)
+	out := retrievalScore{
+		Queries:          a.queries,
+		Precision:        a.precision / n,
+		Recall:           a.recall / n,
+		MRR:              a.mrr / n,
+		NDCG:             a.ndcg / n,
+		HardNegativeWins: a.hardNegativeWins,
+	}
+	out.Passed = retrievalThresholdsPass(out, thresholds)
+	return out
+}
+
+func retrievalThresholdsPass(actual retrievalScore, threshold phpcompat.Thresholds) bool {
 	return actual.Recall >= threshold.RetrievalRecallAt5 &&
 		actual.MRR >= threshold.RetrievalMRR &&
-		actual.NDCG >= threshold.RetrievalNDCGAt5
+		actual.NDCG >= threshold.RetrievalNDCGAt5 &&
+		actual.HardNegativeWins == 0
+}
+
+func retrievalQueriesByID(corpus phpcompat.Corpus) map[string]phpcompat.RetrievalExpectation {
+	out := make(map[string]phpcompat.RetrievalExpectation, len(corpus.Retrieval))
+	for _, query := range corpus.Retrieval {
+		out[query.ID] = query
+	}
+	return out
+}
+
+func hardNegativeWins(query phpcompat.RetrievalExpectation, retrieved []indexing.Chunk) int {
+	firstRelevant := len(retrieved)
+	for rank, chunk := range retrieved {
+		if matchesRetrievalChunk(chunk, query.Relevant) {
+			firstRelevant = rank
+			break
+		}
+	}
+	wins := 0
+	for _, negative := range query.HardNegatives {
+		for rank, chunk := range retrieved {
+			if rank >= firstRelevant {
+				break
+			}
+			if matchesRetrievalChunk(chunk, []phpcompat.RetrievalChunkExpectation{negative}) {
+				wins++
+				break
+			}
+		}
+	}
+	return wins
+}
+
+func matchesRetrievalChunk(chunk indexing.Chunk, judgments []phpcompat.RetrievalChunkExpectation) bool {
+	for _, judgment := range judgments {
+		if chunk.Path == judgment.Path && chunk.StartLine <= judgment.EndLine && chunk.EndLine >= judgment.StartLine {
+			return true
+		}
+	}
+	return false
 }
 
 func (c counts) metrics() metrics {
@@ -392,13 +495,15 @@ func printReport(report report, retrievalDetails bool) {
 			fmt.Printf("  - %s\n", failure)
 		}
 		if corpus.Retrieval != nil {
-			fmt.Printf("  retrieval adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f passed=%t\n",
+			fmt.Printf("  retrieval adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
 				corpus.Retrieval.Adapter, corpus.Retrieval.Queries, corpus.Retrieval.Precision, corpus.Retrieval.Recall,
-				corpus.Retrieval.MRR, corpus.Retrieval.NDCG, corpus.Retrieval.Passed)
+				corpus.Retrieval.MRR, corpus.Retrieval.NDCG, corpus.Retrieval.HardNegativeWins, corpus.Retrieval.Passed)
+			printRetrievalSplits("    ", corpus.Retrieval.Splits)
 			if retrievalDetails {
 				for _, detail := range corpus.RetrievalDetails {
-					fmt.Printf("    %-28s recall=%.3f MRR=%.3f nDCG=%.3f paths=%s\n",
-						detail.ID, detail.Metrics.Recall, detail.Metrics.MRR, detail.Metrics.NDCG, strings.Join(detail.Retrieved, ","))
+					fmt.Printf("    %-28s split=%-7s recall=%.3f MRR=%.3f nDCG=%.3f hard-negative-wins=%d chunks=%s\n",
+						detail.ID, detail.Split, detail.Metrics.Recall, detail.Metrics.MRR, detail.Metrics.NDCG,
+						detail.HardNegativeWins, strings.Join(detail.Retrieved, ","))
 				}
 			}
 		}
@@ -416,9 +521,22 @@ func printReport(report report, retrievalDetails bool) {
 		report.Passed,
 	)
 	if report.Retrieval != nil {
-		fmt.Printf("RETRIEVAL adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f passed=%t\n",
+		fmt.Printf("RETRIEVAL adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
 			report.Retrieval.Adapter, report.Retrieval.Queries, report.Retrieval.Precision, report.Retrieval.Recall,
-			report.Retrieval.MRR, report.Retrieval.NDCG, report.Retrieval.Passed)
+			report.Retrieval.MRR, report.Retrieval.NDCG, report.Retrieval.HardNegativeWins, report.Retrieval.Passed)
+		printRetrievalSplits("  ", report.Retrieval.Splits)
+	}
+}
+
+func printRetrievalSplits(prefix string, splits map[string]retrievalScore) {
+	for _, split := range []string{phpcompat.RetrievalSplitTrain, phpcompat.RetrievalSplitValidate, phpcompat.RetrievalSplitHoldout} {
+		metrics, ok := splits[split]
+		if !ok {
+			continue
+		}
+		fmt.Printf("%ssplit=%-7s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
+			prefix, split, metrics.Queries, metrics.Precision, metrics.Recall, metrics.MRR, metrics.NDCG,
+			metrics.HardNegativeWins, metrics.Passed)
 	}
 }
 

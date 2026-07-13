@@ -29,6 +29,7 @@ func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 		{"typed", "type"},
 		{"trimmed", "trim"},
 		{"bound", "bind"},
+		{"constant", "const"},
 		{"iterator", "iterable"},
 		{"located", "location"},
 	} {
@@ -40,6 +41,56 @@ func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 		if quality := searchTermMatchQuality(pair[0], pair[1]); quality != 0 {
 			t.Errorf("unexpected match for %q and %q: %d", pair[0], pair[1], quality)
 		}
+	}
+}
+
+func TestTermAwareChunkScorePrefersContentEvidenceOverSharedPath(t *testing.T) {
+	terms := meaningfulSearchTerms("where are consumer dependencies consumed")
+	header := Chunk{Path: "app/Consumer.php", Content: "<?php\nnamespace Fixture\\Composer\\App;\n"}
+	declaration := Chunk{Path: "app/Consumer.php", Content: "final class Consumer { public function dependencies(): array {} }\n"}
+	if got, want := termAwareChunkScore(declaration, terms), termAwareChunkScore(header, terms); got <= want {
+		t.Fatalf("declaration score %d must exceed path-only header score %d", got, want)
+	}
+}
+
+func TestTermAwareChunkScoreDownranksPHPBoilerplate(t *testing.T) {
+	terms := meaningfulSearchTerms("oddly located mapped thing")
+	header := Chunk{Path: "classmap/MappedThing.php", Language: "php", Content: "<?php\nnamespace Odd\\Location;\n"}
+	declaration := Chunk{Path: "classmap/MappedThing.php", Language: "php", Content: "final class MappedThing {}\n"}
+	if !isPHPHeaderOnlyChunk(header) || isPHPHeaderOnlyChunk(declaration) {
+		t.Fatal("unexpected PHP header classification")
+	}
+	if got, want := termAwareChunkScore(declaration, terms), termAwareChunkScore(header, terms); got <= want {
+		t.Fatalf("declaration score %d must exceed boilerplate score %d", got, want)
+	}
+}
+
+func TestTermAwareChunkScorePrefersMatchingDeclarationOverReference(t *testing.T) {
+	terms := meaningfulSearchTerms("where is the oddly located mapped thing")
+	declaration := Chunk{Path: "classmap/MappedThing.php", Language: "php", Content: "final class MappedThing\n{\n}\n"}
+	reference := Chunk{Path: "app/Consumer.php", Language: "php", Content: "public function dependencies(): array\n{\n    return [new MappedThing()];\n}\n"}
+	if got, want := termAwareChunkScore(declaration, terms), termAwareChunkScore(reference, terms); got <= want {
+		t.Fatalf("matching declaration score %d must exceed reference score %d", got, want)
+	}
+}
+
+func TestPHPDeclarationEvidenceExcludesBodiesAndNonPHP(t *testing.T) {
+	php := Chunk{Path: "Consumer.php", Language: "php", Content: "public function dependencies(): array { return [new MappedThing()]; }\n"}
+	if quality := bestSearchTermQuality("mapped", phpDeclarationHeaderTokens(php)); quality != 0 {
+		t.Fatalf("one-line PHP body leaked into declaration evidence: %d", quality)
+	}
+	nonPHP := Chunk{Path: "consumer.go", Language: "go", Content: "func dependencies() { _ = MappedThing{} }\n"}
+	if tokens := phpDeclarationHeaderTokens(nonPHP); len(tokens) != 0 {
+		t.Fatalf("non-PHP declaration evidence = %v, want none", tokens)
+	}
+}
+
+func TestTermAwareChunkScoreKeepsTargetedPHPImportsDiscoverable(t *testing.T) {
+	terms := meaningfulSearchTerms("where is MappedThing imported with use")
+	declaration := Chunk{Path: "app/Consumer.php", Language: "php", Content: "use Odd\\Location\\MappedThing;\n"}
+	reference := Chunk{Path: "app/Factory.php", Language: "php", Content: "public function create(): object\n{\n    return new MappedThing();\n}\n"}
+	if got, want := termAwareChunkScore(declaration, terms), termAwareChunkScore(reference, terms); got <= want {
+		t.Fatalf("targeted import score %d must exceed reference score %d", got, want)
 	}
 }
 
@@ -80,6 +131,37 @@ func TestSearchTermsFindsNaturalLanguageWithoutChangingExactSearch(t *testing.T)
 	}
 	if len(terms) == 0 || terms[0].Path != "src/Controller/ReportController.php" {
 		t.Fatalf("unexpected term-aware ranking: %#v", terms)
+	}
+}
+
+func TestSearchTermsPrefersMatchingPHPDeclarationChunk(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"classmap/MappedThing.php": "<?php\n\ndeclare(strict_types=1);\n\nnamespace Odd\\Location;\n\nfinal class MappedThing\n{\n}\n",
+		"app/Consumer.php":         "<?php\n\nnamespace Fixture\\App;\n\nuse Odd\\Location\\MappedThing;\n\nfinal class Consumer\n{\n    public function dependencies(): array\n    {\n        return [new MappedThing()];\n    }\n}\n",
+	}
+	for rel, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.indexAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := idx.SearchTermsByPathContext(context.Background(), "where is the oddly located mapped thing", 5, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 || chunks[0].Path != "classmap/MappedThing.php" || chunks[0].StartLine != 7 || chunks[0].EndLine != 9 {
+		t.Fatalf("expected the mapped declaration at rank one, got %#v", chunks)
 	}
 }
 

@@ -15,7 +15,12 @@ import (
 	"strings"
 )
 
-const SuiteVersion = 1
+const (
+	SuiteVersion           = 2
+	RetrievalSplitTrain    = "train"
+	RetrievalSplitValidate = "validation"
+	RetrievalSplitHoldout  = "holdout"
+)
 
 var supportedPHPVersion = regexp.MustCompile(`^(?:7\.4|8\.[0-4])$`)
 
@@ -34,10 +39,17 @@ type Thresholds struct {
 }
 
 type Suite struct {
-	Version    int        `json:"version"`
-	Thresholds Thresholds `json:"thresholds"`
-	Corpora    []Corpus   `json:"corpora"`
-	suitePath  string
+	Version         int             `json:"version"`
+	Thresholds      Thresholds      `json:"thresholds"`
+	RetrievalPolicy RetrievalPolicy `json:"retrievalPolicy"`
+	Corpora         []Corpus        `json:"corpora"`
+	suitePath       string
+}
+
+type RetrievalPolicy struct {
+	Adapter        string   `json:"adapter"`
+	K              int      `json:"k"`
+	RequiredSplits []string `json:"requiredSplits"`
 }
 
 type Corpus struct {
@@ -95,9 +107,17 @@ type ComposerResolution struct {
 }
 
 type RetrievalExpectation struct {
-	ID       string   `json:"id"`
-	Query    string   `json:"query"`
-	Relevant []string `json:"relevant"`
+	ID            string                      `json:"id"`
+	Split         string                      `json:"split"`
+	Query         string                      `json:"query"`
+	Relevant      []RetrievalChunkExpectation `json:"relevant"`
+	HardNegatives []RetrievalChunkExpectation `json:"hardNegatives,omitempty"`
+}
+
+type RetrievalChunkExpectation struct {
+	Path      string `json:"path"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine"`
 }
 
 func Load(path string) (Suite, error) {
@@ -151,6 +171,22 @@ func (s Suite) Validate() error {
 		if value <= 0 || value > 1 {
 			return fmt.Errorf("threshold %s must be greater than zero and at most one", name)
 		}
+	}
+	if strings.TrimSpace(s.RetrievalPolicy.Adapter) == "" {
+		return errors.New("retrievalPolicy.adapter is required")
+	}
+	if s.RetrievalPolicy.K != 5 {
+		return errors.New("retrievalPolicy.k must be 5 for the configured thresholds")
+	}
+	requiredSplits := map[string]bool{}
+	for index, split := range s.RetrievalPolicy.RequiredSplits {
+		if split != RetrievalSplitTrain && split != RetrievalSplitValidate && split != RetrievalSplitHoldout || requiredSplits[split] {
+			return fmt.Errorf("retrievalPolicy.requiredSplits[%d] is invalid or duplicate", index)
+		}
+		requiredSplits[split] = true
+	}
+	if !requiredSplits[RetrievalSplitTrain] || !requiredSplits[RetrievalSplitValidate] {
+		return errors.New("retrievalPolicy.requiredSplits must include train and validation")
 	}
 	if len(s.Corpora) == 0 {
 		return errors.New("PHP compatibility suite has no corpora")
@@ -280,16 +316,53 @@ func (s Suite) validateCorpus(corpus Corpus) error {
 		}
 	}
 
+	requiredSplits := map[string]bool{}
+	for _, split := range s.RetrievalPolicy.RequiredSplits {
+		requiredSplits[split] = true
+	}
 	queries := map[string]bool{}
+	splitCounts := map[string]int{}
 	for index, query := range corpus.Retrieval {
 		if strings.TrimSpace(query.ID) == "" || queries[query.ID] || strings.TrimSpace(query.Query) == "" || len(query.Relevant) == 0 {
 			return fmt.Errorf("retrieval[%d] has invalid or duplicate id, query, or judgments", index)
 		}
+		if !requiredSplits[query.Split] {
+			return fmt.Errorf("retrieval[%d] has unsupported split %q", index, query.Split)
+		}
+		if query.Split != RetrievalSplitTrain && len(query.HardNegatives) == 0 {
+			return fmt.Errorf("retrieval[%d] %s query requires a hard negative", index, query.Split)
+		}
 		queries[query.ID] = true
-		for relevantIndex, path := range query.Relevant {
-			if err := validateCorpusPath(root, path); err != nil {
+		splitCounts[query.Split]++
+		relevantPaths := map[string]bool{}
+		for relevantIndex, judgment := range query.Relevant {
+			if err := validateRetrievalChunk(root, judgment); err != nil {
 				return fmt.Errorf("retrieval[%d].relevant[%d]: %w", index, relevantIndex, err)
 			}
+			if relevantPaths[judgment.Path] {
+				return fmt.Errorf("retrieval[%d].relevant[%d] repeats path %q for a distinct-path adapter", index, relevantIndex, judgment.Path)
+			}
+			relevantPaths[judgment.Path] = true
+		}
+		negativePaths := map[string]bool{}
+		for negativeIndex, judgment := range query.HardNegatives {
+			if err := validateRetrievalChunk(root, judgment); err != nil {
+				return fmt.Errorf("retrieval[%d].hardNegatives[%d]: %w", index, negativeIndex, err)
+			}
+			if negativePaths[judgment.Path] {
+				return fmt.Errorf("retrieval[%d].hardNegatives[%d] repeats path %q for a distinct-path adapter", index, negativeIndex, judgment.Path)
+			}
+			negativePaths[judgment.Path] = true
+			for relevantIndex, relevant := range query.Relevant {
+				if retrievalChunksOverlap(judgment, relevant) {
+					return fmt.Errorf("retrieval[%d].hardNegatives[%d] overlaps relevant[%d]", index, negativeIndex, relevantIndex)
+				}
+			}
+		}
+	}
+	for _, split := range s.RetrievalPolicy.RequiredSplits {
+		if splitCounts[split] == 0 {
+			return fmt.Errorf("retrieval requires at least one %s query", split)
 		}
 	}
 	return nil
@@ -354,6 +427,21 @@ func validateFixtureFile(root, path string) (int, error) {
 		lines++
 	}
 	return lines, nil
+}
+
+func validateRetrievalChunk(root string, chunk RetrievalChunkExpectation) error {
+	lineCount, err := validateFixtureFile(root, chunk.Path)
+	if err != nil {
+		return err
+	}
+	if chunk.StartLine <= 0 || chunk.EndLine < chunk.StartLine || chunk.EndLine > lineCount {
+		return fmt.Errorf("invalid line range %d-%d for %q with %d lines", chunk.StartLine, chunk.EndLine, chunk.Path, lineCount)
+	}
+	return nil
+}
+
+func retrievalChunksOverlap(left, right RetrievalChunkExpectation) bool {
+	return left.Path == right.Path && left.StartLine <= right.EndLine && left.EndLine >= right.StartLine
 }
 
 func validateRelationPaths(root, from, to string) error {

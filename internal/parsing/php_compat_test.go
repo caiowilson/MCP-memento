@@ -100,7 +100,7 @@ func loadPHPCompatibilitySuite(t *testing.T) phpcompat.Suite {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(current), "../../evaluation/php-compat/suite.v1.json")
+	path := filepath.Join(filepath.Dir(current), "../../evaluation/php-compat/suite.v2.json")
 	suite, err := phpcompat.Load(path)
 	if err != nil {
 		t.Fatal(err)

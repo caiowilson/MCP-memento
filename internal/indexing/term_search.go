@@ -7,8 +7,9 @@ import (
 )
 
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
-// conservative inflection matching, coverage boost, and path boost.
-const TermSearchVersion = "terms-v1"
+// conservative inflection matching, coverage boost, content evidence, and a
+// bounded path tie-break.
+const TermSearchVersion = "terms-v2"
 
 var searchStopWords = map[string]struct{}{
 	"a": {}, "all": {}, "an": {}, "and": {}, "are": {}, "be": {},
@@ -42,18 +43,25 @@ func meaningfulSearchTerms(query string) []string {
 func termAwareChunkScore(chunk Chunk, queryTerms []string) int {
 	contentTokens := identifierSearchTokens(chunk.Content)
 	pathTokens := identifierSearchTokens(filepath.ToSlash(chunk.Path))
-	matched, score := 0, 0
+	declarationTokens := phpDeclarationHeaderTokens(chunk)
+	matched, contentMatches, declarationMatches, score := 0, 0, 0, 0
 	for _, query := range queryTerms {
 		contentQuality := bestSearchTermQuality(query, contentTokens)
 		pathQuality := bestSearchTermQuality(query, pathTokens)
-		if pathQuality > 0 {
-			pathQuality += 4
+		if pathQuality > 0 && contentQuality == 0 {
+			pathQuality++
 		}
 		quality := max(contentQuality, pathQuality)
 		if quality == 0 {
 			continue
 		}
 		matched++
+		if contentQuality > 0 {
+			contentMatches++
+		}
+		if bestSearchTermQuality(query, declarationTokens) > 0 {
+			declarationMatches++
+		}
 		score += quality
 	}
 	if matched == 0 {
@@ -61,8 +69,72 @@ func termAwareChunkScore(chunk Chunk, queryTerms []string) int {
 	}
 	// Coverage dominates repeated common words so multi-concept matches rank
 	// ahead of chunks that only repeat a ubiquitous project noun.
-	score += matched * matched * 6
+	// Content evidence then resolves chunks from the same path whose file-name
+	// concepts are identical, keeping namespace/import headers below the member
+	// that actually answers the query.
+	score += matched*matched*6 + contentMatches*4 + declarationMatches*8
+	if isPHPHeaderOnlyChunk(chunk) && !queryTargetsPHPHeader(queryTerms) {
+		// Namespace/import headers share file-path concepts with every member.
+		// Keep them discoverable for direct namespace queries without allowing
+		// boilerplate to outrank the declaration that carries the answer.
+		score /= 4
+	}
 	return score
+}
+
+func phpDeclarationHeaderTokens(chunk Chunk) []string {
+	if !usesPHPDeclarationChunks(chunk.Path, chunk.Language) {
+		return nil
+	}
+	var header strings.Builder
+	for _, line := range strings.Split(chunk.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "<?php" || line == "?>" || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*") {
+			continue
+		}
+		if strings.HasPrefix(line, "declare(") || strings.HasPrefix(line, "require") {
+			continue
+		}
+		delimiter := strings.IndexAny(line, "{;")
+		if delimiter >= 0 {
+			line = line[:delimiter]
+		}
+		header.WriteString(line)
+		header.WriteByte(' ')
+		if delimiter >= 0 {
+			break
+		}
+	}
+	return identifierSearchTokens(header.String())
+}
+
+func queryTargetsPHPHeader(queryTerms []string) bool {
+	for _, term := range queryTerms {
+		switch canonicalSearchTerm(term) {
+		case "import", "namespace", "use":
+			return true
+		}
+	}
+	return false
+}
+
+func isPHPHeaderOnlyChunk(chunk Chunk) bool {
+	if !usesPHPDeclarationChunks(chunk.Path, chunk.Language) {
+		return false
+	}
+	sawHeader := false
+	for _, line := range strings.Split(chunk.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "<?php" || line == "?>" {
+			continue
+		}
+		if strings.HasPrefix(line, "declare(") || strings.HasPrefix(line, "namespace ") || strings.HasPrefix(line, "use ") {
+			sawHeader = true
+			continue
+		}
+		return false
+	}
+	return sawHeader
 }
 
 func termAwarePathScore(path string, queryTerms []string) int {
@@ -131,6 +203,8 @@ func canonicalSearchTerm(value string) string {
 	switch value {
 	case "bound", "binding", "bindings", "binds":
 		return "bind"
+	case "const", "constants":
+		return "constant"
 	case "iterable", "iterator", "iteration", "iterations":
 		return "iterate"
 	case "located", "location", "locations":

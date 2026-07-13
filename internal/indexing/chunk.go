@@ -7,7 +7,7 @@ import (
 
 // ChunkingVersion identifies the persisted chunk-boundary algorithm. Change it
 // whenever identical source and limits can produce different ranges.
-const ChunkingVersion = "treesitter-php-v2"
+const ChunkingVersion = "treesitter-php-members-v3"
 
 const (
 	DefaultMaxChunkLines = 200
@@ -62,6 +62,9 @@ func chunkFileWithSyntaxSource(path, language, content, syntaxSource string, max
 	starts, ok := syntaxChunkStarts(path, language, syntaxSource, syntaxLines)
 	if !ok || len(starts) == 0 {
 		return chunkLineRange(path, language, lines, 1, len(lines), maxLines, maxBytes)
+	}
+	if usesPHPDeclarationChunks(path, language) {
+		return chunkDeclarationRanges(path, language, lines, starts, maxLines, maxBytes)
 	}
 	return chunkStructuralRanges(path, language, lines, starts, maxLines, maxBytes)
 }
@@ -121,6 +124,29 @@ func chunkStructuralRanges(path, language string, lines []string, starts []int, 
 		currentBytes += unitBytes
 	}
 	flushCurrent()
+	return chunks
+}
+
+// chunkDeclarationRanges preserves every parser-backed PHP declaration or
+// member as a separate retrieval unit. Oversized declarations still use the
+// bounded line fallback so chunk limits remain hard.
+func chunkDeclarationRanges(path, language string, lines []string, starts []int, maxLines, maxBytes int) []Chunk {
+	starts = normalizedChunkStarts(starts, len(lines))
+	if len(starts) == 0 {
+		return chunkLineRange(path, language, lines, 1, len(lines), maxLines, maxBytes)
+	}
+	if starts[0] != 1 {
+		starts = append([]int{1}, starts...)
+	}
+
+	chunks := make([]Chunk, 0, len(starts))
+	for index, start := range starts {
+		end := len(lines)
+		if index+1 < len(starts) {
+			end = starts[index+1] - 1
+		}
+		chunks = append(chunks, chunkLineRange(path, language, lines, start, end, maxLines, maxBytes)...)
+	}
 	return chunks
 }
 

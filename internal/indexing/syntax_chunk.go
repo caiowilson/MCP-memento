@@ -18,7 +18,15 @@ var jsModifierOnly = regexp.MustCompile(`^[\t ]*(?:export(?:\s+default)?|default
 func syntaxChunkStarts(path, language, source string, lines []string) ([]int, bool) {
 	if parsing.Supported(path) {
 		if analysis, err := parsing.Analyze(path, []byte(source)); err == nil && len(analysis.DeclarationStarts) > 0 {
-			return normalizedChunkStarts(analysis.DeclarationStarts, len(lines)), true
+			starts := append([]int(nil), analysis.DeclarationStarts...)
+			if analysis.Language == "php" {
+				for _, symbol := range analysis.Symbols {
+					if symbol.Container != "" {
+						starts = append(starts, symbol.ExtentStartLine)
+					}
+				}
+			}
+			return normalizedChunkStarts(starts, len(lines)), true
 		}
 	}
 	switch chunkLanguage(path, language) {
@@ -28,6 +36,18 @@ func syntaxChunkStarts(path, language, source string, lines []string) ([]int, bo
 		return jsChunkStarts([]byte(source), lines)
 	default:
 		return nil, false
+	}
+}
+
+func usesPHPDeclarationChunks(path, language string) bool {
+	if strings.EqualFold(strings.TrimSpace(language), "php") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".php", ".php3", ".php4", ".php5", ".phps", ".phpt", ".phtml", ".inc", ".module", ".install", ".theme", ".profile", ".engine":
+		return true
+	default:
+		return false
 	}
 }
 

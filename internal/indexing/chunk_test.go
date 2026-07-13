@@ -274,9 +274,63 @@ class Service {
 function helper(): void {}
 `
 	chunks := ChunkFile("fixture.php", "php", content, 5, 1<<20)
-	want := [][2]int{{1, 5}, {6, 10}, {11, 11}}
+	want := [][2]int{{1, 3}, {4, 5}, {6, 7}, {8, 10}, {11, 11}}
 	if len(chunks) != len(want) {
 		t.Fatalf("expected PHP declaration chunks, got %#v", chunks)
+	}
+	for index, bounds := range want {
+		assertChunkBounds(t, chunks[index], bounds[0], bounds[1])
+	}
+}
+
+func TestChunkFile_PHPKeepsMembersDistinctUnderLargeBudget(t *testing.T) {
+	content := `<?php
+final class ReportService
+{
+    private string $name;
+
+    public function recent(): array
+    {
+        return [];
+    }
+
+    public function archived(): array
+    {
+        return [];
+    }
+}
+`
+	chunks := ChunkFile("ReportService.php", "php", content, 200, 1<<20)
+	want := [][2]int{{1, 1}, {2, 3}, {4, 5}, {6, 10}, {11, 15}}
+	if len(chunks) != len(want) {
+		t.Fatalf("expected member-level PHP chunks, got %#v", chunks)
+	}
+	for index, bounds := range want {
+		assertChunkBounds(t, chunks[index], bounds[0], bounds[1])
+	}
+}
+
+func TestChunkFile_PHPMemberExtentIncludesDocumentationAndAttributes(t *testing.T) {
+	content := `<?php
+final class ReportController
+{
+    /** Handles the report route. */
+    #[Route('/reports')]
+    public function reports(): array
+    {
+        return [];
+    }
+
+    public function health(): bool
+    {
+        return true;
+    }
+}
+`
+	chunks := ChunkFile("ReportController.php", "php", content, 200, 1<<20)
+	want := [][2]int{{1, 1}, {2, 3}, {4, 10}, {11, 15}}
+	if len(chunks) != len(want) {
+		t.Fatalf("expected documentation-aligned PHP member chunks, got %#v", chunks)
 	}
 	for index, bounds := range want {
 		assertChunkBounds(t, chunks[index], bounds[0], bounds[1])
