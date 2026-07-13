@@ -61,7 +61,7 @@ Delivered by `91b6366` in `internal/indexing/chunk_test.go`.
 
 ### Slice 13 — Syntax-aware chunk boundaries
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: `internal/indexing/chunk.go`
@@ -74,10 +74,12 @@ Chunks currently split at arbitrary line/byte boundaries and can cut functions i
 
 #### Steps
 
-- [ ] For Go files, use `go/ast` to split on top-level declaration boundaries (status: todo)
-- [ ] For JS/TS, detect function/class/export boundaries with regex heuristics (status: todo)
-- [ ] Fallback to line-based chunking for unknown languages (status: todo)
-- [ ] Add tests verifying Go chunks align to declaration boundaries (status: todo)
+- [x] For Go files, use `go/ast` to split on top-level declaration boundaries (status: done)
+- [x] For JS/TS, detect function/class/export boundaries with regex heuristics (status: done)
+- [x] Fallback to line-based chunking for unknown languages (status: done)
+- [x] Add tests verifying Go chunks align to declaration boundaries (status: done)
+
+Implemented in `internal/indexing/chunk.go` and `internal/indexing/syntax_chunk.go`, with persisted chunking fingerprints and regression coverage for syntax, fallback, redaction, and vector rebuild behavior.
 
 ### Slice 14A — `repo_diff_context` MVP (explicit paths)
 

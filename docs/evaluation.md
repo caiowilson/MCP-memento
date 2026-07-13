@@ -101,6 +101,8 @@ Thresholds and sample requirements live in `evaluation/fixtures/regression-gates
 
 Baseline refresh rationale for issue #30: the new feedback documentation moved the `MAX_MCP_OUTPUT_TOKENS` passage in `docs/README.md`, and review found that the paired `docs/clients.md` judgment also retained an older line number. Both judgments were moved to the current exact passage without changing their query or relevance meaning. The committed lexical baseline was regenerated after that anchor-only correction; no retrieval scoring behavior changed.
 
+Baseline refresh rationale for syntax-aware chunking: the chunk construction algorithm now prefers complete Go and JavaScript/TypeScript declarations, so the retrieval configuration fingerprint includes its version. The `ReloadIgnoreRules` judgments were moved to the current declaration and exact reference comment; the previous second judgment pointed at a nearby line that only overlapped under fixed-size chunking. The committed lexical baseline was regenerated against those intentional boundary and judgment changes; this is a retrieval-behavior change, not an anchor-only refresh.
+
 ## Validate the contract
 
 ```bash

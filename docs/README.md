@@ -80,7 +80,7 @@ Configuration:
 - `MEMENTO_EMBEDDING_BATCH_SIZE` (default `32`)
 - `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (default `30`)
 
-Vector sidecars live under `~/.memento-mcp/repos/<repo-id>/index/v1/files/*.vec`. The embedding fingerprint is recorded in the manifest; changing the model removes incompatible vectors and re-embeds unchanged chunks during the next index pass. Prefer explicit model tags so cache invalidation is predictable.
+Vector sidecars live under `~/.memento-mcp/repos/<repo-id>/index/v1/files/*.vec`. The embedding fingerprint is recorded in the manifest; changing the model removes incompatible vectors and re-embeds unchanged chunks during the next index pass. The manifest also fingerprints the chunking algorithm and effective size limits. Upgrading to a release with new chunk boundaries triggers a one-time chunk rebuild and, when semantic retrieval is enabled, re-embedding. Prefer explicit model tags so cache invalidation is predictable.
 
 If Ollama is stopped or the model is absent, indexing and queries fall back to lexical retrieval. `repo_index_status` and `repo_index_debug` expose the embedding error, and Memento waits 30 seconds before retrying the unavailable runtime. Chunk indexing and all non-semantic tools continue to work.
 

@@ -212,6 +212,69 @@ func TestEmbeddingFingerprintChangeReindexesUnchangedFiles(t *testing.T) {
 	}
 }
 
+func TestChunkingFingerprintChangeReembedsUnchangedFiles(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	content := "package fixture\n\nfunc One() {\n\tprintln(1)\n}\nfunc Two() {}\n"
+	writeSemanticFixture(t, root, "fixture.go", content)
+	firstEmbedder := &testEmbedder{fingerprint: "stable-model"}
+	first, err := New(Config{
+		RootAbs:        root,
+		StoreDir:       store,
+		MaxChunkLines:  2,
+		MaxChunkBytes:  1 << 20,
+		MaxTotalBytes:  int64(len(content)),
+		Embedder:       firstEmbedder,
+		SemanticWeight: 0.65,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstContext, firstCancel := context.WithCancel(context.Background())
+	first.Start(firstContext)
+	if err := first.IndexAll(firstContext); err != nil {
+		firstCancel()
+		t.Fatal(err)
+	}
+	firstCancel()
+	entry := first.manifest.Files["fixture.go"]
+	vectorPath := first.vectorFilePath(entry.ID)
+	if _, err := os.Stat(vectorPath); err != nil {
+		t.Fatal(err)
+	}
+
+	secondEmbedder := &testEmbedder{fingerprint: "stable-model"}
+	second, err := New(Config{
+		RootAbs:        root,
+		StoreDir:       store,
+		MaxChunkLines:  20,
+		MaxChunkBytes:  1 << 20,
+		MaxTotalBytes:  int64(len(content)),
+		Embedder:       secondEmbedder,
+		SemanticWeight: 0.65,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(vectorPath); !os.IsNotExist(err) {
+		t.Fatalf("expected old vectors to be removed after chunking change, got %v", err)
+	}
+	secondContext, secondCancel := context.WithCancel(context.Background())
+	defer secondCancel()
+	second.Start(secondContext)
+	if err := second.IndexAll(secondContext); err != nil {
+		t.Fatal(err)
+	}
+	documentCalls, _ := secondEmbedder.calls()
+	if documentCalls == 0 {
+		t.Fatal("expected unchanged source to be re-embedded after chunking change")
+	}
+	rebuilt := second.manifest.Files["fixture.go"]
+	if rebuilt.Vectors == 0 || rebuilt.Vectors != rebuilt.Chunks {
+		t.Fatalf("expected vectors for every rebuilt chunk, got %#v", rebuilt)
+	}
+}
+
 func TestEmbeddingFailureFallsBackToLexicalSearch(t *testing.T) {
 	root := t.TempDir()
 	writeSemanticFixture(t, root, "auth.go", "package fixture\n// ExactNeedle remains searchable.\n")

@@ -36,3 +36,19 @@ func TestRetrievalSummaryRoundTrip(t *testing.T) {
 		t.Fatalf("loaded = %#v, want %#v", loaded, summary)
 	}
 }
+
+func TestRetrievalSummaryFingerprintIncludesChunkLimits(t *testing.T) {
+	fixtures := FixtureSet{Version: 1, K: 5, Queries: []QueryFixture{{ID: "one", Query: "query", Relevant: []RelevantChunk{{Path: "README.md"}}}}}
+	report := Report{K: 5, Queries: []QueryResult{{ID: "one"}}}
+	defaults, err := NewRetrievalSummary(fixtures, report, RetrievalSummaryConfig{Mode: "lexical"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom, err := NewRetrievalSummary(fixtures, report, RetrievalSummaryConfig{Mode: "lexical", MaxChunkLines: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.ConfigurationFingerprint == custom.ConfigurationFingerprint {
+		t.Fatal("expected effective chunking limits to affect the retrieval configuration fingerprint")
+	}
+}
