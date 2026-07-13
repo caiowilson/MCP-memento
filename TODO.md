@@ -378,6 +378,23 @@ The versioned workflow signs raw binaries with the hardened runtime, signs the i
 - [x] Add language-version distractors and clarify ambiguous framework judgments (status: done)
 - [x] Run the PHP compatibility gates from the standard test target and blocking pull-request CI (status: done)
 
+### Slice 31 — Declaration-level PHP retrieval evaluation
+
+- Status: done
+- Owner: @caiowilson
+- Difficulty: medium
+- Scope: `internal/indexing/`, `evaluation/php-compat/`, `cmd/php-compat-eval/`
+- Priority: P4
+
+#### Steps
+
+- [x] Preserve parser-backed PHP members as distinct production index chunks (status: done)
+- [x] Replace file-only retrieval relevance with exact declaration-line ranges (status: done)
+- [x] Split the benchmark into 30 training, 11 validation, and 11 post-freeze holdout queries across every corpus (status: done)
+- [x] Add range-bounded hard negatives and fail when a distractor outranks the first relevant declaration (status: done)
+- [x] Gate training/validation per corpus and report a post-freeze advisory holdout without exposing paths in aggregate JSON (status: done)
+- [x] Version contrast-aware declaration scoring as `terms-v3` and refresh the chunk-fingerprint baseline with a written rationale (status: done)
+
 ## Recently Completed (historical)
 
 - Slice 1: VS Code happy path (done)

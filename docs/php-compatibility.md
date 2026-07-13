@@ -28,9 +28,9 @@ Run the checked-in compatibility evaluator with:
 make php-compat-eval
 ```
 
-The command reports strict parse success, required symbol and signature recall, declaration-boundary recall, exact anchor extents, Composer resolution accuracy, relationship precision/recall, and term-aware retrieval precision@5, recall@5, MRR, and nDCG@5. Pass `PHP_COMPAT_ARGS=-retrieval-details` to print each query's metrics and ranked paths. Expected and forbidden relationships are stored outside each corpus root in `evaluation/php-compat/suite.v1.json`, so fixture source cannot teach the relationship resolver its own answers.
+The command reports strict parse success, required symbol and signature recall, declaration-boundary recall, exact anchor extents, Composer resolution accuracy, relationship precision/recall, and term-aware retrieval precision@5, recall@5, MRR, and nDCG@5. Pass `PHP_COMPAT_ARGS=-retrieval-details` to print each query's metrics and ranked chunks. Expected and forbidden relationships are stored outside each corpus root in `evaluation/php-compat/suite.v2.json`, so fixture source cannot teach the relationship resolver its own answers.
 
-The structural and Composer gates are intentionally exact. Framework relationship thresholds leave a narrow allowance for conservative omissions. All 19 natural-language retrieval judgments are scored independently within their corpus using the versioned `terms-v1` adapter; recall@5 must reach 95%, while MRR and nDCG@5 must reach 90% both per corpus and overall. The PHP 7.4–8.4 roots include distractor files so language-version retrieval is not a one-file check.
+The structural and Composer gates are intentionally exact. Framework relationship thresholds leave a narrow allowance for conservative omissions. Fifty-two natural-language retrieval queries with 57 answer-line judgments are scored independently within their corpus using the versioned `terms-v3` adapter. The evaluator reports 30 training, 11 validation, and 11 fresh holdout queries separately; validation and holdout cover every corpus and include range-bounded hard negatives. The holdout was authored after the scorer was frozen at `da8e60b`, without running retrieval. Training and validation are blocking at 95% recall@5, 90% MRR and nDCG@5, and zero hard-negative wins. The unseen holdout is advisory and establishes an honest baseline of recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win. The PHP 7.4–8.4 roots include distractor files so language-version retrieval is not a one-file check.
 
 `make test` includes this evaluator, and the blocking PHP Compatibility workflow runs it for pull requests and pushes to `main`. Its uploaded JSON report contains aggregate corpus metrics only; query IDs and ranked paths are available solely through the explicit local details flag.
 
@@ -38,8 +38,8 @@ The structural and Composer gates are intentionally exact. Framework relationshi
 
 The highest-leverage next improvements are:
 
-1. Add declaration-line relevance ranges and production-derived minimized misses so a correct file with the wrong declaration chunk cannot satisfy a judgment.
-2. Add licensed snapshots or minimized reproductions from public applications when production misses are observed, keeping per-framework macro metrics.
+1. Grow future holdout generations from minimized, original reproductions of observed production misses, with matched hard negatives and no copied application source.
+2. Address the measured holdout misses: declaration-vs-reference intent for Laravel configuration, attribute/metadata intent in PHP 8.4, and exact callable/entity-mapping rank in PHP 8.1 and Symfony.
 3. Upgrade the pinned PHP grammar after its valid grouped-import trailing-comma recovery gap is fixed, then rerun malformed-source and six-target cross-build checks.
 4. Add scoped function and constant import/reference resolution, dynamic include diagnostics, and ambiguity reporting for duplicate class declarations.
 5. Replace bounded YAML, Twig, Blade, Drupal, and WordPress conventions with dedicated parsers only when their per-framework confusion matrices justify the added complexity.

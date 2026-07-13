@@ -50,6 +50,7 @@ type RetrievalPolicy struct {
 	Adapter        string   `json:"adapter"`
 	K              int      `json:"k"`
 	RequiredSplits []string `json:"requiredSplits"`
+	BlockingSplits []string `json:"blockingSplits"`
 }
 
 type Corpus struct {
@@ -187,6 +188,16 @@ func (s Suite) Validate() error {
 	}
 	if !requiredSplits[RetrievalSplitTrain] || !requiredSplits[RetrievalSplitValidate] {
 		return errors.New("retrievalPolicy.requiredSplits must include train and validation")
+	}
+	blockingSplits := map[string]bool{}
+	for index, split := range s.RetrievalPolicy.BlockingSplits {
+		if !requiredSplits[split] || blockingSplits[split] {
+			return fmt.Errorf("retrievalPolicy.blockingSplits[%d] is not required or is duplicate", index)
+		}
+		blockingSplits[split] = true
+	}
+	if !blockingSplits[RetrievalSplitTrain] || !blockingSplits[RetrievalSplitValidate] || blockingSplits[RetrievalSplitHoldout] {
+		return errors.New("retrievalPolicy.blockingSplits must include train and validation but not holdout")
 	}
 	if len(s.Corpora) == 0 {
 		return errors.New("PHP compatibility suite has no corpora")

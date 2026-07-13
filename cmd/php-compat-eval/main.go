@@ -65,8 +65,9 @@ type report struct {
 }
 
 type retrievalMetrics struct {
-	Adapter string `json:"adapter"`
-	K       int    `json:"k"`
+	Adapter        string   `json:"adapter"`
+	K              int      `json:"k"`
+	BlockingSplits []string `json:"blockingSplits"`
 	retrievalScore
 	Splits map[string]retrievalScore `json:"splits"`
 }
@@ -321,11 +322,15 @@ func (a retrievalAccumulator) metrics(policy phpcompat.RetrievalPolicy, threshol
 	out := &retrievalMetrics{
 		Adapter:        policy.Adapter,
 		K:              policy.K,
+		BlockingSplits: append([]string(nil), policy.BlockingSplits...),
 		retrievalScore: a.overall.score(thresholds),
 		Splits:         make(map[string]retrievalScore, len(policy.RequiredSplits)),
 	}
 	for _, split := range policy.RequiredSplits {
 		out.Splits[split] = a.splits[split].score(thresholds)
+	}
+	out.Passed = true
+	for _, split := range policy.BlockingSplits {
 		out.Passed = out.Passed && out.Splits[split].Passed
 	}
 	return out
@@ -495,8 +500,8 @@ func printReport(report report, retrievalDetails bool) {
 			fmt.Printf("  - %s\n", failure)
 		}
 		if corpus.Retrieval != nil {
-			fmt.Printf("  retrieval adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
-				corpus.Retrieval.Adapter, corpus.Retrieval.Queries, corpus.Retrieval.Precision, corpus.Retrieval.Recall,
+			fmt.Printf("  retrieval adapter=%s blocking=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
+				corpus.Retrieval.Adapter, strings.Join(corpus.Retrieval.BlockingSplits, ","), corpus.Retrieval.Queries, corpus.Retrieval.Precision, corpus.Retrieval.Recall,
 				corpus.Retrieval.MRR, corpus.Retrieval.NDCG, corpus.Retrieval.HardNegativeWins, corpus.Retrieval.Passed)
 			printRetrievalSplits("    ", corpus.Retrieval.Splits)
 			if retrievalDetails {
@@ -521,8 +526,8 @@ func printReport(report report, retrievalDetails bool) {
 		report.Passed,
 	)
 	if report.Retrieval != nil {
-		fmt.Printf("RETRIEVAL adapter=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
-			report.Retrieval.Adapter, report.Retrieval.Queries, report.Retrieval.Precision, report.Retrieval.Recall,
+		fmt.Printf("RETRIEVAL adapter=%s blocking=%s queries=%d precision@5=%.3f recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d passed=%t\n",
+			report.Retrieval.Adapter, strings.Join(report.Retrieval.BlockingSplits, ","), report.Retrieval.Queries, report.Retrieval.Precision, report.Retrieval.Recall,
 			report.Retrieval.MRR, report.Retrieval.NDCG, report.Retrieval.HardNegativeWins, report.Retrieval.Passed)
 		printRetrievalSplits("  ", report.Retrieval.Splits)
 	}

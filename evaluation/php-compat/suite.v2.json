@@ -16,7 +16,8 @@
   "retrievalPolicy": {
     "adapter": "terms-v3",
     "k": 5,
-    "requiredSplits": ["train", "validation"]
+    "requiredSplits": ["train", "validation", "holdout"],
+    "blockingSplits": ["train", "validation"]
   },
   "corpora": [
     {
@@ -70,6 +71,13 @@
           "query": "where is the produce method return typed as LanguageFeatures and returning itself",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "php74-arrow-normalizer",
+          "split": "holdout",
+          "query": "Where is a typed arrow function created to delegate label normalization?",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 42, "endLine": 42}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 16, "endLine": 16}]
         }
       ]
     },
@@ -119,6 +127,13 @@
           "query": "where is a name promoted while the logger dependency may be a logger object, string, or null",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 27, "endLine": 27}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 19, "endLine": 19}]
+        },
+        {
+          "id": "php80-status-passthrough",
+          "split": "holdout",
+          "query": "Which status-message helper returns its string argument unchanged?",
+          "relevant": [{"path": "src/StatusMessage.php", "startLine": 11, "endLine": 11}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 44, "endLine": 44}]
         }
       ]
     },
@@ -171,6 +186,13 @@
           "query": "where does a method declare it never returns and terminate by throwing instead of serializing a value",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 39, "endLine": 39}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 32, "endLine": 32}]
+        },
+        {
+          "id": "php81-first-class-render-callable",
+          "split": "holdout",
+          "query": "Where is a render method converted into a first-class callable?",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 14, "endLine": 14}]
         }
       ]
     },
@@ -220,6 +242,13 @@
           "query": "where does packet readiness guarantee the literal true return rather than use null for missing data",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 25, "endLine": 25}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 30, "endLine": 30}]
+        },
+        {
+          "id": "php82-readonly-packet-trait-use",
+          "split": "holdout",
+          "query": "Where does the readonly packet class consume the trait that supplies its kind?",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 17, "endLine": 17}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 10, "endLine": 10}]
         }
       ]
     },
@@ -267,6 +296,13 @@
           "query": "where is a class constant selected dynamically from a runtime name instead of reading the fixed report prefix",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 28, "endLine": 28}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 17, "endLine": 17}]
+        },
+        {
+          "id": "php83-override-attribute",
+          "split": "holdout",
+          "query": "Which formatter method is explicitly marked with the Override attribute?",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 20, "endLine": 20}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 9, "endLine": 9}]
         }
       ]
     },
@@ -317,6 +353,13 @@
           "query": "where is a title property contract getter-only rather than implementing a trimming setter",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 9, "endLine": 9}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 18, "endLine": 18}]
+        },
+        {
+          "id": "php84-title-deprecation-metadata",
+          "split": "holdout",
+          "query": "Which line annotates a title method with deprecation metadata that includes replacement guidance and a version?",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 27, "endLine": 27}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}]
         }
       ]
     },
@@ -398,6 +441,13 @@
           "query": "which Composer rules use PSR-0 for both underscore-style legacy controllers and namespaced old reports",
           "relevant": [{"path": "composer.json", "startLine": 13, "endLine": 13}],
           "hardNegatives": [{"path": "app/Consumer.php", "startLine": 30, "endLine": 30}]
+        },
+        {
+          "id": "composer-classmap-exclusion",
+          "split": "holdout",
+          "query": "Which Composer autoload entry excludes a PHP file from classmap generation?",
+          "relevant": [{"path": "composer.json", "startLine": 19, "endLine": 19}],
+          "hardNegatives": [{"path": "classmap/Excluded.php", "startLine": 7, "endLine": 7}]
         }
       ]
     },
@@ -462,6 +512,13 @@
           "query": "where is a report owner represented as an Eloquent belongs-to user relationship rather than an authorization check between user and report",
           "relevant": [{"path": "app/Models/Report.php", "startLine": 12, "endLine": 12}],
           "hardNegatives": [{"path": "app/Policies/ReportPolicy.php", "startLine": 12, "endLine": 12}]
+        },
+        {
+          "id": "laravel-stripe-config-definition",
+          "split": "holdout",
+          "query": "Which configuration line defines the Stripe key consumed by dashboard rendering?",
+          "relevant": [{"path": "config/services.php", "startLine": 5, "endLine": 5}],
+          "hardNegatives": [{"path": "app/Http/Controllers/DashboardController.php", "startLine": 14, "endLine": 14}]
         }
       ]
     },
@@ -523,6 +580,13 @@
           "query": "which subscribed-events method maps GenerateReport to the onReport callback",
           "relevant": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 14, "endLine": 14}],
           "hardNegatives": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 17, "endLine": 17}]
+        },
+        {
+          "id": "symfony-entity-repository-mapping",
+          "split": "holdout",
+          "query": "Which entity mapping assigns its repository class?",
+          "relevant": [{"path": "src/Entity/Report.php", "startLine": 10, "endLine": 10}],
+          "hardNegatives": [{"path": "src/Service/ReportService.php", "startLine": 11, "endLine": 11}]
         }
       ]
     },
@@ -575,6 +639,13 @@
           "query": "where is the report custom post type actually registered as public rather than only wiring its init callback",
           "relevant": [{"path": "includes/functions.php", "startLine": 7, "endLine": 7}],
           "hardNegatives": [{"path": "includes/class-report-plugin.php", "startLine": 13, "endLine": 13}]
+        },
+        {
+          "id": "wordpress-repository-constructor-injection",
+          "split": "holdout",
+          "query": "Which plugin constructor receives the report repository as a private dependency?",
+          "relevant": [{"path": "includes/class-report-plugin.php", "startLine": 7, "endLine": 7}],
+          "hardNegatives": [{"path": "includes/class-report-repository.php", "startLine": 5, "endLine": 5}]
         }
       ]
     },
@@ -637,6 +708,13 @@
           "query": "where does report summary preprocessing derive a count from the reports array rather than building the themed report list",
           "relevant": [{"path": "report.theme", "startLine": 7, "endLine": 7}],
           "hardNegatives": [{"path": "src/Plugin/Block/ReportBlock.php", "startLine": 26, "endLine": 26}]
+        },
+        {
+          "id": "drupal-theme-template-mapping",
+          "split": "holdout",
+          "query": "Which theme-hook definition maps the report summary to its template name?",
+          "relevant": [{"path": "report.module", "startLine": 12, "endLine": 12}],
+          "hardNegatives": [{"path": "src/Controller/ReportController.php", "startLine": 19, "endLine": 19}]
         }
       ]
     }

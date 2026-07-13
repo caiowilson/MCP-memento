@@ -44,6 +44,32 @@ func TestHardNegativeWinsUsesLineBoundedRank(t *testing.T) {
 	}
 }
 
+func TestRetrievalMetricsKeepHoldoutAdvisory(t *testing.T) {
+	thresholds := phpcompat.Thresholds{RetrievalRecallAt5: 0.95, RetrievalMRR: 0.9, RetrievalNDCGAt5: 0.9}
+	passing := &scoreAccumulator{}
+	passing.add(evaluation.Metrics{Precision: 0.2, Recall: 1, MRR: 1, NDCG: 1}, 0)
+	failing := &scoreAccumulator{}
+	failing.add(evaluation.Metrics{Precision: 0.2, Recall: 1, MRR: 0.5, NDCG: 0.63}, 1)
+	accumulator := retrievalAccumulator{
+		overall: *passing,
+		splits: map[string]*scoreAccumulator{
+			phpcompat.RetrievalSplitTrain:    passing,
+			phpcompat.RetrievalSplitValidate: passing,
+			phpcompat.RetrievalSplitHoldout:  failing,
+		},
+	}
+	policy := phpcompat.RetrievalPolicy{
+		Adapter:        indexing.TermSearchVersion,
+		K:              5,
+		RequiredSplits: []string{phpcompat.RetrievalSplitTrain, phpcompat.RetrievalSplitValidate, phpcompat.RetrievalSplitHoldout},
+		BlockingSplits: []string{phpcompat.RetrievalSplitTrain, phpcompat.RetrievalSplitValidate},
+	}
+	got := accumulator.metrics(policy, thresholds)
+	if !got.Passed || got.Splits[phpcompat.RetrievalSplitHoldout].Passed {
+		t.Fatalf("unexpected blocking/advisory split result: %#v", got)
+	}
+}
+
 func TestReportJSONOmitsRetrievalDetails(t *testing.T) {
 	value := report{
 		Version: reportVersion,

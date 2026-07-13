@@ -25,7 +25,7 @@ database, or network access.
 | `wordpress-plugin-theme` | WordPress 6-shaped plugin/theme | Bootstrap includes, hooks, shortcodes, legacy classes, template parts |
 | `drupal-module` | Drupal 11-shaped module | PHP-bearing Drupal extensions, services/routes YAML, blocks, theme hooks, Twig |
 
-`suite.v1.json` is the strict source of truth. It records required and forbidden
+`suite.v2.json` is the strict source of truth. It records required and forbidden
 symbols, declaration starts, exact anchor extents, directed relationship
 judgments, Composer class resolutions, autoload files, retrieval queries, and
 the accuracy floors used by evaluators. Paths are relative to each corpus root.
@@ -53,12 +53,21 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and all natural-language retrieval judgments.
-Retrieval uses the deterministic, versioned `terms-v1` scorer against each
-corpus independently and emits only aggregate metrics in JSON. Pass
-`-retrieval-details` to print query IDs, metrics, and ranked paths locally. MCP
-tests separately consume relationship and Composer judgments because they
-require repository graph state.
+forbidden body-symbol leakage, and 52 natural-language retrieval queries with
+57 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v3` scorer against each corpus independently. The 30-query
+training split contains the original benchmark plus the first measured miss
+generation, the 11-query validation split covers every corpus, and a fresh
+11-query holdout was authored only after the scorer was frozen. Validation and
+holdout queries declare precise hard-negative ranges. Training and validation
+are blocking; the fresh holdout remains advisory so its first unseen result is
+preserved instead of tuned away.
+
+JSON contains aggregate overall, per-corpus, and train/validation/holdout
+metrics only.
+Pass `-retrieval-details` to print query IDs, metrics, and ranked declaration
+ranges locally. MCP tests separately consume relationship and Composer
+judgments because they require repository graph state.
 
 Lint all PHP-bearing fixture files with the active PHP CLI:
 
@@ -77,10 +86,12 @@ they are structural microprojects and are not booted as applications.
 
 Parser, symbol, signature, declaration-boundary, anchor, and Composer judgments
 are deterministic and target 100%. Framework relationship recall starts at 95%
-with 98% precision, while retrieval targets recall@5 of 95%, MRR of 90%, and
-nDCG@5 of 90%. Evaluate framework and language corpora independently before
-macro-averaging so a large corpus cannot hide a Drupal- or WordPress-specific
-regression.
+with 98% precision, while blocking retrieval targets recall@5 of 95%, MRR of
+90%, nDCG@5 of 90%, and zero hard-negative wins. The frozen holdout is reported
+against the same targets but remains advisory; its initial `terms-v3` baseline
+is recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win.
+Evaluate framework and language corpora independently before macro-averaging so
+a large corpus cannot hide a Drupal- or WordPress-specific regression.
 
 Additional valid declarations are not automatically failures. Add them to the
 manifest when they are part of the intended public structure. Locals from
@@ -91,12 +102,18 @@ as declarations.
 
 1. Keep fixture code original, small, and repository-shaped. Do not add vendor
    trees, generated caches, downloaded framework sources, or credentials.
+   Minimize observed production misses into original fixtures instead of
+   copying production or framework source.
 2. Preserve LF line endings and normalized relative paths.
 3. Run the active PHP linter and the strict loader test.
 4. Update exact declaration starts and anchor extents when source lines move.
-5. Run `php-compat-eval` with `grammar_subset_php`; inspect every per-corpus
-   failure rather than accepting a better aggregate.
-6. Add a written benchmark rationale when lowering a threshold or changing the
+5. Assign observed misses to `train`. Use `validation` for repeatable local
+   checks, and add independently authored cases to `holdout` only after the
+   scorer is frozen. Promote a measured holdout generation to training before
+   tuning, then replace it with a fresh unseen generation.
+6. Run `php-compat-eval` with `grammar_subset_php`; inspect every per-corpus and
+   per-split failure rather than accepting a better aggregate.
+7. Add a written benchmark rationale when lowering a threshold or changing the
    meaning of an existing judgment.
 
 The pinned pure-Go grammar is intentionally strict. If a valid construct is

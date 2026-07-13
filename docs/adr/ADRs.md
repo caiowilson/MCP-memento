@@ -723,7 +723,7 @@ PHP was indexed and outlined through a local scanner while the other primary lan
 ### Decision
 
 - Keep `SearchContext` and MCP `repo_search` exact-substring behavior unchanged.
-- Add an opt-in, versioned `terms-v1` indexer path that splits punctuation, snake case, camel case, and acronym boundaries; removes common query glue; and applies a small explicit set of canonical forms and conservative inflections.
+- Add an opt-in, versioned `terms-v1` indexer path (superseded by `terms-v3` in ADR 0014) that splits punctuation, snake case, camel case, and acronym boundaries; removes common query glue; and applies a small explicit set of canonical forms and conservative inflections.
 - Score each meaningful concept once across content and path, reward multi-term coverage, use path matches only as a tie boost, and sort equal results by path and declaration start line.
 - Use the existing redacted trigram index as a conservative candidate filter and return one highest-ranked chunk per path for focused repository orientation.
 - Apply the term-aware scorer to `repo_context` focus queries by default. When local semantic retrieval is enabled, combine the same lexical score with embeddings instead of replacing it.
@@ -742,6 +742,64 @@ PHP was indexed and outlined through a local scanner while the other primary lan
 - Require embeddings for natural-language focus: better synonym coverage, but adds a runtime dependency and makes default behavior unavailable offline.
 - Use broad stemming, edit distance, or prefix matching: simpler recall gains, but produced ambiguous code-identifier matches and weaker precision than explicit conservative forms.
 - Evaluate all framework roots as one corpus: easier to run, but allows similarly named files in one framework to hide misses in another.
+
+---
+
+## ADR 0014: Declaration-level PHP retrieval evaluation
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+File-only relevance could pass when retrieval selected a namespace header or an
+unrelated member from the correct PHP file. The original 19 queries were also a
+single tuning surface, so aggregate gains could hide corpus-specific misses and
+did not measure distractors explicitly.
+
+### Decision
+
+- Preserve successful parser-backed PHP namespace, type, and member units as
+  distinct chunks; keep bounded line fallback for malformed input and hard-split
+  only declarations that exceed configured limits.
+- Version the resulting persisted boundary identity as
+  `treesitter-php-members-v3` so existing indexes rebuild safely.
+- Store exact answer-bearing and hard-negative line ranges in suite v2. Promote
+  measured misses into a 30-query training split, retain 11 validation queries,
+  and author a fresh holdout query for each corpus only after freezing the
+  scorer.
+- Gate recall@5, MRR, nDCG@5, and hard-negative ordering per corpus for training
+  and validation. Report the post-freeze holdout against the same targets as an
+  advisory baseline. Keep query and path detail behind the local details flag.
+- Version scorer changes as `terms-v3`: reward content and PHP
+  declaration-header evidence, make path evidence a bounded fallback, preserve
+  targeted imports, normalize measured forms, and ignore explicit
+  `instead of`/`rather than` contrast clauses during positive lexical scoring.
+
+### Consequences
+
+- Selecting the correct file but the wrong declaration no longer earns credit.
+- The checked-in suite now contains 52 queries, 57 relevance judgments, and a
+  post-freeze 11-query holdout with explicit distractors across all supported
+  PHP and framework corpus shapes.
+- The first unseen `terms-v3` holdout measurement is recall@5 `0.909`, MRR
+  `0.773`, nDCG@5 `0.808`, and one hard-negative win. Keeping it advisory
+  preserves the evidence needed for the next scorer generation.
+- PHP files produce more, smaller chunks. This improves member precision but can
+  increase index records; configured byte and line limits remain hard bounds.
+- Future scorer tuning must use the training split. Production misses should be
+  minimized into original fixtures and introduced as a new holdout generation
+  before their rankings are inspected.
+
+### Alternatives considered
+
+- Keep file-level relevance: simpler, but it masks the exact failure this slice
+  is intended to measure.
+- Tune on one combined query set: maximizes the visible metric but provides no
+  credible estimate of behavior on unseen cases.
+- Copy public framework applications into the repository: broader surface area,
+  but adds licensing, size, update, and answer-leakage risks compared with
+  original minimized reproductions.
 
 ---
 

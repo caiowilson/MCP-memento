@@ -12,7 +12,7 @@ import (
 
 func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	suite := loadCheckedInSuite(t)
-	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v3" || suite.RetrievalPolicy.K != 5 {
+	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v3" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
 		t.Fatalf("unexpected retrieval policy: version=%d policy=%#v", suite.Version, suite.RetrievalPolicy)
 	}
 	wantIDs := []string{
@@ -68,8 +68,16 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 41 || retrievalJudgments != 46 || retrievalSplits[RetrievalSplitTrain] != 30 || retrievalSplits[RetrievalSplitValidate] != 11 {
+	if retrievalQueries != 52 || retrievalJudgments != 57 || retrievalSplits[RetrievalSplitTrain] != 30 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 11 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
+	}
+}
+
+func TestSuiteRejectsBlockingHoldout(t *testing.T) {
+	suite := loadCheckedInSuite(t)
+	suite.RetrievalPolicy.BlockingSplits = append(suite.RetrievalPolicy.BlockingSplits, RetrievalSplitHoldout)
+	if err := suite.Validate(); err == nil || !strings.Contains(err.Error(), "but not holdout") {
+		t.Fatalf("expected blocking holdout failure, got %v", err)
 	}
 }
 
