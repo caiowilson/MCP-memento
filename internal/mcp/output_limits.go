@@ -9,6 +9,10 @@ const (
 	defaultRepoDiffContextMaxBytes   = 16_000
 	defaultRepoDiffContextMaxPaths   = 20
 	defaultRepoDiffContextMaxChunks  = 3
+	defaultRepoDiffContextDiffBytes  = 12_000
+	maximumRepoDiffContextDiffBytes  = 64_000
+	defaultRepoDiffContextDiffLines  = 3
+	maximumRepoDiffContextDiffLines  = 10
 	defaultRepoReadFileMaxBytes      = 32_000
 	defaultRepoSearchMaxSnippetBytes = 500
 

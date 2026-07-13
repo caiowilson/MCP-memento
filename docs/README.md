@@ -24,7 +24,7 @@ This directory collects the main project documentation, including client setup, 
 - `repo_related_files` — related files for a given path (Go/TS/JS/PHP-aware; PHP resolves Composer PSR-4 imports, symbol references, and common Laravel view/config conventions)
 - `repo_outline` — compact structured signatures, documentation, imports, and line ranges for one file
 - `repo_context` — indexed chunks for a file + related files, with intent-aware routing for `navigate`, `implement`, and `review`
-- `repo_diff_context` — compact indexed chunks from only an explicit ordered list of changed repo-relative paths, plus inclusion/omission counts
+- `repo_diff_context` — compact exact-file chunks and a bounded, redacted unified diff summary for auto-detected Git worktree changes or an explicit ordered path override
 - `repo_switch_workspace` — switch active workspace root at runtime without restarting MCP
 - `repo_index_status` — background indexer status
 - `repo_reindex` — trigger full re-index
@@ -133,7 +133,7 @@ Example anchored upsert:
 
 - Use `repo_outline` when you need a file's structure before deciding which source ranges to read.
 - Prefer `repo_context` with `intent` for normal workflows.
-- Use `repo_diff_context` when changed paths are already known and related-file expansion would add noise. Slice 14A requires explicit `paths`; automatic dirty-worktree detection and unified diff summaries belong to Slice 14B.
+- Use `repo_diff_context` without `paths` to auto-detect staged, unstaged, and untracked Git changes. A supplied non-empty path list overrides detection, preserves caller order, and continues to work outside Git. Auto mode chooses at most 20 deterministic safe changes and reports overflow; deleted and rename-source paths are summarized and evicted but never chunk-loaded. A clean Git worktree succeeds with an empty result, while omitting `paths` outside Git is an error. Results never expand to related files.
 - Use `intent: "navigate"` for lighter outlines and `intent: "implement"` or `intent: "review"` for mixed full+outline context.
 - Omit `mode` unless you need to force `full`, `outline`, or `summary`.
 - Existing callers that already send `mode` are unchanged.
@@ -160,7 +160,7 @@ Cross-file edges intentionally remain in `repo_related_files`; use that tool to 
 Defaults are sized to stay below Claude Code's roughly 10k-token MCP result warning in normal use:
 
 - `repo_context` defaults to `maxTokens: 7000`, using a conservative `ceil(UTF-8 bytes / 4)` estimate, with `maxTotalBytes: 32000` retained as a hard ceiling.
-- `repo_diff_context` defaults to three chunks per file, `maxTokens: 4000`, `maxTotalBytes: 16000`, and at most 20 explicit paths. It reports indexed, included, skipped, and omitted counts instead of silently expanding scope.
+- `repo_diff_context` defaults to three chunks per file, `maxTokens: 4000`, `maxTotalBytes: 16000`, `maxDiffBytes: 12000`, `diffContextLines: 3`, and at most 20 resolved paths. Its bounded, redacted unified diff covers staged, unstaged, and untracked changes; the response reports indexed, included, skipped, omitted, deleted, and overflow counts instead of silently expanding scope.
 - `repo_read_file` defaults to `maxBytes: 32000`.
 - `repo_search` caps each returned snippet to `maxSnippetBytes: 500`.
 

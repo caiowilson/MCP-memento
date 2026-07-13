@@ -121,6 +121,11 @@ func TestRunClaudeMDPrintOnly(t *testing.T) {
 	if stdout.String() != recommendedWorkflowBlock {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), recommendedWorkflowBlock)
 	}
+	for _, want := range []string{"without `paths`", "staged, unstaged, and untracked", "bounded, redacted unified diff summary", "never chunk-loaded"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected generated guidance to contain %q, got %q", want, stdout.String())
+		}
+	}
 	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.local.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected --print-only to write nothing, stat err = %v", err)
 	}

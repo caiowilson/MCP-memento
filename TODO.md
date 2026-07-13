@@ -104,7 +104,7 @@ Implemented in `internal/mcp/diff_context_tool.go` with ordered path normalizati
 
 ### Slice 14B — `repo_diff_context` dirty-worktree auto-detection
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: medium
 - Scope: `internal/mcp/` (git integration)
@@ -113,10 +113,12 @@ Implemented in `internal/mcp/diff_context_tool.go` with ordered path normalizati
 
 #### Steps
 
-- [ ] Detect changed files via `git status` when paths are omitted (status: todo)
-- [ ] Exclude deleted files from chunk loading (status: todo)
-- [ ] Include a unified diff summary alongside returned chunks (status: todo)
-- [ ] Add tests with a simulated dirty worktree (status: todo)
+- [x] Detect changed files via `git status` when paths are omitted (status: done)
+- [x] Exclude deleted files from chunk loading (status: done)
+- [x] Include a unified diff summary alongside returned chunks (status: done)
+- [x] Add tests with a simulated dirty worktree (status: done)
+
+Implemented in `internal/gitstate/worktree.go`, `internal/gitstate/ignored.go`, `internal/indexing/indexer.go`, `internal/mcp/diff_context_tool.go`, `internal/mcp/diff_open.go`, `internal/mcp/diff_summary.go`, and `internal/safefs/` with staged, unstaged, and untracked Git discovery; deterministic capped auto-selection with overflow reporting; explicit ordered-path override; deleted and rename-source eviction without chunk loading; secure bounded file reads; and bounded, redacted unified diff summaries plus dirty-worktree regression coverage.
 
 ### Slice 21 — Package-level coverage reporting
 

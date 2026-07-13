@@ -1,6 +1,8 @@
 package gitstate
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,5 +61,24 @@ func TestLoadIgnoredPathsUsesAllStandardGitExcludesAndKeepsTrackedFiles(t *testi
 func TestLoadIgnoredPathsOutsideGitReturnsEmpty(t *testing.T) {
 	if LoadIgnoredPaths(t.TempDir()).Matches("anything.log") {
 		t.Fatal("non-Git workspace should return an empty Git-ignore snapshot")
+	}
+}
+
+func TestLoadIgnoredPathsContextHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := LoadIgnoredPathsContext(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
+func TestIgnoredPathsSafetyLimitStateMatchesValidPathsFailClosed(t *testing.T) {
+	ignored := &IgnoredPaths{failClosed: true}
+	if !ignored.Matches("src/private.go") {
+		t.Fatal("safety-limit snapshot did not match a valid path fail-closed")
+	}
+	if ignored.Matches("../outside.go") {
+		t.Fatal("fail-closed snapshot accepted an invalid relative path")
 	}
 }

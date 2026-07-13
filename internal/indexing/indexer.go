@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"memento-mcp/internal/embedding"
 	"memento-mcp/internal/redact"
+	"memento-mcp/internal/safefs"
 )
 
 type Config struct {
@@ -53,6 +55,7 @@ type Indexer struct {
 	rootAbs     string
 	dir         string
 	cfg         Config
+	defaultDeny bool
 	ignoreRules *ignoreRules
 	redactor    *redact.Redactor
 	embedder    embedding.Embedder
@@ -77,6 +80,8 @@ type request struct {
 
 var (
 	errEmbeddingBackoff  = errors.New("embedding runtime is in retry backoff")
+	errIndexCapacity     = errors.New("index total-byte capacity exceeded")
+	errIndexIneligible   = errors.New("index file is no longer eligible")
 	errIndexerNotStarted = errors.New("indexer has not been started")
 	errIndexerStopped    = errors.New("indexer has stopped")
 )
@@ -90,6 +95,7 @@ func New(cfg Config) (*Indexer, error) {
 		return nil, err
 	}
 	cfg.RootAbs = rootAbs
+	useDefaultDeny := len(cfg.DenyGlobs) == 0
 	applyDefaults(&cfg)
 	if cfg.Redactor == nil {
 		cfg.Redactor = redact.Default()
@@ -117,6 +123,7 @@ func New(cfg Config) (*Indexer, error) {
 		rootAbs:       rootAbs,
 		dir:           dir,
 		cfg:           cfg,
+		defaultDeny:   useDefaultDeny,
 		redactor:      cfg.Redactor,
 		embedder:      cfg.Embedder,
 		reqCh:         make(chan request, 8),
@@ -146,7 +153,12 @@ func New(cfg Config) (*Indexer, error) {
 
 // ReloadIgnoreRules re-reads .gitignore and .mementoignore from the workspace root.
 func (i *Indexer) ReloadIgnoreRules() error {
-	rules, err := loadIgnoreRules(i.rootAbs)
+	return i.RefreshIgnoreRules(context.Background())
+}
+
+// RefreshIgnoreRules re-reads ignore rules with request cancellation.
+func (i *Indexer) RefreshIgnoreRules(ctx context.Context) error {
+	rules, err := loadIgnoreRulesContext(ctx, i.rootAbs)
 	if err != nil {
 		return err
 	}
@@ -154,6 +166,86 @@ func (i *Indexer) ReloadIgnoreRules() error {
 	i.ignoreRules = rules
 	i.mu.Unlock()
 	return nil
+}
+
+// PathAllowed reports whether a repository-relative path is eligible for the
+// index based on the current ignore and allow/deny configuration. It does not
+// require the path to exist, so callers can safely classify deleted Git paths
+// without reading their former contents.
+func (i *Indexer) PathAllowed(rel string) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.pathAllowedLocked(rel)
+}
+
+// PathSafeForSummary reports whether a path may be named and summarized in a
+// redacted diff. Unlike PathAllowed, benign unsupported and binary file types
+// are permitted, while repository ignores, configured deny rules, and default
+// credential/database patterns remain fail-closed.
+func (i *Indexer) PathSafeForSummary(rel string) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.pathSafeForSummaryLocked(rel)
+}
+
+func (i *Indexer) pathAllowedLocked(rel string) bool {
+	if !i.pathSafeForSummaryLocked(rel) {
+		return false
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	parts := strings.Split(rel, "/")
+	if shouldIgnoreFile(parts[len(parts)-1], i.cfg.ExtraIgnoreGlobs) {
+		return false
+	}
+	return shouldIndex(rel, i.cfg.PreferredExts, i.cfg.AllowGlobs, i.cfg.DenyGlobs)
+}
+
+func (i *Indexer) pathSafeForSummaryLocked(rel string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || filepath.IsAbs(filepath.FromSlash(rel)) {
+		return false
+	}
+	parts := strings.Split(rel, "/")
+	for _, component := range parts[:len(parts)-1] {
+		if shouldIgnoreDir(component, i.cfg.ExtraIgnoreDirs) {
+			return false
+		}
+	}
+	if matchAnyGlob(rel, i.cfg.ExtraIgnoreGlobs) || matchAnyGlob(parts[len(parts)-1], i.cfg.ExtraIgnoreGlobs) {
+		return false
+	}
+
+	if i.ignoreRules.matchesPath(rel) {
+		return false
+	}
+	if matchAnyGlob(rel, defaultSummarySensitiveGlobs) {
+		return false
+	}
+	return i.defaultDeny || !matchAnyGlob(rel, i.cfg.DenyGlobs)
+}
+
+// PurgeDisallowedPaths removes cached chunks that no longer satisfy current
+// ignore or index-eligibility rules after a synchronous rule reload.
+func (i *Indexer) PurgeDisallowedPaths() ([]string, error) {
+	i.mu.Lock()
+	paths := make([]string, 0, len(i.manifest.Files))
+	for rel := range i.manifest.Files {
+		paths = append(paths, rel)
+	}
+	i.mu.Unlock()
+	disallowed := make([]string, 0)
+	for _, rel := range paths {
+		if !i.PathAllowed(rel) {
+			disallowed = append(disallowed, rel)
+		}
+	}
+	if len(disallowed) == 0 {
+		return []string{}, nil
+	}
+	if err := i.RemovePaths(disallowed); err != nil {
+		return nil, err
+	}
+	return normalizeRelPaths(disallowed), nil
 }
 
 func (i *Indexer) Start(ctx context.Context) {
@@ -170,7 +262,10 @@ func (i *Indexer) Start(ctx context.Context) {
 }
 
 func (i *Indexer) IndexAll(ctx context.Context) error {
-	if err := i.ReloadIgnoreRules(); err != nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := i.RefreshIgnoreRules(ctx); err != nil {
 		return err
 	}
 	return i.submitRequest(ctx, request{full: true})
@@ -607,6 +702,10 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 			evict(rel)
 			continue
 		}
+		if err := rejectIndexSymlinkPath(i.rootAbs, rel); err != nil {
+			evict(rel)
+			continue
+		}
 		info, err := os.Stat(abs)
 		if err != nil || !info.Mode().IsRegular() {
 			evict(rel)
@@ -622,7 +721,7 @@ func (i *Indexer) indexFiles(ctx context.Context, relPaths []string) error {
 			continue
 		}
 
-		ok, delta, err := i.indexOne(ctx, abs, rel, info)
+		ok, delta, err := i.indexOne(ctx, rel)
 		if err != nil {
 			i.setError(err)
 			evict(rel)
@@ -684,11 +783,23 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		existingSize := i.indexedFileSize(c.Rel)
 		if totalBytes-existingSize+c.Size > i.cfg.MaxTotalBytes {
 			partial = true
+			if err := i.RemovePaths([]string{c.Rel}); err != nil {
+				i.setError(err)
+			}
+			totalBytes -= existingSize
 			continue
 		}
-		ok, delta, err := i.indexOne(ctx, c.Abs, c.Rel, c.Info)
+		ok, delta, err := i.indexOne(ctx, c.Rel)
 		if err != nil {
-			i.setError(err)
+			if errors.Is(err, errIndexCapacity) {
+				partial = true
+			} else if !errors.Is(err, errIndexIneligible) {
+				i.setError(err)
+			}
+			if removeErr := i.RemovePaths([]string{c.Rel}); removeErr != nil {
+				i.setError(removeErr)
+			}
+			totalBytes -= existingSize
 			continue
 		}
 		if ok {
@@ -757,6 +868,9 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 			}
 			return nil
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		if shouldIgnoreFile(name, i.cfg.ExtraIgnoreGlobs) {
 			return nil
 		}
@@ -765,6 +879,9 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 		}
 		info, err := d.Info()
 		if err != nil {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
 			return nil
 		}
 		if info.Size() <= 0 || info.Size() > i.cfg.MaxFileBytes {
@@ -795,10 +912,23 @@ func (i *Indexer) listCandidates(ctx context.Context) ([]candidate, error) {
 	return out, nil
 }
 
-func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInfo) (changed bool, deltaBytes int64, err error) {
+func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, deltaBytes int64, err error) {
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	if rel == "" || rel == "." {
 		return false, 0, nil
+	}
+	file, err := safefs.OpenRegular(i.rootAbs, rel)
+	if err != nil {
+		return false, 0, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return false, 0, err
+	}
+	if info.Size() <= 0 || info.Size() > i.cfg.MaxFileBytes {
+		_ = file.Close()
+		return false, 0, fmt.Errorf("%w: %s", errIndexIneligible, rel)
 	}
 
 	i.mu.Lock()
@@ -815,12 +945,28 @@ func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInf
 		}
 	}
 	if ok && ent.Size == info.Size() && ent.ModTime == mod && !needsVectors {
+		_ = file.Close()
 		return false, 0, nil
 	}
 
-	b, err := os.ReadFile(abs)
-	if err != nil {
-		return false, 0, err
+	readLimit := i.cfg.MaxFileBytes
+	if readLimit < math.MaxInt64 {
+		readLimit++
+	}
+	b, readErr := io.ReadAll(io.LimitReader(file, readLimit))
+	afterInfo, statErr := file.Stat()
+	closeErr := file.Close()
+	if readErr != nil {
+		return false, 0, readErr
+	}
+	if statErr != nil {
+		return false, 0, statErr
+	}
+	if closeErr != nil {
+		return false, 0, closeErr
+	}
+	if int64(len(b)) > i.cfg.MaxFileBytes || afterInfo.Size() != int64(len(b)) || afterInfo.ModTime().UnixNano() != mod {
+		return false, 0, fmt.Errorf("%w: %s changed during bounded read", errIndexIneligible, rel)
 	}
 	sum := sha256.Sum256(b)
 	hash := hex.EncodeToString(sum[:16])
@@ -829,31 +975,25 @@ func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInf
 	syntaxSource := string(b)
 	content := i.redactor.Redact(syntaxSource)
 	chunks := chunkFileWithSyntaxSource(rel, guessLanguage(rel), content, syntaxSource, i.cfg.MaxChunkLines, i.cfg.MaxChunkBytes)
-	if err := i.writeChunksFile(id, chunks); err != nil {
-		return false, 0, err
-	}
+	var vectors []chunkVector
 	vectorCount := 0
 	if i.embedder != nil && len(chunks) > 0 {
-		vectors, embedErr := i.embedChunks(ctx, chunks)
+		var embedErr error
+		vectors, embedErr = i.embedChunks(ctx, chunks)
 		if embedErr != nil {
-			i.removeVectorFile(id)
+			vectors = nil
 			if !errors.Is(embedErr, errEmbeddingBackoff) {
 				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
-		} else if err := i.writeVectorsFile(id, i.embeddingFingerprint(), vectors); err != nil {
-			i.removeVectorFile(id)
-			i.setError(fmt.Errorf("persist vectors for %s: %w", rel, err))
 		} else {
 			vectorCount = len(vectors)
 		}
-	} else {
-		i.removeVectorFile(id)
 	}
 
 	newEntry := fileEntry{
 		ID:       id,
-		Size:     info.Size(),
-		ModTime:  mod,
+		Size:     int64(len(b)),
+		ModTime:  afterInfo.ModTime().UnixNano(),
 		Hash:     hash,
 		Language: guessLanguage(rel),
 		Chunks:   len(chunks),
@@ -864,9 +1004,39 @@ func (i *Indexer) indexOne(ctx context.Context, abs, rel string, info os.FileInf
 	if i.manifest.Files == nil {
 		i.manifest.Files = map[string]fileEntry{}
 	}
+	current, currentOK := i.manifest.Files[rel]
+	if !i.pathAllowedLocked(rel) {
+		oldSize := int64(0)
+		if currentOK {
+			oldSize = current.Size
+			i.manifest.TotalBytes -= current.Size
+			delete(i.manifest.Files, rel)
+		}
+		_ = os.Remove(i.chunkFilePath(id))
+		i.removeVectorFile(id)
+		i.mu.Unlock()
+		return currentOK, -oldSize, nil
+	}
 	oldSize := int64(0)
-	if ok {
-		oldSize = ent.Size
+	if currentOK {
+		oldSize = current.Size
+	}
+	if i.manifest.TotalBytes-oldSize+newEntry.Size > i.cfg.MaxTotalBytes {
+		i.mu.Unlock()
+		return false, 0, fmt.Errorf("%w: %s", errIndexCapacity, rel)
+	}
+	if err := i.writeChunksFile(id, chunks); err != nil {
+		i.mu.Unlock()
+		return false, 0, err
+	}
+	if len(vectors) > 0 {
+		if err := i.writeVectorsFile(id, i.embeddingFingerprint(), vectors); err != nil {
+			i.removeVectorFile(id)
+			newEntry.Vectors = 0
+			i.status.Error = fmt.Sprintf("persist vectors for %s: %v", rel, err)
+		}
+	} else {
+		i.removeVectorFile(id)
 	}
 	i.manifest.Files[rel] = newEntry
 	i.manifest.TotalBytes = i.manifest.TotalBytes - oldSize + newEntry.Size
@@ -1156,6 +1326,21 @@ func safeJoin(rootAbs, rel string) (string, error) {
 	return abs, nil
 }
 
+func rejectIndexSymlinkPath(rootAbs, rel string) error {
+	current := rootAbs
+	for _, component := range strings.Split(filepath.ToSlash(rel), "/") {
+		current = filepath.Join(current, filepath.FromSlash(component))
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("index path contains a symbolic link: %s", rel)
+		}
+	}
+	return nil
+}
+
 func shouldIgnoreDir(name string, extra []string) bool {
 	for _, d := range extra {
 		if name == d {
@@ -1211,7 +1396,7 @@ func normalizeRelPaths(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	seen := map[string]struct{}{}
 	for _, p := range paths {
-		p = filepath.ToSlash(filepath.Clean(strings.TrimSpace(p)))
+		p = filepath.ToSlash(filepath.Clean(p))
 		if p == "" || p == "." {
 			continue
 		}
@@ -1223,6 +1408,21 @@ func normalizeRelPaths(paths []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+var defaultSummarySensitiveGlobs = []string{
+	".env*",
+	"*.key",
+	"*.pem",
+	"*.p12",
+	"*.pfx",
+	"*.crt",
+	"*.der",
+	"*.ppk",
+	"id_rsa",
+	"id_ed25519",
+	"*.sqlite",
+	"*.db",
 }
 
 func applyDefaults(cfg *Config) {

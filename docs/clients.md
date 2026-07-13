@@ -181,7 +181,7 @@ Use the output of `print-guidance` directly, or paste the following into client 
 
 ```text
 When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
-Use repo_diff_context when changed repo-relative paths are already known and you want compact context from only those files.
+Use repo_diff_context without paths to auto-detect staged, unstaged, and untracked Git changes, or pass a non-empty ordered path list to override detection; it returns exact-file chunks and a bounded, redacted unified diff summary without related-file expansion.
 Use repo_outline when you need signatures and file structure without implementation bodies.
 Anchor durable notes to code when possible. Treat stale notes as evidence to verify, then call memory_verify or memory_tombstone after adjudication.
 Omit mode unless you need to force a low-level output such as full, outline, or summary.
@@ -195,7 +195,7 @@ Existing explicit mode calls still work, but new callers should prefer intent.
 `repo_context`, `repo_diff_context`, `repo_read_file`, and `repo_search` default to compact responses to avoid Claude Code's MCP result warning near 10k tokens:
 
 - `repo_context`: `maxTokens` defaults to `7000` using an approximate `ceil(UTF-8 bytes / 4)` estimator; `maxTotalBytes` remains a `32000` hard ceiling.
-- `repo_diff_context`: at most 20 explicit paths, three chunks per file, `maxTokens: 4000`, and `maxTotalBytes: 16000` by default.
+- `repo_diff_context`: at most 20 resolved paths, three chunks per file, `maxTokens: 4000`, `maxTotalBytes: 16000`, `maxDiffBytes: 12000`, and `diffContextLines: 3` by default. Omit `paths` to auto-detect deterministic safe Git changes; supplied paths override detection and preserve order. Auto-detection reports overflow, summarizes and evicts deleted or rename-source paths without chunk-loading them, succeeds empty for a clean Git worktree, and errors outside Git. The unified diff summary is bounded and redacted.
 - `repo_read_file`: `maxBytes` defaults to `32000`.
 - `repo_search`: each snippet is capped by `maxSnippetBytes`, default `500`.
 

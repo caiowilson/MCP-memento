@@ -62,7 +62,7 @@ func TestHandleCLICommandPrintGuidance(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "repo_context") || !strings.Contains(stdout.String(), "repo_diff_context") || !strings.Contains(stdout.String(), "repo_outline") || !strings.Contains(stdout.String(), "Anchor durable notes") || !strings.Contains(stdout.String(), "prime MCP prompt") || !strings.Contains(stdout.String(), "intent") {
+	if !strings.Contains(stdout.String(), "repo_context") || !strings.Contains(stdout.String(), "repo_diff_context") || !strings.Contains(stdout.String(), "without paths") || !strings.Contains(stdout.String(), "staged, unstaged, and untracked") || !strings.Contains(stdout.String(), "bounded, redacted unified diff summary") || !strings.Contains(stdout.String(), "repo_outline") || !strings.Contains(stdout.String(), "Anchor durable notes") || !strings.Contains(stdout.String(), "prime MCP prompt") || !strings.Contains(stdout.String(), "intent") {
 		t.Fatalf("expected repo_context guidance, got %q", stdout.String())
 	}
 }

@@ -29,6 +29,29 @@ func (e *lifecycleBlockingEmbedder) Embed(ctx context.Context, _ embedding.Task,
 func (*lifecycleBlockingEmbedder) Fingerprint() string { return "lifecycle-blocking-v1" }
 func (*lifecycleBlockingEmbedder) Name() string        { return "test/lifecycle-blocking" }
 
+type releaseIndexEmbedder struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (e *releaseIndexEmbedder) Embed(ctx context.Context, _ embedding.Task, inputs []string) ([][]float32, error) {
+	e.once.Do(func() { close(e.started) })
+	select {
+	case <-e.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	vectors := make([][]float32, len(inputs))
+	for index := range vectors {
+		vectors[index] = []float32{1}
+	}
+	return vectors, nil
+}
+
+func (*releaseIndexEmbedder) Fingerprint() string { return "release-index-v1" }
+func (*releaseIndexEmbedder) Name() string        { return "test/release-index" }
+
 func TestIndexerRequestsFailAfterWorkerStops(t *testing.T) {
 	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir()})
 	if err != nil {
@@ -94,6 +117,18 @@ func TestIndexerRequestsRequireStartedWorker(t *testing.T) {
 	}
 }
 
+func TestRefreshIgnoreRulesHonorsCancellation(t *testing.T) {
+	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := idx.RefreshIgnoreRules(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
 func TestEnsureIndexedEvictsStaleChunksWhenFileBecomesUnindexable(t *testing.T) {
 	root := t.TempDir()
 	store := t.TempDir()
@@ -122,6 +157,100 @@ func TestEnsureIndexedEvictsStaleChunksWhenFileBecomesUnindexable(t *testing.T) 
 	}
 	if _, err := idx.FileChunks("fixture.go"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale chunks remained after file exceeded MaxFileBytes: %v", err)
+	}
+}
+
+func TestIndexerSkipsSymlinksForTargetedAndFullIndexing(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.go")
+	if err := os.WriteFile(outside, []byte("package outside\n\nconst OutsideSymlinkNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.EnsureIndexed(ctx, []string{"linked.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.FileChunks("linked.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("symlink target was indexed: %v", err)
+	}
+}
+
+func TestIndexerDoesNotCommitAfterIgnoreRulesChangeDuringIndexing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "secret.go"), []byte("package secret\n\nconst ConcurrentIgnoreNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	embedder := &releaseIndexEmbedder{started: make(chan struct{}), release: make(chan struct{})}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir(), Embedder: embedder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- idx.EnsureIndexed(ctx, []string{"secret.go"})
+	}()
+	select {
+	case <-embedder.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("index request did not reach the controlled embedding barrier")
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("secret.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.ReloadIgnoreRules(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.PurgeDisallowedPaths(); err != nil {
+		t.Fatal(err)
+	}
+	close(embedder.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("index request did not finish after release")
+	}
+	if _, err := idx.FileChunks("secret.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("request committed a newly ignored path: %v", err)
+	}
+	results, err := idx.SearchContext(ctx, "ConcurrentIgnoreNeedle", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("newly ignored content remained searchable: %#v", results)
+	}
+}
+
+func TestPathSafeForSummaryKeepsBuiltInSensitiveDeniesWithCustomGlobs(t *testing.T) {
+	idx, err := New(Config{RootAbs: t.TempDir(), StoreDir: t.TempDir(), DenyGlobs: []string{"*.tmp"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{".env", "private.pem", "scratch.tmp"} {
+		if idx.PathSafeForSummary(rel) {
+			t.Errorf("PathSafeForSummary(%q) = true, want false", rel)
+		}
+	}
+	if !idx.PathSafeForSummary("artifact.bin") {
+		t.Fatal("custom deny config should not suppress a benign binary diff")
 	}
 }
 

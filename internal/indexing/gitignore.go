@@ -2,7 +2,9 @@ package indexing
 
 import (
 	"bufio"
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -18,7 +20,17 @@ type ignoreRules struct {
 // loadIgnoreRules combines Git's authoritative standard excludes with
 // .mementoignore. Memento negations cannot re-include a Git-ignored path.
 func loadIgnoreRules(root string) (*ignoreRules, error) {
-	gitIgnored := gitstate.LoadIgnoredPaths(root)
+	return loadIgnoreRulesContext(context.Background(), root)
+}
+
+func loadIgnoreRulesContext(ctx context.Context, root string) (*ignoreRules, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	gitIgnored, err := gitstate.LoadIgnoredPathsContext(ctx, root)
+	if err != nil {
+		return nil, fmt.Errorf("load bounded Git ignore snapshot: %w", err)
+	}
 	var allLines []string
 	names := []string{".mementoignore"}
 	if !gitIgnored.Available() {

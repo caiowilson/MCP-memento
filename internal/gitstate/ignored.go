@@ -2,8 +2,8 @@ package gitstate
 
 import (
 	"bytes"
-	"os"
-	"os/exec"
+	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 )
@@ -12,21 +12,42 @@ import (
 // exclude sources: nested .gitignore files, .git/info/exclude, and the user's
 // core.excludesFile. Tracked files are intentionally absent, matching Git.
 type IgnoredPaths struct {
-	files map[string]struct{}
-	dirs  map[string]struct{}
-	ready bool
+	files      map[string]struct{}
+	dirs       map[string]struct{}
+	ready      bool
+	failClosed bool
 }
 
 // LoadIgnoredPaths returns an empty snapshot outside a Git worktree. Git
-// failures are treated as an empty snapshot so repository tools remain useful
-// when Git is unavailable; built-in sensitive-path filters still apply.
+// availability failures are treated as an empty snapshot so repository tools
+// remain useful when Git is unavailable. Safety-limit failures match every
+// path fail-closed so contextless callers cannot expose ignored content.
 func LoadIgnoredPaths(root string) *IgnoredPaths {
-	out := &IgnoredPaths{files: map[string]struct{}{}, dirs: map[string]struct{}{}}
-	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	raw, err := cmd.Output()
+	out, err := LoadIgnoredPathsContext(context.Background(), root)
 	if err != nil {
-		return out
+		out.ready = true
+		out.failClosed = true
+	}
+	return out
+}
+
+// LoadIgnoredPathsContext returns the same bounded snapshot while honoring
+// cancellation. Ordinary Git availability failures preserve the historical
+// empty-snapshot behavior; output-limit failures are returned fail-closed.
+func LoadIgnoredPathsContext(ctx context.Context, root string) (*IgnoredPaths, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	out := &IgnoredPaths{files: map[string]struct{}{}, dirs: map[string]struct{}{}}
+	raw, err := runGit(ctx, root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return out, ctxErr
+		}
+		if errors.Is(err, errGitOutputLimit) {
+			return out, err
+		}
+		return out, nil
 	}
 	out.ready = true
 	for _, field := range bytes.Split(raw, []byte{0}) {
@@ -40,7 +61,7 @@ func LoadIgnoredPaths(root string) *IgnoredPaths {
 		}
 		out.files[path] = struct{}{}
 	}
-	return out
+	return out, nil
 }
 
 // Available reports whether Git produced the snapshot for this worktree.
@@ -56,6 +77,9 @@ func (i *IgnoredPaths) Matches(rel string) bool {
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	if rel == "" || rel == "." || strings.HasPrefix(rel, "../") {
 		return false
+	}
+	if i.failClosed {
+		return true
 	}
 	if _, ok := i.files[rel]; ok {
 		return true

@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -10,21 +12,31 @@ import (
 	"strings"
 	"testing"
 
+	"memento-mcp/internal/gitstate"
 	"memento-mcp/internal/indexing"
 )
 
 type decodedDiffContext struct {
-	Paths   []string `json:"paths"`
-	Summary struct {
-		RequestedPaths int    `json:"requestedPaths"`
-		IndexedPaths   int    `json:"indexedPaths"`
-		IncludedPaths  int    `json:"includedPaths"`
-		SkippedPaths   int    `json:"skippedPaths"`
-		OmittedPaths   int    `json:"omittedPaths"`
-		TotalChunks    int    `json:"totalChunks"`
-		IncludedChunks int    `json:"includedChunks"`
-		OmittedChunks  int    `json:"omittedChunks"`
-		Text           string `json:"text"`
+	PathSource   string                    `json:"pathSource"`
+	Paths        []string                  `json:"paths"`
+	Changes      []gitstate.WorktreeChange `json:"changes"`
+	DeletedPaths []string                  `json:"deletedPaths"`
+	DiffSummary  diffContextDiffSummary    `json:"diffSummary"`
+	Summary      struct {
+		RequestedPaths     int    `json:"requestedPaths"`
+		DetectedPaths      int    `json:"detectedPaths"`
+		SelectedChanges    int    `json:"selectedChanges"`
+		DeletedPaths       int    `json:"deletedPaths"`
+		FilteredPaths      int    `json:"filteredPaths"`
+		PathLimitOmissions int    `json:"pathLimitOmissions"`
+		IndexedPaths       int    `json:"indexedPaths"`
+		IncludedPaths      int    `json:"includedPaths"`
+		SkippedPaths       int    `json:"skippedPaths"`
+		OmittedPaths       int    `json:"omittedPaths"`
+		TotalChunks        int    `json:"totalChunks"`
+		IncludedChunks     int    `json:"includedChunks"`
+		OmittedChunks      int    `json:"omittedChunks"`
+		Text               string `json:"text"`
 	} `json:"summary"`
 	Files []struct {
 		Path           string           `json:"path"`
@@ -104,6 +116,56 @@ func decodeDiffContext(t *testing.T, result any) decodedDiffContext {
 		t.Fatal(err)
 	}
 	return decoded
+}
+
+func commitDiffContextFixture(t *testing.T, root string) {
+	t.Helper()
+	runDiffContextGit(t, root, "init", "-q")
+	runDiffContextGit(t, root, "config", "user.email", "diff-context@example.com")
+	runDiffContextGit(t, root, "config", "user.name", "Diff Context Test")
+	runDiffContextGit(t, root, "add", "--", ".")
+	runDiffContextGit(t, root, "commit", "-q", "-m", "base")
+}
+
+func runDiffContextGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+	}
+}
+
+func writeDiffContextFixture(t *testing.T, root, rel, content string) {
+	t.Helper()
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func diffContextFilePaths(files []struct {
+	Path           string           `json:"path"`
+	TotalChunks    int              `json:"totalChunks"`
+	IncludedChunks int              `json:"includedChunks"`
+	Chunks         []indexing.Chunk `json:"chunks"`
+}) []string {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	return paths
+}
+
+func diffContextSectionText(summary diffContextDiffSummary, scope string) string {
+	for _, section := range summary.Sections {
+		if section.Scope == scope {
+			return section.Text
+		}
+	}
+	return ""
 }
 
 func TestRepoDiffContextReturnsOnlyExplicitPathsWithSummary(t *testing.T) {
@@ -238,7 +300,7 @@ func TestRepoDiffContextRejectsUnsafeOrInvalidPaths(t *testing.T) {
 		path string
 		want string
 	}{
-		{name: "empty", path: " ", want: "non-empty"},
+		{name: "empty", path: "", want: "non-empty"},
 		{name: "parent", path: "../outside.go", want: "outside workspace"},
 		{name: "absolute", path: "/tmp/outside.go", want: "repo-relative"},
 		{name: "windows absolute", path: `C:\\tmp\\outside.go`, want: "repo-relative"},
@@ -310,6 +372,39 @@ func TestRepoDiffContextEvictsNewlyGitIgnoredChunks(t *testing.T) {
 	}
 }
 
+func TestRepoDiffContextAutoPurgesCachedPathHiddenByNewGitIgnore(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	commitDiffContextFixture(t, root)
+	writeDiffContextFixture(t, root, "secret.go", "package secret\n\nconst HiddenAfterIgnoreNeedle = true\n")
+	tool := newRepoDiffContextTool(root, idx)
+	if _, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"secret.go"}})); err != nil {
+		t.Fatal(err)
+	}
+	writeDiffContextFixture(t, root, ".gitignore", "secret.go\n")
+
+	result, err := tool.Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "HiddenAfterIgnoreNeedle") {
+		t.Fatalf("auto result leaked newly ignored cached content: %s", encoded)
+	}
+	if _, err := idx.FileChunks("secret.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("newly ignored path retained cached chunks: %v", err)
+	}
+	search, err := idx.SearchContext(ctx, "HiddenAfterIgnoreNeedle", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search) != 0 {
+		t.Fatalf("newly ignored content remained searchable: %#v", search)
+	}
+}
+
 func TestRepoDiffContextEvictsDeletedCachedPathBeforeReturningError(t *testing.T) {
 	root, idx, ctx := setupDiffContextTestRepo(t)
 	deletedPath := filepath.Join(root, "deleted.go")
@@ -376,6 +471,367 @@ func TestRepoDiffContextRejectsNonRegularPath(t *testing.T) {
 	}
 }
 
+func TestRepoDiffContextAutoDetectsCompleteDirtyWorktree(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	writeDiffContextFixture(t, root, "both.go", "package dirty\n\nconst Both = \"base\"\n")
+	writeDiffContextFixture(t, root, "old name.go", "package dirty\n\nconst RenameNeedle = true\n")
+	writeDiffContextFixture(t, root, "deleted.go", "package dirty\n\nconst DeletedNeedle = true\n")
+	commitDiffContextFixture(t, root)
+	tool := newRepoDiffContextTool(root, idx)
+	if _, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"old name.go"}})); err != nil {
+		t.Fatal(err)
+	}
+
+	writeDiffContextFixture(t, root, "pkg/a.go", "package pkg\n\nconst IndexOnlyNeedle = true\n")
+	runDiffContextGit(t, root, "add", "--", "pkg/a.go")
+	writeDiffContextFixture(t, root, "pkg/b.go", "package pkg\n\nconst WorktreeOnlyNeedle = true\n")
+	writeDiffContextFixture(t, root, "both.go", "package dirty\n\nconst Both = \"index state\"\n")
+	runDiffContextGit(t, root, "add", "--", "both.go")
+	writeDiffContextFixture(t, root, "both.go", "package dirty\n\nconst Both = \"worktree state\"\n")
+	runDiffContextGit(t, root, "mv", "--", "old name.go", "renamed file.go")
+	writeDiffContextFixture(t, root, "renamed file.go", "package dirty\n\nconst RenamedCurrent = true\n")
+	if err := os.Remove(filepath.Join(root, "deleted.go")); err != nil {
+		t.Fatal(err)
+	}
+	writeDiffContextFixture(t, root, "untracked.go", "package dirty\n\nconst UntrackedNeedle = true\n")
+
+	result, err := tool.Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	wantPaths := "both.go,pkg/a.go,pkg/b.go,renamed file.go,untracked.go"
+	if got.PathSource != "git_status" || strings.Join(got.Paths, ",") != wantPaths {
+		t.Fatalf("auto paths = %q from %q, want %q", strings.Join(got.Paths, ","), got.PathSource, wantPaths)
+	}
+	if strings.Join(got.DeletedPaths, ",") != "deleted.go" {
+		t.Fatalf("deleted paths = %#v", got.DeletedPaths)
+	}
+	if got.Summary.RequestedPaths != 0 || got.Summary.DetectedPaths != 6 || got.Summary.SelectedChanges != 6 || got.Summary.DeletedPaths != 1 {
+		t.Fatalf("dirty-worktree summary = %#v", got.Summary)
+	}
+	if len(got.Changes) != 6 {
+		t.Fatalf("changes = %#v", got.Changes)
+	}
+	if strings.Join(diffContextFilePaths(got.Files), ",") != wantPaths {
+		t.Fatalf("chunk-loaded files = %#v", diffContextFilePaths(got.Files))
+	}
+
+	staged := diffContextSectionText(got.DiffSummary, diffContextScopeStaged)
+	unstaged := diffContextSectionText(got.DiffSummary, diffContextScopeUnstaged)
+	untracked := diffContextSectionText(got.DiffSummary, diffContextScopeUntracked)
+	for needle, section := range map[string]string{
+		"IndexOnlyNeedle":    staged,
+		"index state":        staged,
+		"RenameNeedle":       staged,
+		"WorktreeOnlyNeedle": unstaged,
+		"worktree state":     unstaged,
+		"DeletedNeedle":      unstaged,
+		"UntrackedNeedle":    untracked,
+	} {
+		if !strings.Contains(section, needle) {
+			t.Errorf("%q missing from its diff scope: %s", needle, section)
+		}
+	}
+	if strings.Contains(staged, "WorktreeOnlyNeedle") || strings.Contains(unstaged, "IndexOnlyNeedle") {
+		t.Fatalf("staged/unstaged scopes leaked across boundaries: staged=%s\nunstaged=%s", staged, unstaged)
+	}
+	if _, err := idx.FileChunks("old name.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rename source retained cached chunks: %v", err)
+	}
+	search, err := idx.SearchContext(ctx, "RenameNeedle", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search) != 0 {
+		t.Fatalf("rename-source content remained searchable: %#v", search)
+	}
+}
+
+func TestRepoDiffContextExplicitGitDiffIsConstrainedToRequestedPaths(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	commitDiffContextFixture(t, root)
+	writeDiffContextFixture(t, root, "pkg/a.go", "package pkg\n\nconst ExplicitOnlyNeedle = true\n")
+	writeDiffContextFixture(t, root, "pkg/b.go", "package pkg\n\nconst UnrequestedDirtyNeedle = true\n")
+
+	result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"pkg/a.go"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PathSource != "explicit" || strings.Join(got.Paths, ",") != "pkg/a.go" || len(got.Changes) != 1 || got.Changes[0].Path != "pkg/a.go" {
+		t.Fatalf("explicit selection expanded beyond requested path: %#v", got)
+	}
+	if !strings.Contains(string(encoded), "ExplicitOnlyNeedle") || strings.Contains(string(encoded), "UnrequestedDirtyNeedle") {
+		t.Fatalf("explicit diff was not path-constrained: %s", encoded)
+	}
+}
+
+func TestRepoDiffContextExplicitRenameEvictsCachedSource(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	writeDiffContextFixture(t, root, "old.go", "package renamed\n\nconst ExplicitRenameSourceNeedle = true\n")
+	commitDiffContextFixture(t, root)
+	tool := newRepoDiffContextTool(root, idx)
+	if _, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"old.go"}})); err != nil {
+		t.Fatal(err)
+	}
+	runDiffContextGit(t, root, "mv", "--", "old.go", "new.go")
+	writeDiffContextFixture(t, root, "new.go", "package renamed\n\nconst ExplicitRenameCurrent = true\n")
+
+	result, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"new.go"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	if len(got.Changes) != 1 || !got.Changes[0].Renamed || got.Changes[0].PreviousPath != "old.go" {
+		t.Fatalf("explicit rename change = %#v", got.Changes)
+	}
+	if _, err := idx.FileChunks("old.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("explicit rename source retained cached chunks: %v", err)
+	}
+	search, err := idx.SearchContext(ctx, "ExplicitRenameSourceNeedle", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search) != 0 {
+		t.Fatalf("explicit rename-source content remained searchable: %#v", search)
+	}
+}
+
+func TestRepoDiffContextPreservesLeadingWhitespacePathInAutoAndExplicitModes(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	commitDiffContextFixture(t, root)
+	const rel = " leading.go"
+	writeDiffContextFixture(t, root, rel, "package leading\n\nconst LeadingWhitespaceNeedle = true\n")
+	tool := newRepoDiffContextTool(root, idx)
+
+	autoResult, err := tool.Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	auto := decodeDiffContext(t, autoResult)
+	if len(auto.Paths) != 1 || auto.Paths[0] != rel || len(auto.Changes) != 1 || auto.Changes[0].Path != rel {
+		t.Fatalf("auto whitespace path = %#v changes=%#v", auto.Paths, auto.Changes)
+	}
+
+	explicitResult, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{rel}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit := decodeDiffContext(t, explicitResult)
+	if len(explicit.Paths) != 1 || explicit.Paths[0] != rel || len(explicit.Files) != 1 || explicit.Files[0].Path != rel {
+		t.Fatalf("explicit whitespace path did not round-trip: %#v", explicit)
+	}
+}
+
+func TestRepoDiffContextAutoSummarizesBinaryWithoutChunkLoading(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	commitDiffContextFixture(t, root)
+	if err := os.WriteFile(filepath.Join(root, "notes.bin"), []byte{0, 1, 2, 3, 4}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	if len(got.Changes) != 1 || got.Changes[0].Path != "notes.bin" || len(got.Paths) != 0 || len(got.Files) != 0 {
+		t.Fatalf("binary auto selection = %#v", got)
+	}
+	text := diffContextSectionText(got.DiffSummary, diffContextScopeUnstaged)
+	if !strings.Contains(text, "Binary files") || strings.IndexByte(text, 0) >= 0 {
+		t.Fatalf("binary diff summary = %q", text)
+	}
+}
+
+func TestRepoDiffContextNestedWorkspaceUsesWorkspaceRelativeDiffHeaders(t *testing.T) {
+	repo := t.TempDir()
+	writeDiffContextFixture(t, repo, "workspace/in.go", "package workspace\nconst Value = \"base\"\n")
+	writeDiffContextFixture(t, repo, "sibling/out.go", "package sibling\nconst Value = \"base\"\n")
+	commitDiffContextFixture(t, repo)
+	writeDiffContextFixture(t, repo, "workspace/in.go", "package workspace\nconst Value = \"INSIDE_NEEDLE\"\n")
+	writeDiffContextFixture(t, repo, "sibling/out.go", "package sibling\nconst Value = \"SIBLING_NEEDLE\"\n")
+	root := filepath.Join(repo, "workspace")
+	idx, err := indexing.New(indexing.Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+
+	result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	text := diffContextSectionText(got.DiffSummary, diffContextScopeUnstaged)
+	if strings.Join(got.Paths, ",") != "in.go" || !strings.Contains(text, "a/in.go") || strings.Contains(text, "workspace/in.go") || strings.Contains(text, "SIBLING_NEEDLE") {
+		t.Fatalf("nested workspace result paths=%#v diff=%s", got.Paths, text)
+	}
+}
+
+func TestRepoDiffContextAutoEvictsDeletedCachedPath(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	writeDiffContextFixture(t, root, "deleted.go", "package deleted\n\nconst AutoDeletedNeedle = true\n")
+	commitDiffContextFixture(t, root)
+	tool := newRepoDiffContextTool(root, idx)
+	if _, err := tool.Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"deleted.go"}})); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "deleted.go")); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := tool.Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	if len(got.Paths) != 0 || strings.Join(got.DeletedPaths, ",") != "deleted.go" || got.Summary.DeletedPaths != 1 {
+		t.Fatalf("deleted auto result = %#v", got)
+	}
+	if _, err := idx.FileChunks("deleted.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted path retained cached chunks: %v", err)
+	}
+	search, err := idx.SearchContext(ctx, "AutoDeletedNeedle", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search) != 0 {
+		t.Fatalf("deleted content remained searchable: %#v", search)
+	}
+}
+
+func TestRepoDiffContextAutoCleanAndNonGitContracts(t *testing.T) {
+	t.Run("clean", func(t *testing.T) {
+		root, idx, ctx := setupDiffContextTestRepo(t)
+		commitDiffContextFixture(t, root)
+		result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := decodeDiffContext(t, result)
+		if got.PathSource != "git_status" || len(got.Paths) != 0 || len(got.Changes) != 0 || len(got.DeletedPaths) != 0 {
+			t.Fatalf("clean result = %#v", got)
+		}
+		if !got.DiffSummary.Available || len(got.DiffSummary.Sections) != 0 || got.Summary.DetectedPaths != 0 {
+			t.Fatalf("clean diff summary = %#v, counts = %#v", got.DiffSummary, got.Summary)
+		}
+		if got.DiffSummary.MaxBytes != defaultRepoDiffContextDiffBytes || got.DiffSummary.ContextLines != defaultRepoDiffContextDiffLines {
+			t.Fatalf("default diff limits = %#v", got.DiffSummary)
+		}
+	})
+
+	t.Run("auto outside Git", func(t *testing.T) {
+		root, idx, ctx := setupDiffContextTestRepo(t)
+		_, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+		if err == nil || !strings.Contains(err.Error(), "not a Git worktree") {
+			t.Fatalf("error = %v, want non-Git auto-detection failure", err)
+		}
+	})
+
+	t.Run("explicit outside Git", func(t *testing.T) {
+		root, idx, ctx := setupDiffContextTestRepo(t)
+		result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{"paths": []string{"pkg/a.go"}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := decodeDiffContext(t, result)
+		if got.PathSource != "explicit" || strings.Join(got.Paths, ",") != "pkg/a.go" || got.DiffSummary.Available {
+			t.Fatalf("explicit non-Git result = %#v", got)
+		}
+	})
+
+	t.Run("present empty paths", func(t *testing.T) {
+		root, idx, ctx := setupDiffContextTestRepo(t)
+		_, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{"paths": []string{}}))
+		if err == nil || !strings.Contains(err.Error(), "non-empty array") {
+			t.Fatalf("error = %v, want present-empty rejection", err)
+		}
+	})
+}
+
+func TestRepoDiffContextAutoCapsDetectedPathsDeterministically(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	paths := make([]string, defaultRepoDiffContextMaxPaths+2)
+	for index := range paths {
+		paths[index] = fmt.Sprintf("changed/%02d.go", index)
+		writeDiffContextFixture(t, root, paths[index], fmt.Sprintf("package changed\n\nconst Value%02d = \"base\"\n", index))
+	}
+	commitDiffContextFixture(t, root)
+	for index, rel := range paths {
+		writeDiffContextFixture(t, root, rel, fmt.Sprintf("package changed\n\nconst Value%02d = \"dirty\"\n", index))
+	}
+
+	result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decodeDiffContext(t, result)
+	if len(got.Paths) != defaultRepoDiffContextMaxPaths || len(got.Changes) != defaultRepoDiffContextMaxPaths {
+		t.Fatalf("selected path counts = paths:%d changes:%d", len(got.Paths), len(got.Changes))
+	}
+	if strings.Join(got.Paths, ",") != strings.Join(paths[:defaultRepoDiffContextMaxPaths], ",") {
+		t.Fatalf("capped selection = %#v, want first lexical paths %#v", got.Paths, paths[:defaultRepoDiffContextMaxPaths])
+	}
+	if got.Summary.DetectedPaths != len(paths) || got.Summary.SelectedChanges != defaultRepoDiffContextMaxPaths || got.Summary.PathLimitOmissions != 2 {
+		t.Fatalf("path-cap summary = %#v", got.Summary)
+	}
+}
+
+func TestRepoDiffContextAutoFiltersSensitiveAndMementoIgnoredDiffs(t *testing.T) {
+	root, idx, ctx := setupDiffContextTestRepo(t)
+	writeDiffContextFixture(t, root, ".mementoignore", "hidden.go\n")
+	writeDiffContextFixture(t, root, ".env", "API_KEY=base\n")
+	writeDiffContextFixture(t, root, "private.pem", "base private material\n")
+	writeDiffContextFixture(t, root, "hidden.go", "package hidden\nconst Hidden = \"base\"\n")
+	commitDiffContextFixture(t, root)
+
+	secrets := []string{
+		"sk-proj-ENVSECRETABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		"PRIVATE-PEM-SECRET-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		"MEMENTO-HIDDEN-SECRET-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	}
+	writeDiffContextFixture(t, root, ".env", "API_KEY="+secrets[0]+"\n")
+	writeDiffContextFixture(t, root, "private.pem", secrets[1]+"\n")
+	writeDiffContextFixture(t, root, "hidden.go", "package hidden\nconst Hidden = \""+secrets[2]+"\"\n")
+
+	result, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range secrets {
+		if strings.Contains(string(encoded), secret) {
+			t.Fatalf("auto diff leaked filtered secret %q: %s", secret, encoded)
+		}
+	}
+	got := decodeDiffContext(t, result)
+	if len(got.Paths) != 0 || len(got.Changes) != 0 || len(got.DiffSummary.Sections) != 0 || got.Summary.FilteredPaths != 3 {
+		t.Fatalf("filtered privacy result = %#v", got)
+	}
+}
+
+func TestRepoDiffContextAutoHonorsPreCanceledContext(t *testing.T) {
+	root, idx, _ := setupDiffContextTestRepo(t)
+	commitDiffContextFixture(t, root)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := newRepoDiffContextTool(root, idx).Handler(ctx, rawJSON(t, map[string]any{}))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+}
+
 func TestRepoDiffContextToolDefinitionContract(t *testing.T) {
 	tool := repoDiffContextToolDefinition()
 	if tool.Name != "repo_diff_context" || tool.OutputSchema == nil {
@@ -387,22 +843,41 @@ func TestRepoDiffContextToolDefinitionContract(t *testing.T) {
 	}
 	properties := tool.InputSchema["properties"].(map[string]any)
 	paths := properties["paths"].(map[string]any)
-	if paths["maxItems"] != defaultRepoDiffContextMaxPaths {
+	if paths["minItems"] != 1 || paths["maxItems"] != defaultRepoDiffContextMaxPaths {
 		t.Fatalf("paths schema = %#v", paths)
 	}
-	outputProperties := tool.OutputSchema["properties"].(map[string]any)
-	if _, ok := outputProperties["omittedPaths"]; !ok {
-		t.Fatalf("output schema omitted omittedPaths: %#v", outputProperties)
+	maxDiffBytes := properties["maxDiffBytes"].(map[string]any)
+	if maxDiffBytes["maximum"] != maximumRepoDiffContextDiffBytes {
+		t.Fatalf("maxDiffBytes schema = %#v", maxDiffBytes)
 	}
-	required := tool.OutputSchema["required"].([]any)
-	foundRequired := false
-	for _, name := range required {
-		if name == "omittedPaths" {
-			foundRequired = true
-			break
+	diffContextLines := properties["diffContextLines"].(map[string]any)
+	if diffContextLines["maximum"] != maximumRepoDiffContextDiffLines {
+		t.Fatalf("diffContextLines schema = %#v", diffContextLines)
+	}
+	if required, exists := tool.InputSchema["required"]; exists {
+		for _, name := range required.([]any) {
+			if name == "paths" {
+				t.Fatalf("paths must be optional for Git auto-detection: %#v", required)
+			}
 		}
 	}
-	if !foundRequired {
-		t.Fatalf("output schema does not require omittedPaths: %#v", required)
+	outputProperties := tool.OutputSchema["properties"].(map[string]any)
+	for _, name := range []string{"pathSource", "paths", "changes", "deletedPaths", "diffSummary", "omittedPaths"} {
+		if _, ok := outputProperties[name]; !ok {
+			t.Fatalf("output schema omitted %s: %#v", name, outputProperties)
+		}
+	}
+	required := tool.OutputSchema["required"].([]any)
+	for _, requiredName := range []string{"pathSource", "paths", "changes", "deletedPaths", "diffSummary", "omittedPaths"} {
+		foundRequired := false
+		for _, name := range required {
+			if name == requiredName {
+				foundRequired = true
+				break
+			}
+		}
+		if !foundRequired {
+			t.Fatalf("output schema does not require %s: %#v", requiredName, required)
+		}
 	}
 }

@@ -1,14 +1,15 @@
 package indexing
 
 import (
-	"bytes"
 	"context"
-	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"memento-mcp/internal/gitstate"
 )
 
 type GitChangeMonitor struct {
@@ -128,56 +129,31 @@ func (m *GitChangeMonitor) flush() {
 }
 
 func gitStatusChanges(ctx context.Context, rootAbs string) ([]string, []string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", rootAbs, "status", "--porcelain", "-z", "--untracked-files=all")
-	out, err := cmd.Output()
+	changes, err := gitstate.LoadWorktreeChanges(ctx, rootAbs)
 	if err != nil {
 		return nil, nil, err
 	}
-	return parsePorcelainZ(out)
+	add, del := classifyGitStatusChanges(rootAbs, changes)
+	return add, del, nil
 }
 
-func parsePorcelainZ(b []byte) ([]string, []string, error) {
-	if len(b) == 0 {
-		return nil, nil, nil
-	}
-	entries := bytes.Split(b, []byte{0})
-	add := []string{}
-	del := []string{}
-
-	for i := 0; i < len(entries); i++ {
-		e := entries[i]
-		if len(e) == 0 {
-			continue
+func classifyGitStatusChanges(rootAbs string, changes []gitstate.WorktreeChange) ([]string, []string) {
+	add := make([]string, 0, len(changes))
+	del := make([]string, 0, len(changes))
+	for _, change := range changes {
+		if change.Renamed && change.PreviousPath != "" {
+			del = append(del, change.PreviousPath)
 		}
-		if len(e) < 3 {
-			return add, del, errors.New("unexpected porcelain entry")
-		}
-		status := string(e[:2])
-		path := strings.TrimSpace(string(e[3:]))
-		if path == "" {
-			continue
-		}
-		path = filepath.ToSlash(filepath.Clean(path))
-
-		isRename := strings.Contains(status, "R") || strings.Contains(status, "C")
-		if isRename {
-			if i+1 < len(entries) && len(entries[i+1]) > 0 {
-				oldPath := path
-				newPath := strings.TrimSpace(string(entries[i+1]))
-				newPath = filepath.ToSlash(filepath.Clean(newPath))
-				del = append(del, oldPath)
-				add = append(add, newPath)
-				i++
+		if change.Deleted {
+			abs := filepath.Join(rootAbs, filepath.FromSlash(change.Path))
+			if info, statErr := os.Stat(abs); statErr == nil && info.Mode().IsRegular() {
+				add = append(add, change.Path)
 				continue
 			}
-		}
-
-		if strings.Contains(status, "D") {
-			del = append(del, path)
+			del = append(del, change.Path)
 			continue
 		}
-		add = append(add, path)
+		add = append(add, change.Path)
 	}
-
-	return normalizeRelPaths(add), normalizeRelPaths(del), nil
+	return normalizeRelPaths(add), normalizeRelPaths(del)
 }

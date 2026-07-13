@@ -105,6 +105,8 @@ Baseline refresh rationale for syntax-aware chunking: the chunk construction alg
 
 Baseline refresh rationale for Slice 14A: adding `repo_diff_context`, bounded-output constants, and indexer lifecycle safeguards moved several exact fixture targets without changing the chunking or retrieval-scoring algorithms. All judgments were re-audited to the current declarations, references, and output-budget passages before regenerating the lexical baseline; metric changes here reflect corrected anchor drift and the newly indexed source layout.
 
+Baseline refresh rationale for Slice 14B: the new index eligibility helper and diff-output constants moved three exact source judgments: the ignore-rule declaration and its reference comment, plus the match-centered truncation declaration. Every relevance range was re-audited to the intended current declaration, reference, test, call site, and client-budget passage. The new Git-status, secure-file, and diff-summary source layout required regenerating the lexical baseline; final metrics remain precision@5 `0.5`, recall@5 and MRR `1.0`, and macro nDCG `0.9765063588836707`. No retrieval scoring or chunking algorithm changed.
+
 ## Validate the contract
 
 ```bash
