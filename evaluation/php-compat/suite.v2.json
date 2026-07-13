@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v2",
+    "adapter": "terms-v3",
     "k": 5,
     "requiredSplits": ["train", "validation"]
   },
@@ -63,6 +63,13 @@
           "query": "where does php74_amount return a separated numeric float",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 50, "endLine": 50}],
           "hardNegatives": [{"path": "src/NameFallback.php", "startLine": 9, "endLine": 9}]
+        },
+        {
+          "id": "php74-covariant-producer",
+          "split": "train",
+          "query": "where is the produce method return typed as LanguageFeatures and returning itself",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 11, "endLine": 11}]
         }
       ]
     },
@@ -105,6 +112,13 @@
           "query": "where does __construct declare the public path property",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 12, "endLine": 12}],
           "hardNegatives": [{"path": "src/StatusMessage.php", "startLine": 9, "endLine": 9}]
+        },
+        {
+          "id": "php80-promoted-union-logger",
+          "split": "train",
+          "query": "where is a name promoted while the logger dependency may be a logger object, string, or null",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 27, "endLine": 27}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 19, "endLine": 19}]
         }
       ]
     },
@@ -150,6 +164,13 @@
           "query": "where is the string-backed status enum declared",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 17, "endLine": 17}],
           "hardNegatives": [{"path": "src/JsonRenderer.php", "startLine": 7, "endLine": 7}]
+        },
+        {
+          "id": "php81-never-throw",
+          "split": "train",
+          "query": "where does a method declare it never returns and terminate by throwing instead of serializing a value",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 39, "endLine": 39}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 32, "endLine": 32}]
         }
       ]
     },
@@ -192,6 +213,13 @@
           "query": "where does HasKind declare the packet kind constant",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 12, "endLine": 12}],
           "hardNegatives": [{"path": "src/PacketQueue.php", "startLine": 7, "endLine": 7}]
+        },
+        {
+          "id": "php82-literal-true",
+          "split": "train",
+          "query": "where does packet readiness guarantee the literal true return rather than use null for missing data",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 25, "endLine": 25}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 30, "endLine": 30}]
         }
       ]
     },
@@ -232,6 +260,13 @@
           "query": "where does BaseFormatter return the input value unchanged",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 11, "endLine": 11}],
           "hardNegatives": [{"path": "src/ReportFormatter.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "php83-dynamic-constant-fetch",
+          "split": "train",
+          "query": "where is a class constant selected dynamically from a runtime name instead of reading the fixed report prefix",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 28, "endLine": 28}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 17, "endLine": 17}]
         }
       ]
     },
@@ -275,6 +310,13 @@
           "query": "where does php84_title construct LanguageFeatures for Demo",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 36, "endLine": 36}],
           "hardNegatives": [{"path": "src/TitleFormatter.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "php84-get-only-contract",
+          "split": "train",
+          "query": "where is a title property contract getter-only rather than implementing a trimming setter",
+          "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 9, "endLine": 9}],
+          "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 18, "endLine": 18}]
         }
       ]
     },
@@ -349,6 +391,13 @@
           "query": "where does Composer map the Tests namespace in autoload dev",
           "relevant": [{"path": "composer.json", "startLine": 23, "endLine": 23}],
           "hardNegatives": [{"path": "tests/ComposerTest.php", "startLine": 7, "endLine": 7}]
+        },
+        {
+          "id": "composer-psr0-dual-conventions",
+          "split": "train",
+          "query": "which Composer rules use PSR-0 for both underscore-style legacy controllers and namespaced old reports",
+          "relevant": [{"path": "composer.json", "startLine": 13, "endLine": 13}],
+          "hardNegatives": [{"path": "app/Consumer.php", "startLine": 30, "endLine": 30}]
         }
       ]
     },
@@ -406,6 +455,13 @@
           "query": "where does Gate map the Report model to ReportPolicy",
           "relevant": [{"path": "app/Providers/AuthServiceProvider.php", "startLine": 15, "endLine": 15}],
           "hardNegatives": [{"path": "app/Policies/ReportPolicy.php", "startLine": 10, "endLine": 10}]
+        },
+        {
+          "id": "laravel-belongs-to-owner",
+          "split": "train",
+          "query": "where is a report owner represented as an Eloquent belongs-to user relationship rather than an authorization check between user and report",
+          "relevant": [{"path": "app/Models/Report.php", "startLine": 12, "endLine": 12}],
+          "hardNegatives": [{"path": "app/Policies/ReportPolicy.php", "startLine": 12, "endLine": 12}]
         }
       ]
     },
@@ -460,6 +516,13 @@
           "query": "where does service configuration wire the ReportService reports argument to ReportRepository",
           "relevant": [{"path": "config/services.yaml", "startLine": 11, "endLine": 11}],
           "hardNegatives": [{"path": "src/Repository/ReportRepository.php", "startLine": 10, "endLine": 10}]
+        },
+        {
+          "id": "symfony-subscriber-map",
+          "split": "train",
+          "query": "which subscribed-events method maps GenerateReport to the onReport callback",
+          "relevant": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 14, "endLine": 14}],
+          "hardNegatives": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 17, "endLine": 17}]
         }
       ]
     },
@@ -505,6 +568,13 @@
           "query": "where does the plugin bootstrap include report classes and boot after plugins loaded",
           "relevant": [{"path": "report-plugin.php", "startLine": 8, "endLine": 12}],
           "hardNegatives": [{"path": "includes/class-report-plugin.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "wordpress-public-post-type",
+          "split": "train",
+          "query": "where is the report custom post type actually registered as public rather than only wiring its init callback",
+          "relevant": [{"path": "includes/functions.php", "startLine": 7, "endLine": 7}],
+          "hardNegatives": [{"path": "includes/class-report-plugin.php", "startLine": 13, "endLine": 13}]
         }
       ]
     },
@@ -560,6 +630,13 @@
           "query": "where does service config inject report.repository into ReportController",
           "relevant": [{"path": "report.services.yml", "startLine": 6, "endLine": 6}],
           "hardNegatives": [{"path": "src/Controller/ReportController.php", "startLine": 12, "endLine": 12}]
+        },
+        {
+          "id": "drupal-preprocess-count",
+          "split": "train",
+          "query": "where does report summary preprocessing derive a count from the reports array rather than building the themed report list",
+          "relevant": [{"path": "report.theme", "startLine": 7, "endLine": 7}],
+          "hardNegatives": [{"path": "src/Plugin/Block/ReportBlock.php", "startLine": 26, "endLine": 26}]
         }
       ]
     }

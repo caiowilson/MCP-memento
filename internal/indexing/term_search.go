@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence, and a
 // bounded path tie-break.
-const TermSearchVersion = "terms-v2"
+const TermSearchVersion = "terms-v3"
 
 var searchStopWords = map[string]struct{}{
 	"a": {}, "all": {}, "an": {}, "and": {}, "are": {}, "be": {},
@@ -20,7 +20,7 @@ var searchStopWords = map[string]struct{}{
 }
 
 func meaningfulSearchTerms(query string) []string {
-	tokens := identifierSearchTokens(query)
+	tokens := identifierSearchTokens(positiveSearchClause(query))
 	out := make([]string, 0, len(tokens))
 	seen := map[string]struct{}{}
 	for _, token := range tokens {
@@ -38,6 +38,17 @@ func meaningfulSearchTerms(query string) []string {
 		out = append(out, token)
 	}
 	return out
+}
+
+func positiveSearchClause(query string) string {
+	lower := strings.ToLower(query)
+	end := len(query)
+	for _, marker := range []string{" instead of ", " rather than "} {
+		if index := strings.Index(lower, marker); index >= 0 && index < end {
+			end = index
+		}
+	}
+	return query[:end]
 }
 
 func termAwareChunkScore(chunk Chunk, queryTerms []string) int {
@@ -207,6 +218,8 @@ func canonicalSearchTerm(value string) string {
 		return "constant"
 	case "iterable", "iterator", "iteration", "iterations":
 		return "iterate"
+	case "itself":
+		return "this"
 	case "located", "location", "locations":
 		return "locate"
 	default:

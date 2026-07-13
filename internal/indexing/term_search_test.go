@@ -21,6 +21,14 @@ func TestMeaningfulSearchTermsSplitIdentifiersAndDropStopWords(t *testing.T) {
 	}
 }
 
+func TestMeaningfulSearchTermsExcludeContrastClause(t *testing.T) {
+	got := meaningfulSearchTerms("where does a method never return and throw instead of serializing a value")
+	want := []string{"method", "never", "return", "throw"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("meaningfulSearchTerms() = %#v; want %#v", got, want)
+	}
+}
+
 func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 	for _, pair := range [][2]string{
 		{"normalized", "normalize"},
@@ -32,6 +40,7 @@ func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 		{"constant", "const"},
 		{"iterator", "iterable"},
 		{"located", "location"},
+		{"itself", "this"},
 	} {
 		if quality := searchTermMatchQuality(pair[0], pair[1]); quality == 0 {
 			t.Errorf("expected %q and %q to match", pair[0], pair[1])
@@ -41,6 +50,15 @@ func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 		if quality := searchTermMatchQuality(pair[0], pair[1]); quality != 0 {
 			t.Errorf("unexpected match for %q and %q: %d", pair[0], pair[1], quality)
 		}
+	}
+}
+
+func TestTermAwareChunkScoreUsesPositiveClauseAndSelfReference(t *testing.T) {
+	terms := meaningfulSearchTerms("where does a producer return itself rather than only declare an interface")
+	target := Chunk{Path: "LanguageFeatures.php", Language: "php", Content: "public function produce(): LanguageFeatures\n{\n    return $this;\n}\n"}
+	distractor := Chunk{Path: "LanguageFeatures.php", Language: "php", Content: "interface Producer\n{\n    public function produce(): object;\n}\n"}
+	if got, want := termAwareChunkScore(target, terms), termAwareChunkScore(distractor, terms); got <= want {
+		t.Fatalf("self-returning declaration score %d must exceed interface score %d", got, want)
 	}
 }
 
