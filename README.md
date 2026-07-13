@@ -214,6 +214,17 @@ make build
 go test ./...
 ```
 
+### Check Internal Package Coverage
+
+Run the same uncached package coverage commands used by CI:
+
+```bash
+go test -count=1 -cover ./internal/indexing
+go test -count=1 -cover ./internal/mcp
+```
+
+The blocking floors are `63.0%` for `./internal/indexing` and `45.0%` for `./internal/mcp`. Update the tests when a change would lower either package below its floor; the canonical CI implementation and thresholds live in [`.github/workflows/coverage-internal.yml`](./.github/workflows/coverage-internal.yml).
+
 ### VS Code Extension Development
 
 ```bash

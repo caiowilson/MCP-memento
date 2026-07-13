@@ -1,9 +1,9 @@
 **/.git/**
 **/.vscode/**
 **/node_modules/**
+.test-dist/**
 src/**
 tsconfig.json
 *.ts
 *.map
 *.vsix
-

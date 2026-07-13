@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildSnippetMarkdown } from "../src/mcpConfig.js";
+import {
+  buildConfigEntry,
+  buildSnippetMarkdown,
+  upsertIntoKnownSchema,
+} from "../.test-dist/mcpConfig.mjs";
 
 test("buildSnippetMarkdown includes intent guidance and migration note", () => {
   const markdown = buildSnippetMarkdown("/tmp/memento-mcp");
@@ -13,4 +17,43 @@ test("buildSnippetMarkdown includes intent guidance and migration note", () => {
   assert.match(markdown, /`prime` MCP prompt at session start/);
   assert.match(markdown, /Omit `mode` unless you need to force a low-level output shape/);
   assert.match(markdown, /New callers should prefer `repo_context` with `intent`/);
+});
+
+test("upsertIntoKnownSchema merges into an existing mcpServers map", () => {
+  const original = {
+    inputs: [{ id: "api-token", type: "promptString" }],
+    mcpServers: {
+      existing: { command: "/opt/existing-server" },
+    },
+  };
+  const entry = buildConfigEntry("/new/memento-mcp");
+
+  const updated = upsertIntoKnownSchema(original, entry);
+
+  assert.deepEqual(updated, {
+    inputs: original.inputs,
+    mcpServers: {
+      existing: original.mcpServers.existing,
+      "memento-mcp": entry,
+    },
+  });
+  assert.deepEqual(original.mcpServers, {
+    existing: { command: "/opt/existing-server" },
+  });
+});
+
+test("upsertIntoKnownSchema replaces only the named entry in an existing servers array", () => {
+  const existing = { name: "existing", command: "/opt/existing-server" };
+  const original = {
+    version: 1,
+    servers: [
+      existing,
+      { name: "memento-mcp", command: "/old/memento-mcp" },
+    ],
+  };
+  const entry = buildConfigEntry("/new/memento-mcp");
+
+  const updated = upsertIntoKnownSchema(original, entry);
+
+  assert.deepEqual(updated, { version: 1, servers: [existing, entry] });
 });

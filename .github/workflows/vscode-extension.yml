@@ -1,0 +1,45 @@
+name: VS Code Extension
+
+on:
+  pull_request:
+    paths:
+      - "vscode-extension/**"
+      - ".github/workflows/vscode-extension.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "vscode-extension/**"
+      - ".github/workflows/vscode-extension.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Test extension
+        working-directory: vscode-extension
+        run: npm test
+
+      - name: Type-check extension
+        working-directory: vscode-extension
+        run: npm run typecheck
+
+      - name: Build extension
+        working-directory: vscode-extension
+        run: npm run build

@@ -7,7 +7,13 @@ import {
   resolvePreferredServerPath,
   sourceBuildReadmeUrl,
 } from "./installer";
-import { buildConfigEntry, buildConfigEntryJson, buildMcpServersConfigJson, buildSnippetMarkdown } from "./mcpConfig";
+import {
+  buildConfigEntry,
+  buildConfigEntryJson,
+  buildMcpServersConfigJson,
+  buildSnippetMarkdown,
+  upsertIntoKnownSchema,
+} from "./mcpConfig";
 
 let lastAutoSwitchedWorkspaceRoot: string | undefined;
 
@@ -398,52 +404,6 @@ async function upsertMcpEntry(configUri: vscode.Uri, serverPath: string): Promis
   }
 
   await vscode.workspace.fs.writeFile(configUri, Buffer.from(JSON.stringify(updated, null, 2), "utf8"));
-}
-
-function upsertIntoKnownSchema(
-  config: unknown,
-  entry: Record<string, unknown>,
-): Record<string, unknown> | unknown[] | null {
-  if (Array.isArray(config)) {
-    return upsertIntoServersArray(config, entry);
-  }
-  if (typeof config !== "object" || config === null) {
-    return null;
-  }
-
-  const obj = config as Record<string, unknown>;
-  const mcpServers = obj["mcpServers"];
-  if (typeof mcpServers === "object" && mcpServers !== null && !Array.isArray(mcpServers)) {
-    const next = { ...obj };
-    next["mcpServers"] = { ...(mcpServers as Record<string, unknown>), "memento-mcp": entry };
-    return next;
-  }
-
-  const servers = obj["servers"];
-  if (Array.isArray(servers)) {
-    const next = { ...obj };
-    next["servers"] = upsertIntoServersArray(servers, entry);
-    return next;
-  }
-
-  return null;
-}
-
-function upsertIntoServersArray(arr: unknown[], entry: Record<string, unknown>): unknown[] {
-  const name = String(entry["name"] ?? "memento-mcp");
-  const next = [...arr];
-  for (let i = 0; i < next.length; i++) {
-    const item = next[i];
-    if (typeof item === "object" && item !== null && "name" in item) {
-      const itemName = String((item as Record<string, unknown>)["name"] ?? "");
-      if (itemName === name) {
-        next[i] = entry;
-        return next;
-      }
-    }
-  }
-  next.push(entry);
-  return next;
 }
 
 async function readTextOrEmpty(uri: vscode.Uri): Promise<string> {

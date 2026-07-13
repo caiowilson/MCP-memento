@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as https from "node:https";
 import { spawn } from "node:child_process";
+import { selectServerPath, type ServerPathSource } from "./serverPath";
 
 type GitHubRelease = {
   tag_name: string;
@@ -127,53 +128,35 @@ export function sourceBuildReadmeUrl(repo: string): string {
 
 export async function resolvePreferredServerPath(context: vscode.ExtensionContext): Promise<string> {
   const override = getConfiguredServerPath();
-  if (override) {
-    return override;
-  }
-
   const cfg = vscode.workspace.getConfiguration("mementoMcp");
   const preferWorkspace = Boolean(cfg.get("preferWorkspaceBinary", true));
-
   const workspaceBin = await findWorkspaceBinary();
-  if (preferWorkspace && workspaceBin) {
-    return workspaceBin;
-  }
-
   const installed = getInstalledBinaryPath(context);
-  if (await fileExists(installed)) {
-    return installed;
-  }
-
-  if (workspaceBin) {
-    return workspaceBin;
-  }
-
-  return "${workspaceFolder}/bin/" + binaryName();
+  const selected = selectServerPath({
+    overridePath: override,
+    workspacePath: workspaceBin,
+    installedPath: (await fileExists(installed)) ? installed : null,
+    preferWorkspace,
+    fallbackPath: "${workspaceFolder}/bin/" + binaryName(),
+  });
+  return selected.path;
 }
 
 export async function getServerStatus(
   context: vscode.ExtensionContext,
-): Promise<{ path: string; source: "override" | "workspace" | "installed" | "missing" }> {
+): Promise<{ path: string; source: ServerPathSource }> {
   const override = getConfiguredServerPath();
-  if (override) {
-    return { path: override, source: "override" };
-  }
-
   const cfg = vscode.workspace.getConfiguration("mementoMcp");
   const preferWorkspace = Boolean(cfg.get("preferWorkspaceBinary", true));
-
   const workspaceBin = await findWorkspaceBinary();
   const installed = getInstalledBinaryPath(context);
-  if (preferWorkspace && workspaceBin) {
-    return { path: workspaceBin, source: "workspace" };
-  }
-  if (await fileExists(installed)) {
-    return { path: installed, source: "installed" };
-  }
-  if (workspaceBin) {
-    return { path: workspaceBin, source: "workspace" };
-  }
-  return { path: "${workspaceFolder}/bin/" + binaryName(), source: "missing" };
+  return selectServerPath({
+    overridePath: override,
+    workspacePath: workspaceBin,
+    installedPath: (await fileExists(installed)) ? installed : null,
+    preferWorkspace,
+    fallbackPath: "${workspaceFolder}/bin/" + binaryName(),
+  });
 }
 
 function getInstalledBinaryPath(context: vscode.ExtensionContext): string {

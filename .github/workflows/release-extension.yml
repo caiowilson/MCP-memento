@@ -29,6 +29,12 @@ jobs:
         working-directory: vscode-extension
         run: npm ci
 
+      - name: Test and type-check extension
+        working-directory: vscode-extension
+        run: |
+          npm test
+          npm run typecheck
+
       - name: Build extension
         working-directory: vscode-extension
         run: npm run build

@@ -122,7 +122,7 @@ Implemented in `internal/gitstate/worktree.go`, `internal/gitstate/ignored.go`, 
 
 ### Slice 21 — Package-level coverage reporting
 
-- Status: in-progress
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: CI workflow, `internal/indexing`, `internal/mcp`
@@ -132,9 +132,9 @@ Implemented in `internal/gitstate/worktree.go`, `internal/gitstate/ignored.go`, 
 
 - [x] Add CI coverage reporting for `internal/indexing` and `internal/mcp` (status: done)
 - [x] Set an initial floor that only blocks regressions for those packages (status: done)
-- [ ] Document local coverage command in contributor-facing docs (status: todo)
+- [x] Document local coverage command in contributor-facing docs (status: done)
 
-CI reporting was delivered by `0c4f77e` and `.github/workflows/coverage-internal.yml`; the documentation follow-up remains open.
+CI reporting was delivered by `0c4f77e` and `.github/workflows/coverage-internal.yml`; the matching local commands and package floors are documented in the contributor section of `README.md`.
 
 ### Slice 22 — `repo_context` golden output tests
 
@@ -170,7 +170,7 @@ Delivered by `d3a26a5`; the only remaining non-backlog reference is a Makefile a
 
 ### Slice 26 — VS Code extension config tests
 
-- Status: todo
+- Status: done
 - Owner: @caiowilson
 - Difficulty: small
 - Scope: `vscode-extension/` tests
@@ -178,9 +178,13 @@ Delivered by `d3a26a5`; the only remaining non-backlog reference is a Makefile a
 
 #### Steps
 
-- [ ] Add tests for workspace-binary preference and explicit server-path override (status: todo)
-- [ ] Add tests for MCP config merge behavior when a config already exists (status: todo)
-- [ ] Keep installer network behavior out of this slice (status: todo)
+- [x] Add tests for workspace-binary preference and explicit server-path override (status: done)
+- [x] Add tests for MCP config merge behavior when a config already exists (status: done)
+- [x] Keep installer network behavior out of this slice (status: done)
+
+Covered by the pure selection and config-merge test seams in `vscode-extension/src/serverPath.ts`
+and `vscode-extension/src/mcpConfig.ts`; GitHub and release workflows enforce the tests and
+type-check, while release lookup and download behavior remain out of scope.
 
 ### Slice 28 — Credential-free Claude workflow skills
 
