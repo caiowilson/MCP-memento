@@ -28,6 +28,11 @@ type serverMode int
 
 var serverVersion = "dev"
 
+// ServerVersion returns the version embedded in release builds.
+func ServerVersion() string {
+	return serverVersion
+}
+
 const (
 	serverModeBroker serverMode = iota
 	serverModeLeaf

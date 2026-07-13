@@ -34,6 +34,17 @@ Show built-in help:
 ./bin/memento-mcp help
 ```
 
+For a standalone binary, check for or install the latest published server release with:
+
+```bash
+memento-mcp update --check
+memento-mcp update
+```
+
+The update command downloads the matching macOS, Linux, or Windows asset, verifies its published SHA-256 sidecar, and replaces the current executable only after verification succeeds. On Windows, a short-lived PowerShell helper finishes the replacement after the running update command exits. A failed download or checksum leaves the current executable unchanged. Plugin-managed installs are intentionally rejected because the plugin pins its launcher and server versions together.
+
+Published builds check for a newer server release in the background at most once every 24 hours. The request contains no workspace path or repository content. Only an available-update notice is written to stderr, keeping MCP stdout protocol-safe; network and cache failures stay silent. Set `MEMENTO_UPDATE_CHECK=false` to opt out. Development builds do not perform the automatic check.
+
 ## Claude Code
 
 ### Plugin installation (recommended)

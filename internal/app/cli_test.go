@@ -89,3 +89,17 @@ func TestCLIHelpTextMentionsClaudeMD(t *testing.T) {
 		t.Fatal("expected help text to mention claude-md")
 	}
 }
+
+func TestHandleCLICommandVersion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	handled, exitCode := handleCLICommand([]string{"version"}, &stdout, &stderr)
+	if !handled || exitCode != 0 || strings.TrimSpace(stdout.String()) == "" || stderr.Len() != 0 {
+		t.Fatalf("version command = handled %v, exit %d, stdout %q, stderr %q", handled, exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestCLIHelpTextMentionsUpdate(t *testing.T) {
+	if !strings.Contains(cliHelpText(), "update --check") || !strings.Contains(cliHelpText(), "version") {
+		t.Fatal("expected help text to mention update checking and version")
+	}
+}

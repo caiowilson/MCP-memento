@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"memento-mcp/internal/mcp"
 )
 
 var defaultMCPEnv = map[string]string{
@@ -41,6 +43,15 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 			fmt.Fprintf(stderr, "claude-md: %v\n", err)
 			return true, 1
 		}
+		return true, 0
+	case "update":
+		if err := runUpdate(args[1:], stdout); err != nil {
+			fmt.Fprintf(stderr, "update: %v\n", err)
+			return true, 1
+		}
+		return true, 0
+	case "version", "--version":
+		fmt.Fprintln(stdout, mcp.ServerVersion())
 		return true, 0
 	case "print-config":
 		exe, err := os.Executable()
@@ -113,6 +124,10 @@ Usage:
   memento-mcp claude-md     Write or update Memento guidance in ./CLAUDE.local.md
   memento-mcp claude-md --print-only
                             Print the guidance block without writing
+  memento-mcp update        Download, verify, and install the latest server release
+  memento-mcp update --check
+                            Check whether a newer release is available
+  memento-mcp version       Print the installed server version
   memento-mcp print-config  Print a generic mcpServers config JSON snippet
   memento-mcp print-guidance
                             Print copyable LLM guidance for repo_context intent routing

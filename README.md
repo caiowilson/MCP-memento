@@ -56,6 +56,14 @@ Set `MEMENTO_INSTALL_DIR` to choose another directory. The installer supports x6
 memento-mcp help
 ```
 
+Update a standalone installation in place:
+
+```bash
+memento-mcp update
+```
+
+Use `memento-mcp update --check` to check without installing. Release builds also perform a silent, throttled check at server startup and write only an update-available notice to stderr; they never write update messages to MCP stdout. Set `MEMENTO_UPDATE_CHECK=false` to disable that check. Claude Code plugin installations remain version-pinned and must be updated through `/plugin` commands.
+
 ### Build from source
 
 Building requires Go 1.25.5 or newer:

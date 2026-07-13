@@ -51,6 +51,14 @@ Defina `MEMENTO_INSTALL_DIR` para escolher outro diretório. O instalador suport
 memento-mcp help
 ```
 
+Atualize uma instalação independente no próprio local:
+
+```bash
+memento-mcp update
+```
+
+Use `memento-mcp update --check` para apenas verificar, sem instalar. Builds de release também fazem uma verificação silenciosa e limitada a uma vez por dia ao iniciar o servidor, escrevendo um aviso somente no stderr quando houver atualização; mensagens de atualização nunca são escritas no stdout do MCP. Defina `MEMENTO_UPDATE_CHECK=false` para desativar essa verificação. Instalações pelo plugin do Claude Code continuam fixadas por versão e devem ser atualizadas pelos comandos `/plugin`.
+
 ### Compilação a partir do código-fonte
 
 A compilação requer Go 1.25.5 ou mais recente:

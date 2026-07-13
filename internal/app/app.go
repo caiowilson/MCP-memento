@@ -63,6 +63,10 @@ func Run() {
 		return
 	}
 
+	if !child {
+		startUpdateNotice(os.Stderr)
+	}
+
 	log.Println("Starting memento-mcp…")
 
 	srv, err := mcp.NewServer(serverConfigForServe(root, child))
