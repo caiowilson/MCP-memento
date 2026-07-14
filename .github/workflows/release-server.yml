@@ -238,10 +238,7 @@ jobs:
 
           VERSION="${GITHUB_REF_NAME#server/v}"
           GOARCH="${{ matrix.goarch }}"
-          ARCH_LABEL="$GOARCH"
-          if [ "$GOARCH" = "amd64" ]; then ARCH_LABEL="x64"; fi
           PACKAGE="dist/memento-mcp_${VERSION}_darwin_${GOARCH}.pkg"
-          RAW_BINARY="dist/memento-mcp_darwin_${ARCH_LABEL}"
 
           ./scripts/macos-sign-and-notarize.sh \
             --binary dist/memento-mcp \
@@ -251,13 +248,6 @@ jobs:
             --installer-identity "$INSTALLER_IDENTITY" \
             --keychain "$SIGNING_KEYCHAIN" \
             --notary-profile "$NOTARY_PROFILE"
-
-          cp dist/memento-mcp "$RAW_BINARY"
-          (
-            cd dist
-            shasum -a 256 "$(basename "$RAW_BINARY")" \
-              > "$(basename "$RAW_BINARY").sha256"
-          )
 
       - name: Remove temporary signing keychain
         if: always()
@@ -271,9 +261,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.goarch }}
-          path: |
-            dist/memento-mcp_darwin_*
-            dist/*.pkg
+          path: dist/*.pkg
 
   publish:
     needs: [build-binaries, package-deb, package-macos-pkg]
@@ -286,6 +274,53 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Validate exact release asset manifest
+        env:
+          MACOS_PACKAGE_RESULT: ${{ needs.package-macos-pkg.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#server/v}"
+
+          expected_assets() {
+            {
+              printf '%s\n' \
+                memento-mcp_darwin_x64 \
+                memento-mcp_darwin_x64.sha256 \
+                memento-mcp_darwin_arm64 \
+                memento-mcp_darwin_arm64.sha256 \
+                memento-mcp_linux_x64 \
+                memento-mcp_linux_x64.sha256 \
+                memento-mcp_linux_arm64 \
+                memento-mcp_linux_arm64.sha256 \
+                memento-mcp_windows_x64.exe \
+                memento-mcp_windows_x64.exe.sha256 \
+                memento-mcp_windows_arm64.exe \
+                memento-mcp_windows_arm64.exe.sha256 \
+                "memento-mcp_${VERSION}_linux_amd64.deb" \
+                "memento-mcp_${VERSION}_linux_arm64.deb"
+              if [ "$MACOS_PACKAGE_RESULT" = "success" ]; then
+                printf '%s\n' \
+                  "memento-mcp_${VERSION}_darwin_amd64.pkg" \
+                  "memento-mcp_${VERSION}_darwin_arm64.pkg"
+              fi
+            } | sort
+          }
+
+          expected=$(expected_assets)
+          actual=$(find dist -maxdepth 1 -type f -exec basename {} \; | sort)
+          if [ "$actual" != "$expected" ]; then
+            printf 'Expected:\n%s\nActual:\n%s\n' "$expected" "$actual" >&2
+            exit 1
+          fi
+
+          (
+            cd dist
+            for checksum in *.sha256; do
+              sha256sum -c "$checksum"
+            done
+          )
 
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2

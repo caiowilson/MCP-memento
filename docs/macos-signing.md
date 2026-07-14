@@ -8,6 +8,11 @@ versioned release, verifies the exact configured 14- or 16-asset manifest and
 all six binary checksums, then mirrors the same assets. It never rebuilds a
 second set of macOS artifacts.
 
+The raw macOS binaries are unsigned cross-builds in both modes. Their published
+SHA-256 sidecars protect integrity. The optional `.pkg` installers contain a
+separately built Developer ID-signed binary and are themselves signed,
+notarized, and stapled.
+
 The release workflow follows Apple's [custom notarization
 workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
 and GitHub's guidance for [deployment environments and protected
@@ -71,12 +76,12 @@ secret. GitHub documents the operational limits of [Actions
 secrets](https://docs.github.com/en/actions/reference/security/secrets); do not
 print or transform secret values in workflow logs.
 
-For every macOS matrix job, the workflow decodes credentials into runner
-temporary storage, imports both identities into a random-password temporary
-keychain, validates the exact configured identities, and stores the API key as
-a validated `notarytool` keychain profile. Decoded source files are deleted as
-soon as import finishes, and the temporary keychain is deleted even when a
-later step fails.
+For every optional macOS package matrix job, the workflow decodes credentials
+into runner temporary storage, imports both identities into a random-password
+temporary keychain, validates the exact configured identities, and stores the
+API key as a validated `notarytool` keychain profile. Decoded source files are
+deleted as soon as import finishes, and the temporary keychain is deleted even
+when a later step fails.
 
 ## Local release-path validation
 

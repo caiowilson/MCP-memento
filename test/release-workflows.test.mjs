@@ -14,9 +14,14 @@ const signingScriptPath = join(root, "scripts/macos-sign-and-notarize.sh");
 test("release workflow always builds raw macOS binaries and optionally notarizes packages", async () => {
   const workflow = await readFile(releaseWorkflowPath, "utf8");
   const genericBuild = workflow.match(/  build-binaries:[\s\S]*?\n  package-deb:/)?.[0];
+  const packageBuild = workflow.match(/  package-macos-pkg:[\s\S]*?\n  publish:/)?.[0];
+  const publish = workflow.match(/  publish:[\s\S]*$/)?.[0];
 
   assert.ok(genericBuild, "generic binary job must remain identifiable");
+  assert.ok(packageBuild, "macOS package job must remain identifiable");
+  assert.ok(publish, "publish job must remain identifiable");
   assert.match(genericBuild, /goos: \[[^\]]*darwin/);
+  assert.match(genericBuild, /Generate binary checksum/);
   assert.match(workflow, /if: \$\{\{ vars\.MACOS_NOTARIZATION_ENABLED == 'true' \}\}/);
   assert.match(workflow, /environment:\n      name: macos-release-signing/);
   assert.match(workflow, /APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64/);
@@ -25,8 +30,22 @@ test("release workflow always builds raw macOS binaries and optionally notarizes
   assert.match(workflow, /notarytool store-credentials/);
   assert.match(workflow, /\.\/scripts\/macos-sign-and-notarize\.sh/);
   assert.match(workflow, /security delete-keychain/);
-  assert.match(workflow, /dist\/memento-mcp_darwin_\*/);
+  assert.match(packageBuild, /path: dist\/\*\.pkg/);
+  assert.doesNotMatch(packageBuild, /RAW_BINARY|dist\/memento-mcp_darwin_\*/);
   assert.match(workflow, /needs\.package-macos-pkg\.result == 'skipped'/);
+  assert.match(publish, /Validate exact release asset manifest/);
+  assert.match(publish, /MACOS_PACKAGE_RESULT: \$\{\{ needs\.package-macos-pkg\.result \}\}/);
+  assert.match(publish, /actual=\$\(find dist/);
+  assert.match(publish, /sha256sum -c "\$checksum"/);
+  assert.ok(
+    publish.indexOf("Validate exact release asset manifest") < publish.indexOf("Publish versioned release"),
+    "manifest validation must run before release publication",
+  );
+
+  const manifestBlock = publish.match(/expected_assets\(\) \{([\s\S]*?)^\s{10}\}/m)?.[1] ?? "";
+  const manifestAssets = manifestBlock.match(/^\s+(?:"?)memento-mcp_[^\n]+/gm) ?? [];
+  assert.equal(manifestAssets.filter((line) => !line.includes(".pkg")).length, 14);
+  assert.equal(manifestAssets.filter((line) => line.includes(".pkg")).length, 2);
 });
 
 test("server/latest mirrors verified versioned assets without rebuilding", async () => {
@@ -41,7 +60,8 @@ test("server/latest mirrors verified versioned assets without rebuilding", async
 
   const expectedBlock = workflow.match(/expected_assets\(\) \{([\s\S]*?)^\s{10}\}/m)?.[1] ?? "";
   const expectedAssets = expectedBlock.match(/^\s+(?:"?)memento-mcp_[^\n]+/gm) ?? [];
-  assert.equal(expectedAssets.length, 16, "latest must enumerate the 14 core and two optional package assets");
+  assert.equal(expectedAssets.filter((line) => !line.includes(".pkg")).length, 14);
+  assert.equal(expectedAssets.filter((line) => line.includes(".pkg")).length, 2);
   assert.match(workflow, /if \[ "\$MACOS_NOTARIZATION_ENABLED" = "true" \]/);
   assert.match(workflow, /expected_count=/);
 });
