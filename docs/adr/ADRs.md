@@ -24,7 +24,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
 - ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
-- ADR 0015: Structural query-intent retrieval (terms-v4 and terms-v5) (Accepted, 2026-07-13)
+- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v6) (Accepted, 2026-07-13)
 
 ---
 
@@ -805,7 +805,7 @@ did not measure distractors explicitly.
 
 ---
 
-## ADR 0015: Structural query-intent retrieval (terms-v4 and terms-v5)
+## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v6)
 
 - Status: Accepted
 - Date: 2026-07-13
@@ -843,6 +843,11 @@ while requiring embeddings would weaken the deterministic offline default.
   the fix as `terms-v5`. Activate the additional signal only when the query asks
   for never-returning termination and the candidate contains both a `: never`
   declaration and a throw expression.
+- The independently authored post-terms-v5 generation paraphrased callable
+  construction as a value packaged for passing around and later execution. Its
+  one hard-negative win was promoted to training, and `terms-v6` recognizes a
+  bounded set of deferred-execution phrases before applying the existing
+  first-class-callable syntax bonus.
 
 ### Consequences
 
@@ -858,6 +863,10 @@ while requiring embeddings would weaken the deterministic offline default.
   `1.000` with zero hard-negative wins. Indexing the new files alongside the
   earlier corpus also creates a training distractor that terms-v5 resolves
   without changing the terms-v4 evidence.
+- The six-query post-terms-v5 generation records recall@5 `1.000`, MRR `0.917`,
+  nDCG@5 `0.938`, and one hard-negative win. Terms-v6 treats that measured miss
+  as training; its own generalization evidence must come from another isolated
+  post-freeze generation.
 - Cue vocabulary remains intentionally narrow. Future expansions require a new
   scorer fingerprint and a new isolated post-freeze generation.
 

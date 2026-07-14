@@ -21,6 +21,7 @@ func TestTermSearchTrainingCasesRankFirst(t *testing.T) {
 		"php80-audit-attribute-declaration":       true,
 		"php81-never-throw":                       true,
 		"php81-normalize-first-class-callable":    true,
+		"postv5-php81-format-label-callable":      true,
 		"laravel-reporting-config-definition":     true,
 		"symfony-audit-entity-repository-mapping": true,
 	}

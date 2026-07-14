@@ -53,19 +53,20 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 64 natural-language retrieval queries with
-69 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v5` scorer against each corpus independently. The 34-query
+forbidden body-symbol leakage, and 70 natural-language retrieval queries with
+75 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v6` scorer against each corpus independently. The 35-query
 training split contains the original benchmark, promoted measured misses, and
-four independent structural-role cases. The 11-query validation split covers
-every corpus. The 19 advisory holdout queries combine the original 11-query
-post-terms-v3 generation with eight new cases authored in isolation only after
-terms-v4 was frozen at `cffc091`. Adding that generation exposed a new
-training-corpus tie for explicit `never` termination; the miss was promoted to
-training and fixed under a new terms-v5 fingerprint before any terms-v5 holdout
-was authored. Validation and holdout queries declare precise hard-negative
-ranges. Training and validation are blocking; holdout generations remain
-advisory so their first unseen results are preserved instead of tuned away.
+independent structural-role cases. The 11-query validation split covers every
+corpus. The 24 advisory holdout queries retain the original post-terms-v3 and
+post-terms-v4 generations plus the five unpromoted post-terms-v5 cases. Adding
+the post-terms-v4 generation exposed a training-corpus tie for explicit `never`
+termination, which was fixed under terms-v5. The next isolated generation found
+a deferred-callable paraphrase miss; that one judgment was promoted before the
+terms-v6 fingerprint. Validation and holdout queries declare precise
+hard-negative ranges. Training and validation are blocking; holdout generations
+remain advisory so their first unseen results are preserved instead of tuned
+away.
 
 JSON contains aggregate overall, per-corpus, and train/validation/holdout
 metrics only.
@@ -97,9 +98,11 @@ a `terms-v3` baseline of recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one
 hard-negative win; frozen terms-v4 improves the same generation to recall@5
 `1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins. The isolated
 eight-query post-terms-v4 generation scores recall@5, MRR, and nDCG@5 `1.000`
-with zero hard-negative wins in isolation. Evaluate framework and language corpora
-independently before macro-averaging so a large corpus cannot hide a Drupal- or
-WordPress-specific regression.
+with zero hard-negative wins in isolation. The six-query post-terms-v5
+generation recorded recall@5 `1.000`, MRR `0.917`, nDCG@5 `0.938`, and one
+hard-negative win; its deferred-callable miss is now a terms-v6 training case.
+Evaluate framework and language corpora independently before macro-averaging so
+a large corpus cannot hide a Drupal- or WordPress-specific regression.
 
 Additional valid declarations are not automatically failures. Add them to the
 manifest when they are part of the intended public structure. Locals from

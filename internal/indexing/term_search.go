@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and a bounded path tie-break.
-const TermSearchVersion = "terms-v5"
+const TermSearchVersion = "terms-v6"
 
 type termSearchIntent struct {
 	definition          bool
@@ -58,6 +58,9 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 
 func classifyTermSearchIntent(query string) termSearchIntent {
 	lower := strings.ToLower(positiveSearchClause(query))
+	callableIntent := containsAny(lower,
+		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
+	)
 	definition := containsAny(lower,
 		" defin", " declar", " assign", " map", " wire", " register", " restrict", " annotat", " marked with ",
 	)
@@ -71,7 +74,7 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	return termSearchIntent{
 		definition:          definition,
 		attribute:           containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
-		callable:            containsAny(lower, "callable", "closure", "arrow function", "anonymous function"),
+		callable:            callableIntent,
 		configDefinition:    configDefinition,
 		relationDeclaration: relationConcept && definition,
 		neverTermination:    strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),

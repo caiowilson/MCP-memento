@@ -37,6 +37,7 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 	}{
 		{"attribute", "Where is the AuditTag attribute declared for methods?", func(intent termSearchIntent) bool { return intent.attribute && intent.definition }},
 		{"callable", "Where is normalize converted into a first-class callable?", func(intent termSearchIntent) bool { return intent.callable }},
+		{"deferred callable", "Where is formatLabel packaged up so it can be passed around and run later?", func(intent termSearchIntent) bool { return intent.callable }},
 		{"config definition", "Which configuration entry defines the reporting endpoint?", func(intent termSearchIntent) bool { return intent.configDefinition && intent.definition }},
 		{"relationship declaration", "Which entity mapping assigns its repository class?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.definition }},
 		{"never termination", "Which method declares it never returns and terminates by throwing?", func(intent termSearchIntent) bool { return intent.neverTermination }},
@@ -193,6 +194,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Where is normalize converted into a first-class callable?",
 			target:     Chunk{Path: "src/Factory/NormalizerFactory.php", Language: "php", Content: "public function create(Normalizer $normalizer): callable\n{\n    return $normalizer->normalize(...);\n}\n"},
 			distractor: Chunk{Path: "src/Support/Normalizer.php", Language: "php", Content: "public function normalize(string $value): string\n{\n    return trim($value);\n}\n"},
+		},
+		{
+			name:       "deferred callable paraphrase",
+			query:      "Where is formatLabel packaged up so it can be passed around and run later?",
+			target:     Chunk{Path: "src/DeferredLabel.php", Language: "php", Content: "public function callback(): Closure\n{\n    return LabelFormatter::formatLabel(...);\n}\n"},
+			distractor: Chunk{Path: "src/LabelFormatter.php", Language: "php", Content: "public static function formatLabel(string $value): string\n{\n    return trim($value);\n}\n"},
 		},
 		{
 			name:       "config definition",

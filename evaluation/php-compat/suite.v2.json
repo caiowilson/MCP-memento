@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v5",
+    "adapter": "terms-v6",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -155,6 +155,13 @@
           "query": "Where is compileShard converted into a closure for later pipeline execution?",
           "relevant": [{"path": "holdout_20260713/umber/CompilerPipeline.php", "startLine": 15, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260713/umber/BatchCompiler.php", "startLine": 11, "endLine": 14}]
+        },
+        {
+          "id": "postv5-php80-handles-locale-declaration",
+          "split": "holdout",
+          "query": "Which file introduces HandlesLocale so it can be placed above methods for a particular locale?",
+          "relevant": [{"path": "holdout_20260713_v5/locale/HandlesLocale.php", "startLine": 9, "endLine": 15}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/locale/WelcomeText.php", "startLine": 9, "endLine": 13}]
         }
       ]
     },
@@ -228,6 +235,20 @@
           "query": "Where is the orchard.read BeaconHint attached to the endpoint method?",
           "relevant": [{"path": "holdout_20260713/orchard/OrchardEndpoint.php", "startLine": 18, "endLine": 19}],
           "hardNegatives": [{"path": "holdout_20260713/orchard/BeaconRegistry.php", "startLine": 12, "endLine": 13}]
+        },
+        {
+          "id": "postv5-php81-end-session-termination",
+          "split": "holdout",
+          "query": "Where is endSession promised to stop execution instead of handing a value back?",
+          "relevant": [{"path": "holdout_20260713_v5/termination/end_session.php", "startLine": 7, "endLine": 11}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/termination/SessionReader.php", "startLine": 11, "endLine": 17}]
+        },
+        {
+          "id": "postv5-php81-format-label-callable",
+          "split": "train",
+          "query": "Where is formatLabel packaged up so it can be passed around and run later?",
+          "relevant": [{"path": "holdout_20260713_v5/callable_value/DeferredLabel.php", "startLine": 11, "endLine": 14}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/callable_value/LabelFormatter.php", "startLine": 9, "endLine": 12}]
         }
       ]
     },
@@ -416,6 +437,13 @@
           "query": "Where is an assigned dock-ticket code trimmed and converted to uppercase?",
           "relevant": [{"path": "holdout_20260713/indigo/DockTicket.php", "startLine": 8, "endLine": 10}],
           "hardNegatives": [{"path": "holdout_20260713/indigo/DockTicketImporter.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "postv5-php84-base-unit-declaration",
+          "split": "holdout",
+          "query": "Where is BASE_UNIT first given the value 12?",
+          "relevant": [{"path": "holdout_20260713_v5/units/base_unit.php", "startLine": 7, "endLine": 7}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/units/SegmentSizer.php", "startLine": 11, "endLine": 14}]
         }
       ]
     },
@@ -589,6 +617,13 @@
           "query": "Where is the Skiff model's harbor relationship declared?",
           "relevant": [{"path": "holdout_20260713/seafoam/app/Models/Skiff.php", "startLine": 11, "endLine": 14}],
           "hardNegatives": [{"path": "holdout_20260713/seafoam/app/Http/Controllers/BerthAssignmentController.php", "startLine": 11, "endLine": 17}]
+        },
+        {
+          "id": "postv5-laravel-polling-pause-default",
+          "split": "holdout",
+          "query": "Where is the built-in three-day pause chosen when no project setting overrides it?",
+          "relevant": [{"path": "holdout_20260713_v5/config/polling.php", "startLine": 6, "endLine": 6}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/app/Scheduling/NextCheck.php", "startLine": 11, "endLine": 15}]
         }
       ]
     },
@@ -671,6 +706,13 @@
           "query": "Where is Cloudberry's default spool batch size defined?",
           "relevant": [{"path": "holdout_20260713/cloudberry/src/DependencyInjection/CloudberryConfiguration.php", "startLine": 17, "endLine": 20}],
           "hardNegatives": [{"path": "holdout_20260713/cloudberry/src/Message/SpoolDrainer.php", "startLine": 10, "endLine": 13}]
+        },
+        {
+          "id": "postv5-symfony-studio-session-slots",
+          "split": "holdout",
+          "query": "Where does a Studio say that it can have many SessionSlot records?",
+          "relevant": [{"path": "holdout_20260713_v5/src/Entity/Studio.php", "startLine": 14, "endLine": 16}],
+          "hardNegatives": [{"path": "holdout_20260713_v5/src/Scheduling/StudioSchedule.php", "startLine": 11, "endLine": 20}]
         }
       ]
     },
