@@ -24,7 +24,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
 - ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
-- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v7) (Accepted, 2026-07-13)
+- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8) (Accepted, 2026-07-13)
 
 ---
 
@@ -805,7 +805,7 @@ did not measure distractors explicitly.
 
 ---
 
-## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v7)
+## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8)
 
 - Status: Accepted
 - Date: 2026-07-13
@@ -853,6 +853,12 @@ while requiring embeddings would weaken the deterministic offline default.
   fix as `terms-v7`: paired parent and dependent-collection roles activate the
   intent, while only concrete `hasMany` or equivalent ORM syntax receives the
   model-path bonus. Model class shells therefore cannot win on path alone.
+- The post-terms-v7 generation exposed three unrelated definition-versus-
+  consumer gaps. Promote only those misses under `terms-v8`, using separate
+  intents whose candidate rewards require a string- or integer-backed `enum`,
+  `register_shutdown_function`, or `register_uninstall_hook` syntax. Penalize
+  an early-exit consumer and a deactivation registration only within their
+  corresponding intents.
 
 ### Consequences
 
@@ -882,7 +888,9 @@ while requiring embeddings would weaken the deterministic offline default.
   nDCG@5 `0.626`, and two hard-negative wins. The independently phrased
   Doctrine association ranks first, confirming the collection relationship
   intent generalizes. Shutdown registration, backed-enum definition, and
-  WordPress uninstall registration remain immutable terms-v7 misses.
+  WordPress uninstall registration remain immutable terms-v7 misses. Terms-v8
+  promotes those three judgments, and all 39 training queries rank relevant
+  answers first with zero hard-negative wins.
 - Cue vocabulary remains intentionally narrow. Future expansions require a new
   scorer fingerprint and a new isolated post-freeze generation.
 

@@ -23,6 +23,9 @@ func TestTermSearchTrainingCasesRankFirst(t *testing.T) {
 		"php81-normalize-first-class-callable":    true,
 		"postv5-php81-format-label-callable":      true,
 		"postv6-laravel-model-association":        true,
+		"postv7-php80-final-pulse-shutdown":       true,
+		"postv7-php81-glint-phase-values":         true,
+		"postv7-wordpress-ember-uninstall":        true,
 		"laravel-reporting-config-definition":     true,
 		"symfony-audit-entity-repository-mapping": true,
 	}

@@ -42,6 +42,9 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"relationship declaration", "Which entity mapping assigns its repository class?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.definition }},
 		{"collection relationship", "Where does the data model state that one parent record is connected to a collection of dependent records?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.collectionRelation }},
 		{"never termination", "Which method declares it never returns and terminates by throwing?", func(intent termSearchIntent) bool { return intent.neverTermination }},
+		{"backed enum definition", "Where are the allowed phases and their persisted string values defined?", func(intent termSearchIntent) bool { return intent.backedEnumDefinition }},
+		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
+		{"uninstall registration", "Which registration cleans up when the plugin is deleted?", func(intent termSearchIntent) bool { return intent.uninstallRegistration }},
 		{"config consumer", "Where is reporting configuration consumed by the exporter?", func(intent termSearchIntent) bool { return !intent.configDefinition }},
 	}
 	for _, test := range tests {
@@ -225,6 +228,24 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Which method declares it never returns and terminates by throwing?",
 			target:     Chunk{Path: "src/Command/AbortCommand.php", Language: "php", Content: "public function abort(): never\n{\n    throw new RuntimeException('aborted');\n}\n"},
 			distractor: Chunk{Path: "src/Registry/MethodRegistry.php", Language: "php", Content: "public function method(string $name): ?string\n{\n    return null;\n}\n"},
+		},
+		{
+			name:       "backed enum definition",
+			query:      "Where are the allowed processing phases and their persisted string values defined?",
+			target:     Chunk{Path: "src/Domain/GlintPhase.php", Language: "php", Content: "enum GlintPhase: string\n{\n    case Seeded = 'seeded';\n}\n"},
+			distractor: Chunk{Path: "src/Application/GlintPhasePresenter.php", Language: "php", Content: "return match ($phase) { GlintPhase::Seeded => 'Queued' };\n"},
+		},
+		{
+			name:       "shutdown callback registration",
+			query:      "Which implementation installs the callback that appends the final marker after script termination, including an early exit?",
+			target:     Chunk{Path: "src/TerminalPulse.php", Language: "php", Content: "register_shutdown_function(static function (): void { appendFinalMarker(); });\n"},
+			distractor: Chunk{Path: "bin/worker.php", Language: "php", Content: "appendFinalPulse($path);\nif ($halt) { exit(17); }\n"},
+		},
+		{
+			name:       "WordPress uninstall registration",
+			query:      "Which registration makes cleanup occur when the plugin is deleted rather than merely switched off?",
+			target:     Chunk{Path: "plugin.php", Language: "php", Content: "register_uninstall_hook(__FILE__, 'purgePlugin');\n"},
+			distractor: Chunk{Path: "src/Deactivation.php", Language: "php", Content: "register_deactivation_hook(__FILE__, 'pausePlugin');\n"},
 		},
 	}
 	for _, test := range tests {

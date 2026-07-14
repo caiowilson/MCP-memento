@@ -55,13 +55,13 @@ The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
 forbidden body-symbol leakage, and 79 natural-language retrieval queries with
 84 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v7` scorer against each corpus independently. The 36-query
+versioned `terms-v8` scorer against each corpus independently. The 39-query
 training split contains the original benchmark, promoted measured misses, and
 independent structural-role cases. The 11-query validation split covers every
-corpus. The 32 advisory holdout queries retain the original post-terms-v3 and
+corpus. The 29 advisory holdout queries retain the original post-terms-v3 and
 post-terms-v4 generations, the five unpromoted post-terms-v5 cases, and the
 three unpromoted post-terms-v6 cases, plus the five-case post-terms-v7
-generation. Adding
+generation's two unpromoted successes. Adding
 the post-terms-v4 generation exposed a training-corpus tie for explicit `never`
 termination, which was fixed under terms-v5. The next isolated generation found
 a deferred-callable paraphrase miss; that one judgment was promoted before the
@@ -112,7 +112,9 @@ The first blind terms-v7 generation recorded recall@5 `0.800`, MRR `0.567`,
 nDCG@5 `0.626`, and two hard-negative wins. Its Doctrine association and
 Composer mapping ranked first, while shutdown-callback installation,
 backed-enum value definition, and WordPress uninstall registration exposed
-separate definition-versus-consumer gaps reserved for a later scorer version.
+separate definition-versus-consumer gaps. Those three judgments are terms-v8
+training cases, activated only by their matching backed-enum, PHP shutdown, or
+WordPress uninstall syntax.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

@@ -9,16 +9,19 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and a bounded path tie-break.
-const TermSearchVersion = "terms-v7"
+const TermSearchVersion = "terms-v8"
 
 type termSearchIntent struct {
-	definition          bool
-	attribute           bool
-	callable            bool
-	configDefinition    bool
-	relationDeclaration bool
-	collectionRelation  bool
-	neverTermination    bool
+	definition            bool
+	attribute             bool
+	callable              bool
+	configDefinition      bool
+	relationDeclaration   bool
+	collectionRelation    bool
+	neverTermination      bool
+	backedEnumDefinition  bool
+	shutdownRegistration  bool
+	uninstallRegistration bool
 }
 
 var searchStopWords = map[string]struct{}{
@@ -75,14 +78,20 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	collectionRelation := containsAny(lower, "parent record", "parent model", "one parent") && containsAny(lower,
 		"collection of dependent", "collection of child", "collection of related", "many dependent records", "many child records",
 	)
+	backedEnumDefinition := definition && containsAny(lower, "allowed", "persisted") && containsAny(lower, "phase", "state", "status", "value")
+	shutdownRegistration := containsAny(lower, "script termination", "shutdown", "after termination", "early exit") && containsAny(lower, "callback", "function") && containsAny(lower, "install", "register", "registration", "implementation")
+	uninstallRegistration := containsAny(lower, "plugin is deleted", "plugin deletion", "deleted plugin", "uninstall") && containsAny(lower, "registration", "register", "hook")
 	return termSearchIntent{
-		definition:          definition,
-		attribute:           containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
-		callable:            callableIntent,
-		configDefinition:    configDefinition,
-		relationDeclaration: relationConcept && definition || collectionRelation,
-		collectionRelation:  collectionRelation,
-		neverTermination:    strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
+		definition:            definition,
+		attribute:             containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
+		callable:              callableIntent,
+		configDefinition:      configDefinition,
+		relationDeclaration:   relationConcept && definition || collectionRelation,
+		collectionRelation:    collectionRelation,
+		neverTermination:      strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
+		backedEnumDefinition:  backedEnumDefinition,
+		shutdownRegistration:  shutdownRegistration,
+		uninstallRegistration: uninstallRegistration,
 	}
 }
 
@@ -210,6 +219,28 @@ func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
 		compact := strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "").Replace(content)
 		if strings.Contains(compact, ":never") && strings.Contains(content, "throw") {
 			score += 2 * exactTermUnit
+		}
+	}
+	if intent.backedEnumDefinition {
+		if strings.Contains(content, "enum ") && containsAny(content, ": string", ": int") {
+			score += 3 * exactTermUnit
+		}
+		if strings.Contains(content, "match (") || strings.Contains(content, "match(") {
+			score -= exactTermUnit
+		}
+	}
+	if intent.shutdownRegistration {
+		if strings.Contains(content, "register_shutdown_function(") {
+			score += 3 * exactTermUnit
+		} else if strings.Contains(content, "exit(") {
+			score -= exactTermUnit
+		}
+	}
+	if intent.uninstallRegistration {
+		if strings.Contains(content, "register_uninstall_hook(") {
+			score += 3 * exactTermUnit
+		} else if strings.Contains(content, "register_deactivation_hook(") {
+			score -= exactTermUnit
 		}
 	}
 	if score > 3*exactTermUnit {

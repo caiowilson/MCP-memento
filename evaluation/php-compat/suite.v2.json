@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v7",
+    "adapter": "terms-v8",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -172,7 +172,7 @@
         },
         {
           "id": "postv7-php80-final-pulse-shutdown",
-          "split": "holdout",
+          "split": "train",
           "query": "Which implementation installs the callback that appends the final audit marker after script termination, including an early exit?",
           "relevant": [{"path": "holdout_20260713_v7/shutdown_callback/src/Terminal/TerminalPulse.php", "startLine": 8, "endLine": 12}],
           "hardNegatives": [{"path": "holdout_20260713_v7/shutdown_callback/bin/pulse-worker.php", "startLine": 8, "endLine": 12}]
@@ -273,7 +273,7 @@
         },
         {
           "id": "postv7-php81-glint-phase-values",
-          "split": "holdout",
+          "split": "train",
           "query": "Where are the allowed processing phases and their persisted string values defined?",
           "relevant": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Domain/GlintPhase.php", "startLine": 6, "endLine": 11}],
           "hardNegatives": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Application/GlintPhasePresenter.php", "startLine": 12, "endLine": 16}]
@@ -831,7 +831,7 @@
         },
         {
           "id": "postv7-wordpress-ember-uninstall",
-          "split": "holdout",
+          "split": "train",
           "query": "Which registration makes permanent option cleanup occur when the plugin is deleted, rather than when it is merely switched off?",
           "relevant": [{"path": "holdout_20260713_v7/uninstall_hook/virellium-k9-ember-ledger.php", "startLine": 9, "endLine": 9}],
           "hardNegatives": [{"path": "holdout_20260713_v7/uninstall_hook/src/Deactivation.php", "startLine": 6, "endLine": 9}]
