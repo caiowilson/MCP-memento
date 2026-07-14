@@ -116,6 +116,7 @@ func TestTermsV4PostFreezeHoldout(t *testing.T) {
 			seen[result.ID] = true
 			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
 			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
 			if wins != 0 {
 				t.Errorf("%s: hard negative outranked relevance: %#v", result.ID, result.Retrieved)
 			}
@@ -131,6 +132,61 @@ func TestTermsV4PostFreezeHoldout(t *testing.T) {
 	if !actual.Passed {
 		t.Fatalf("post-freeze holdout missed thresholds: %#v", actual)
 	}
+}
+
+func TestTermsV6PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv6-php74-deferred-behavior":   true,
+		"postv6-php81-terminal-contract":   true,
+		"postv6-composer-package-mapping":  true,
+		"postv6-laravel-model-association": true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-terms-v6 holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-terms-v6 holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
 }
 
 func TestRetrievalThresholdsPass(t *testing.T) {

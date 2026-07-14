@@ -85,6 +85,13 @@
           "query": "Where is VoucherSeal marked as deprecated for newly issued parcels?",
           "relevant": [{"path": "holdout_20260713/celadon/VoucherSeal.php", "startLine": 9, "endLine": 9}],
           "hardNegatives": [{"path": "holdout_20260713/celadon/LegacyParcelDecoder.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "postv6-php74-deferred-behavior",
+          "split": "holdout",
+          "query": "Where is the piece of behavior created that can be stored now and run later, while remembering context from the moment it was made?",
+          "relevant": [{"path": "holdout_20260713_v6/deferred_behavior/src/NyrathenTokenPress.php", "startLine": 7, "endLine": 14}],
+          "hardNegatives": [{"path": "holdout_20260713_v6/deferred_behavior/app/NyrathenBinderCourier.php", "startLine": 7, "endLine": 10}]
         }
       ]
     },
@@ -249,6 +256,13 @@
           "query": "Where is formatLabel packaged up so it can be passed around and run later?",
           "relevant": [{"path": "holdout_20260713_v5/callable_value/DeferredLabel.php", "startLine": 11, "endLine": 14}],
           "hardNegatives": [{"path": "holdout_20260713_v5/callable_value/LabelFormatter.php", "startLine": 9, "endLine": 12}]
+        },
+        {
+          "id": "postv6-php81-terminal-contract",
+          "split": "holdout",
+          "query": "Which routine's contract says that control can never come back after it is entered because the process is deliberately stopped?",
+          "relevant": [{"path": "holdout_20260713_v6/terminal_contract/src/OssavyrBreachTerminus.php", "startLine": 7, "endLine": 12}],
+          "hardNegatives": [{"path": "holdout_20260713_v6/terminal_contract/app/OssavyrBoundaryGate.php", "startLine": 7, "endLine": 14}]
         }
       ]
     },
@@ -532,6 +546,13 @@
           "query": "Which Composer autoload entry excludes a PHP file from classmap generation?",
           "relevant": [{"path": "composer.json", "startLine": 19, "endLine": 19}],
           "hardNegatives": [{"path": "classmap/Excluded.php", "startLine": 7, "endLine": 7}]
+        },
+        {
+          "id": "postv6-composer-package-mapping",
+          "split": "holdout",
+          "query": "Where does the package state which folder should supply classes belonging to its own namespace?",
+          "relevant": [{"path": "holdout_20260713_v6/package_mapping/composer.json", "startLine": 5, "endLine": 9}],
+          "hardNegatives": [{"path": "holdout_20260713_v6/package_mapping/tools/inspect_moire.php", "startLine": 3, "endLine": 8}]
         }
       ]
     },
@@ -624,6 +645,13 @@
           "query": "Where is the built-in three-day pause chosen when no project setting overrides it?",
           "relevant": [{"path": "holdout_20260713_v5/config/polling.php", "startLine": 6, "endLine": 6}],
           "hardNegatives": [{"path": "holdout_20260713_v5/app/Scheduling/NextCheck.php", "startLine": 11, "endLine": 15}]
+        },
+        {
+          "id": "postv6-laravel-model-association",
+          "split": "holdout",
+          "query": "Where does the data model state that one parent record is connected to a collection of dependent records?",
+          "relevant": [{"path": "holdout_20260713_v6/model_association/app/Models/BrumelithVaultRecord.php", "startLine": 12, "endLine": 15}],
+          "hardNegatives": [{"path": "holdout_20260713_v6/model_association/app/Http/Controllers/BrumelithVaultPresenter.php", "startLine": 9, "endLine": 18}]
         }
       ]
     },

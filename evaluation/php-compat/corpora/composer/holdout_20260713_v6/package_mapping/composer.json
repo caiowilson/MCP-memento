@@ -1,0 +1,10 @@
+{
+    "name": "zephralune/moire-atlas",
+    "description": "Surveys folded spectra for a Zephralune instrument.",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "ZephraLune\\MoireAtlas\\": "prismatic/"
+        }
+    }
+}

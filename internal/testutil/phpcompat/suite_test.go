@@ -68,7 +68,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 70 || retrievalJudgments != 75 || retrievalSplits[RetrievalSplitTrain] != 35 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 24 {
+	if retrievalQueries != 74 || retrievalJudgments != 79 || retrievalSplits[RetrievalSplitTrain] != 35 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 28 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
 	}
 }

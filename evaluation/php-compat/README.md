@@ -53,13 +53,14 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 70 natural-language retrieval queries with
-75 answer-line relevance judgments. Retrieval uses the deterministic,
+forbidden body-symbol leakage, and 74 natural-language retrieval queries with
+79 answer-line relevance judgments. Retrieval uses the deterministic,
 versioned `terms-v6` scorer against each corpus independently. The 35-query
 training split contains the original benchmark, promoted measured misses, and
 independent structural-role cases. The 11-query validation split covers every
-corpus. The 24 advisory holdout queries retain the original post-terms-v3 and
-post-terms-v4 generations plus the five unpromoted post-terms-v5 cases. Adding
+corpus. The 28 advisory holdout queries retain the original post-terms-v3 and
+post-terms-v4 generations, the five unpromoted post-terms-v5 cases, and the
+four-case post-terms-v6 generation. Adding
 the post-terms-v4 generation exposed a training-corpus tie for explicit `never`
 termination, which was fixed under terms-v5. The next isolated generation found
 a deferred-callable paraphrase miss; that one judgment was promoted before the
@@ -101,6 +102,10 @@ eight-query post-terms-v4 generation scores recall@5, MRR, and nDCG@5 `1.000`
 with zero hard-negative wins in isolation. The six-query post-terms-v5
 generation recorded recall@5 `1.000`, MRR `0.917`, nDCG@5 `0.938`, and one
 hard-negative win; its deferred-callable miss is now a terms-v6 training case.
+The first blind terms-v6 generation recorded recall@5 `0.750`, MRR `0.625`,
+nDCG@5 `0.658`, and one hard-negative win; framework-neutral parent-to-collection
+wording missed the Eloquent relationship method and is reserved for terms-v7
+training rather than retroactively changing terms-v6.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

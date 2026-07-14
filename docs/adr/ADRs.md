@@ -865,8 +865,13 @@ while requiring embeddings would weaken the deterministic offline default.
   without changing the terms-v4 evidence.
 - The six-query post-terms-v5 generation records recall@5 `1.000`, MRR `0.917`,
   nDCG@5 `0.938`, and one hard-negative win. Terms-v6 treats that measured miss
-  as training; its own generalization evidence must come from another isolated
-  post-freeze generation.
+  as training.
+- The four-query post-terms-v6 generation records recall@5 `0.750`, MRR `0.625`,
+  nDCG@5 `0.658`, and one hard-negative win. Deferred behavior and Composer
+  mapping rank first, a never-returning routine ranks second, and
+  framework-neutral parent-to-collection wording misses the Eloquent
+  relationship method. This remains immutable terms-v6 evidence and may only
+  become training input for a separately versioned scorer.
 - Cue vocabulary remains intentionally narrow. Future expansions require a new
   scorer fingerprint and a new isolated post-freeze generation.
 
