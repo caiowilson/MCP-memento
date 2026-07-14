@@ -277,6 +277,27 @@
           "query": "Where are the allowed processing phases and their persisted string values defined?",
           "relevant": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Domain/GlintPhase.php", "startLine": 6, "endLine": 11}],
           "hardNegatives": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Application/GlintPhasePresenter.php", "startLine": 12, "endLine": 16}]
+        },
+        {
+          "id": "postv8-php81-parcel-verdict-codes",
+          "split": "holdout",
+          "query": "Where are the canonical string codes for every parcel review outcome declared?",
+          "relevant": [{"path": "holdout_20260713_v8/backed_enum/src/Domain/ParcelVerdict.php", "startLine": 7, "endLine": 11}],
+          "hardNegatives": [{"path": "holdout_20260713_v8/backed_enum/src/Presentation/VerdictPresenter.php", "startLine": 12, "endLine": 18}]
+        },
+        {
+          "id": "postv8-php81-finalization-hook",
+          "split": "holdout",
+          "query": "Where is the last-chance drain callback itself attached so pending ledger records flush when the PHP process terminates?",
+          "relevant": [{"path": "holdout_20260713_v8/shutdown_callback/src/Runtime/FinalizationHooks.php", "startLine": 11, "endLine": 15}],
+          "hardNegatives": [{"path": "holdout_20260713_v8/shutdown_callback/bin/export-ledger.php", "startLine": 10, "endLine": 15}]
+        },
+        {
+          "id": "postv8-php81-archive-defaults",
+          "split": "holdout",
+          "query": "Where are Ember Vault's built-in retention window and per-run batch limit assigned?",
+          "relevant": [{"path": "holdout_20260713_v8/config_defaults/config/archive.php", "startLine": 6, "endLine": 7}],
+          "hardNegatives": [{"path": "holdout_20260713_v8/config_defaults/src/Archive/ArchivePlanner.php", "startLine": 15, "endLine": 20}]
         }
       ]
     },
@@ -560,20 +581,37 @@
           "query": "Which Composer autoload entry excludes a PHP file from classmap generation?",
           "relevant": [{"path": "composer.json", "startLine": 19, "endLine": 19}],
           "hardNegatives": [{"path": "classmap/Excluded.php", "startLine": 7, "endLine": 7}]
-        },
+        }
+      ]
+    },
+    {
+      "id": "composer-holdouts",
+      "kind": "framework",
+      "phpVersion": "8.2",
+      "root": "corpora/composer-holdouts",
+      "modelledOn": "Isolated Composer 2 package conventions",
+      "files": [],
+      "retrieval": [
         {
           "id": "postv6-composer-package-mapping",
           "split": "holdout",
           "query": "Where does the package state which folder should supply classes belonging to its own namespace?",
-          "relevant": [{"path": "holdout_20260713_v6/package_mapping/composer.json", "startLine": 5, "endLine": 9}],
-          "hardNegatives": [{"path": "holdout_20260713_v6/package_mapping/tools/inspect_moire.php", "startLine": 3, "endLine": 8}]
+          "relevant": [{"path": "v6/package_mapping/composer.json", "startLine": 5, "endLine": 9}],
+          "hardNegatives": [{"path": "v6/package_mapping/tools/inspect_moire.php", "startLine": 3, "endLine": 8}]
         },
         {
           "id": "postv7-composer-aurora-namespace",
           "split": "holdout",
           "query": "Which configuration makes classes beginning with VirelliumK9\\Aurora resolve from engine/Aurora without individual file includes?",
-          "relevant": [{"path": "holdout_20260713_v7/namespace_mapping/composer.json", "startLine": 6, "endLine": 10}],
-          "hardNegatives": [{"path": "holdout_20260713_v7/namespace_mapping/public/index.php", "startLine": 4, "endLine": 6}]
+          "relevant": [{"path": "v7/namespace_mapping/composer.json", "startLine": 6, "endLine": 10}],
+          "hardNegatives": [{"path": "v7/namespace_mapping/public/index.php", "startLine": 4, "endLine": 6}]
+        },
+        {
+          "id": "postv8-composer-beacon-mapping",
+          "split": "holdout",
+          "query": "Which declaration makes the application's beacon classes beneath src/Beacon discoverable without hand-written includes?",
+          "relevant": [{"path": "v8/namespace_mapping/composer.json", "startLine": 7, "endLine": 9}],
+          "hardNegatives": [{"path": "v8/namespace_mapping/public/index.php", "startLine": 5, "endLine": 10}]
         }
       ]
     },
@@ -769,6 +807,13 @@
           "query": "Where is it declared that every shard belongs to a vault and that the vault maintains the opposite collection?",
           "relevant": [{"path": "holdout_20260713_v7/entity_association/src/Ledger/Entity/PrismShard.php", "startLine": 16, "endLine": 18}],
           "hardNegatives": [{"path": "holdout_20260713_v7/entity_association/src/Ledger/Controller/PrismShardView.php", "startLine": 10, "endLine": 12}]
+        },
+        {
+          "id": "postv8-symfony-lighthouse-notes",
+          "split": "holdout",
+          "query": "Where is the lighthouse-to-inspection-note collection relationship declared, including its inverse field, persistence behavior, and removal of detached notes?",
+          "relevant": [{"path": "holdout_20260713_v8/collection_association/src/Entity/Lighthouse.php", "startLine": 15, "endLine": 21}],
+          "hardNegatives": [{"path": "holdout_20260713_v8/collection_association/src/Reporting/InspectionDigest.php", "startLine": 12, "endLine": 22}]
         }
       ]
     },
@@ -835,6 +880,13 @@
           "query": "Which registration makes permanent option cleanup occur when the plugin is deleted, rather than when it is merely switched off?",
           "relevant": [{"path": "holdout_20260713_v7/uninstall_hook/virellium-k9-ember-ledger.php", "startLine": 9, "endLine": 9}],
           "hardNegatives": [{"path": "holdout_20260713_v7/uninstall_hook/src/Deactivation.php", "startLine": 6, "endLine": 9}]
+        },
+        {
+          "id": "postv8-wordpress-orchard-purge-hook",
+          "split": "holdout",
+          "query": "Where does the plugin bind its permanent data purge to the moment an administrator deletes the plugin?",
+          "relevant": [{"path": "holdout_20260713_v8/uninstall_hook/mica-orchard.php", "startLine": 11, "endLine": 14}],
+          "hardNegatives": [{"path": "holdout_20260713_v8/uninstall_hook/src/Lifecycle/OrchardPurge.php", "startLine": 9, "endLine": 14}]
         }
       ]
     },

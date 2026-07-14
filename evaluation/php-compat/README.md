@@ -53,15 +53,18 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 79 natural-language retrieval queries with
-84 answer-line relevance judgments. Retrieval uses the deterministic,
+forbidden body-symbol leakage, and 85 natural-language retrieval queries with
+90 answer-line relevance judgments. Retrieval uses the deterministic,
 versioned `terms-v8` scorer against each corpus independently. The 39-query
 training split contains the original benchmark, promoted measured misses, and
 independent structural-role cases. The 11-query validation split covers every
-corpus. The 29 advisory holdout queries retain the original post-terms-v3 and
+corpus. The 35 advisory holdout queries retain the original post-terms-v3 and
 post-terms-v4 generations, the five unpromoted post-terms-v5 cases, and the
 three unpromoted post-terms-v6 cases, plus the five-case post-terms-v7
-generation's two unpromoted successes. Adding
+generation's two unpromoted successes and the final six-case post-terms-v8
+generation. Independently authored Composer packages live in a retrieval-only
+holdout corpus so their equally valid `composer.json` mappings do not make the
+base package's training judgments ambiguous. Adding
 the post-terms-v4 generation exposed a training-corpus tie for explicit `never`
 termination, which was fixed under terms-v5. The next isolated generation found
 a deferred-callable paraphrase miss; that one judgment was promoted before the
@@ -115,6 +118,15 @@ backed-enum value definition, and WordPress uninstall registration exposed
 separate definition-versus-consumer gaps. Those three judgments are terms-v8
 training cases, activated only by their matching backed-enum, PHP shutdown, or
 WordPress uninstall syntax.
+The final blind terms-v8 generation recorded recall@5 `1.000`, MRR `0.722`,
+nDCG@5 `0.794`, and three hard-negative wins. Composer mapping, configuration
+defaults, and Doctrine association ranked first; backed-enum, shutdown, and
+uninstall answers remained in the top five but ranked behind consumers under
+paraphrases that omitted the trained cues. Across the full suite, training is
+recall@5 `1.000`, MRR `1.000`, nDCG@5 `0.998`, and zero hard-negative wins;
+validation is `1.000` on all three metrics with zero hard-negative wins; and
+advisory holdout is recall@5 `1.000`, MRR `0.924`, nDCG@5 `0.944`, with three
+hard-negative wins.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

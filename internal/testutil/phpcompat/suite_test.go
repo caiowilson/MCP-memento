@@ -17,6 +17,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	}
 	wantIDs := []string{
 		"composer-autoload",
+		"composer-holdouts",
 		"drupal-module",
 		"laravel-app",
 		"php-7.4",
@@ -68,7 +69,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 79 || retrievalJudgments != 84 || retrievalSplits[RetrievalSplitTrain] != 39 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 29 {
+	if retrievalQueries != 85 || retrievalJudgments != 90 || retrievalSplits[RetrievalSplitTrain] != 39 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 35 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
 	}
 }

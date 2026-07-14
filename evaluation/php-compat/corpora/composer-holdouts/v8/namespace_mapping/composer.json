@@ -1,0 +1,11 @@
+{
+  "name": "glass-kite/beacon-console",
+  "require": {
+    "php": "^8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "GlassKite\\Beacon\\": "src/Beacon/"
+    }
+  }
+}

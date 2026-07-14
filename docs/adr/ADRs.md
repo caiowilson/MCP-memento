@@ -859,13 +859,18 @@ while requiring embeddings would weaken the deterministic offline default.
   `register_shutdown_function`, or `register_uninstall_hook` syntax. Penalize
   an early-exit consumer and a deactivation registration only within their
   corresponding intents.
+- Keep independently authored Composer mini-projects in a retrieval-only
+  advisory corpus. Required splits are enforced suite-wide, while a corpus with
+  no blocking queries is not failed for missing train or validation data. This
+  prevents equally valid package mappings from corrupting base-package labels.
 
 ### Consequences
 
 - Neutral queries preserve terms-v3 term extraction and chunk scores exactly;
   structural requests gain deterministic role-aware ordering without a chunk
   migration or network dependency.
-- Training and validation both score recall@5, MRR, and nDCG@5 `1.000` with zero
+- Training scores recall@5 `1.000`, MRR `1.000`, nDCG@5 `0.998`, and zero
+  hard-negative wins; validation scores `1.000` on all three metrics with zero
   hard-negative wins. The earlier 11-query advisory generation improves from
   recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win to
   recall@5 `1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins.
@@ -891,8 +896,13 @@ while requiring embeddings would weaken the deterministic offline default.
   WordPress uninstall registration remain immutable terms-v7 misses. Terms-v8
   promotes those three judgments, and all 39 training queries rank relevant
   answers first with zero hard-negative wins.
-- Cue vocabulary remains intentionally narrow. Future expansions require a new
-  scorer fingerprint and a new isolated post-freeze generation.
+- The final six-query post-terms-v8 generation records recall@5 `1.000`, MRR
+  `0.722`, nDCG@5 `0.794`, and three hard-negative wins. Full advisory holdout
+  recall is `1.000`, MRR is `0.924`, and nDCG@5 is `0.944`, with three
+  hard-negative wins. The remaining problem is ordering, not candidate recall.
+- Cue vocabulary remains intentionally narrow. Further accuracy work should use
+  an injected intent or relationship provider rather than adding a terms-v9
+  synonym list; deterministic terms-v8 remains the offline fallback.
 
 ### Alternatives considered
 
