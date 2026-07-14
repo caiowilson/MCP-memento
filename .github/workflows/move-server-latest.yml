@@ -61,32 +61,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ steps.meta.outputs.server_tag }}
           VERSION: ${{ steps.meta.outputs.version }}
+          MACOS_NOTARIZATION_ENABLED: ${{ vars.MACOS_NOTARIZATION_ENABLED }}
         shell: bash
         run: |
           set -euo pipefail
 
           expected_assets() {
-            printf '%s\n' \
-              memento-mcp_darwin_x64 \
-              memento-mcp_darwin_x64.sha256 \
-              memento-mcp_darwin_arm64 \
-              memento-mcp_darwin_arm64.sha256 \
-              memento-mcp_linux_x64 \
-              memento-mcp_linux_x64.sha256 \
-              memento-mcp_linux_arm64 \
-              memento-mcp_linux_arm64.sha256 \
-              memento-mcp_windows_x64.exe \
-              memento-mcp_windows_x64.exe.sha256 \
-              memento-mcp_windows_arm64.exe \
-              memento-mcp_windows_arm64.exe.sha256 \
-              "memento-mcp_${VERSION}_linux_amd64.deb" \
-              "memento-mcp_${VERSION}_linux_arm64.deb" \
-              "memento-mcp_${VERSION}_darwin_amd64.pkg" \
-              "memento-mcp_${VERSION}_darwin_arm64.pkg" \
-              | sort
+            {
+              printf '%s\n' \
+                memento-mcp_darwin_x64 \
+                memento-mcp_darwin_x64.sha256 \
+                memento-mcp_darwin_arm64 \
+                memento-mcp_darwin_arm64.sha256 \
+                memento-mcp_linux_x64 \
+                memento-mcp_linux_x64.sha256 \
+                memento-mcp_linux_arm64 \
+                memento-mcp_linux_arm64.sha256 \
+                memento-mcp_windows_x64.exe \
+                memento-mcp_windows_x64.exe.sha256 \
+                memento-mcp_windows_arm64.exe \
+                memento-mcp_windows_arm64.exe.sha256 \
+                "memento-mcp_${VERSION}_linux_amd64.deb" \
+                "memento-mcp_${VERSION}_linux_arm64.deb"
+              if [ "$MACOS_NOTARIZATION_ENABLED" = "true" ]; then
+                printf '%s\n' \
+                  "memento-mcp_${VERSION}_darwin_amd64.pkg" \
+                  "memento-mcp_${VERSION}_darwin_arm64.pkg"
+              fi
+            } | sort
           }
 
           expected=$(expected_assets)
+          expected_count=$(printf '%s\n' "$expected" | sed '/^$/d' | wc -l | tr -d ' ')
           ready=0
           for attempt in $(seq 1 120); do
             actual=$(gh release view "$SOURCE_TAG" --json assets \
@@ -95,7 +101,7 @@ jobs:
               ready=1
               break
             fi
-            echo "Waiting for exact 16-asset release manifest ($attempt/120)"
+            echo "Waiting for exact ${expected_count}-asset release manifest ($attempt/120)"
             sleep 15
           done
           if [ "$ready" -ne 1 ]; then

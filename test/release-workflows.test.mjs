@@ -11,12 +11,13 @@ const releaseWorkflowPath = join(root, ".github/workflows/release-server.yml");
 const latestWorkflowPath = join(root, ".github/workflows/move-server-latest.yml");
 const signingScriptPath = join(root, "scripts/macos-sign-and-notarize.sh");
 
-test("release workflow signs and notarizes every macOS artifact", async () => {
+test("release workflow always builds raw macOS binaries and optionally notarizes packages", async () => {
   const workflow = await readFile(releaseWorkflowPath, "utf8");
   const genericBuild = workflow.match(/  build-binaries:[\s\S]*?\n  package-deb:/)?.[0];
 
   assert.ok(genericBuild, "generic binary job must remain identifiable");
-  assert.doesNotMatch(genericBuild, /goos: \[[^\]]*darwin/);
+  assert.match(genericBuild, /goos: \[[^\]]*darwin/);
+  assert.match(workflow, /if: \$\{\{ vars\.MACOS_NOTARIZATION_ENABLED == 'true' \}\}/);
   assert.match(workflow, /environment:\n      name: macos-release-signing/);
   assert.match(workflow, /APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64/);
   assert.match(workflow, /APPLE_DEVELOPER_ID_INSTALLER_P12_BASE64/);
@@ -25,6 +26,7 @@ test("release workflow signs and notarizes every macOS artifact", async () => {
   assert.match(workflow, /\.\/scripts\/macos-sign-and-notarize\.sh/);
   assert.match(workflow, /security delete-keychain/);
   assert.match(workflow, /dist\/memento-mcp_darwin_\*/);
+  assert.match(workflow, /needs\.package-macos-pkg\.result == 'skipped'/);
 });
 
 test("server/latest mirrors verified versioned assets without rebuilding", async () => {
@@ -37,8 +39,11 @@ test("server/latest mirrors verified versioned assets without rebuilding", async
   assert.match(workflow, /gh release create server\/latest dist\/\*/);
   assert.match(workflow, /Exact verified asset mirror/);
 
-  const expectedAssets = workflow.match(/^\s{14}(?:"?)memento-mcp_[^\n]+/gm) ?? [];
-  assert.equal(expectedAssets.length, 16, "latest must require the exact 16-asset manifest");
+  const expectedBlock = workflow.match(/expected_assets\(\) \{([\s\S]*?)^\s{10}\}/m)?.[1] ?? "";
+  const expectedAssets = expectedBlock.match(/^\s+(?:"?)memento-mcp_[^\n]+/gm) ?? [];
+  assert.equal(expectedAssets.length, 16, "latest must enumerate the 14 core and two optional package assets");
+  assert.match(workflow, /if \[ "\$MACOS_NOTARIZATION_ENABLED" = "true" \]/);
+  assert.match(workflow, /expected_count=/);
 });
 
 test("macOS packaging script executes the hardened signing pipeline", async (t) => {

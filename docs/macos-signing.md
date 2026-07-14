@@ -1,10 +1,12 @@
 # macOS release signing and notarization
 
-Versioned `server/v*` releases publish signed raw macOS binaries and signed,
-notarized, stapled `.pkg` installers for Intel and Apple silicon. The
-`server/latest` workflow waits for that versioned release, verifies its exact
-16-asset manifest and all six binary checksums, then mirrors the same assets. It
-never rebuilds a second set of macOS artifacts.
+Versioned `server/v*` releases always publish checksum-protected raw macOS
+binaries for Intel and Apple silicon. When the repository variable
+`MACOS_NOTARIZATION_ENABLED` is `true`, the same release also publishes signed,
+notarized, stapled `.pkg` installers. The `server/latest` workflow waits for the
+versioned release, verifies the exact configured 14- or 16-asset manifest and
+all six binary checksums, then mirrors the same assets. It never rebuilds a
+second set of macOS artifacts.
 
 The release workflow follows Apple's [custom notarization
 workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
@@ -48,6 +50,13 @@ Store these values as environment secrets:
 - `APPLE_NOTARY_KEY_P8_BASE64`
 - `APPLE_NOTARY_KEY_ID`
 - `APPLE_NOTARY_ISSUER_ID`
+
+After all variables and secrets are configured, create the repository variable
+`MACOS_NOTARIZATION_ENABLED` with the value `true`. Leave it absent or set it to
+`false` to publish checksum-protected raw binaries without `.pkg` installers.
+The release workflow never silently falls back from a requested notarized build:
+when the variable is `true`, missing or invalid Apple credentials fail the
+release.
 
 Generate the three base64 values on a trusted Mac without adding line breaks:
 
@@ -148,9 +157,10 @@ spctl --assess --type install --verbose=4 dist/memento-mcp_VERSION_darwin_ARCH.p
   verify network access to Apple, and confirm the submitted file is byte-for-byte
   identical to the file being stapled.
 - **`server/latest` times out:** inspect the versioned release first. It must
-  contain exactly six binaries, six matching `.sha256` sidecars, two `.deb`
-  packages, and two notarized `.pkg` packages. The latest workflow deliberately
-  rejects partial or extra manifests.
+  contain exactly six binaries, six matching `.sha256` sidecars, and two `.deb`
+  packages. When `MACOS_NOTARIZATION_ENABLED=true`, it must also contain two
+  notarized `.pkg` packages. The latest workflow deliberately rejects partial
+  or extra manifests.
 
 ## Rotation and release verification
 

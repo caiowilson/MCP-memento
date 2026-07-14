@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        goos: [linux, windows]
+        goos: [linux, windows, darwin]
         goarch: [amd64, arm64]
 
     steps:
@@ -122,6 +122,7 @@ jobs:
           path: dist/*.deb
 
   package-macos-pkg:
+    if: ${{ vars.MACOS_NOTARIZATION_ENABLED == 'true' }}
     runs-on: macos-latest
     environment:
       name: macos-release-signing
@@ -276,6 +277,7 @@ jobs:
 
   publish:
     needs: [build-binaries, package-deb, package-macos-pkg]
+    if: ${{ always() && needs.build-binaries.result == 'success' && needs.package-deb.result == 'success' && (needs.package-macos-pkg.result == 'success' || needs.package-macos-pkg.result == 'skipped') }}
     runs-on: ubuntu-latest
 
     steps:
