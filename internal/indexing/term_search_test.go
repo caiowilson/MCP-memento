@@ -39,6 +39,7 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"callable", "Where is normalize converted into a first-class callable?", func(intent termSearchIntent) bool { return intent.callable }},
 		{"config definition", "Which configuration entry defines the reporting endpoint?", func(intent termSearchIntent) bool { return intent.configDefinition && intent.definition }},
 		{"relationship declaration", "Which entity mapping assigns its repository class?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.definition }},
+		{"never termination", "Which method declares it never returns and terminates by throwing?", func(intent termSearchIntent) bool { return intent.neverTermination }},
 		{"config consumer", "Where is reporting configuration consumed by the exporter?", func(intent termSearchIntent) bool { return !intent.configDefinition }},
 	}
 	for _, test := range tests {
@@ -204,6 +205,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Which entity mapping assigns the AuditLog repository class?",
 			target:     Chunk{Path: "src/Entity/AuditLog.php", Language: "php", Content: "#[ORM\\Entity(repositoryClass: AuditLogRepository::class)]\nfinal class AuditLog {}\n"},
 			distractor: Chunk{Path: "src/Service/AuditReader.php", Language: "php", Content: "final class AuditReader { public function __construct(private AuditLogRepository $repository) {} }\n"},
+		},
+		{
+			name:       "never termination",
+			query:      "Which method declares it never returns and terminates by throwing?",
+			target:     Chunk{Path: "src/Command/AbortCommand.php", Language: "php", Content: "public function abort(): never\n{\n    throw new RuntimeException('aborted');\n}\n"},
+			distractor: Chunk{Path: "src/Registry/MethodRegistry.php", Language: "php", Content: "public function method(string $name): ?string\n{\n    return null;\n}\n"},
 		},
 	}
 	for _, test := range tests {

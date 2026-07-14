@@ -53,15 +53,19 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 52 natural-language retrieval queries with
-57 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v3` scorer against each corpus independently. The 30-query
-training split contains the original benchmark plus the first measured miss
-generation, the 11-query validation split covers every corpus, and a fresh
-11-query holdout was authored only after the scorer was frozen. Validation and
-holdout queries declare precise hard-negative ranges. Training and validation
-are blocking; the fresh holdout remains advisory so its first unseen result is
-preserved instead of tuned away.
+forbidden body-symbol leakage, and 64 natural-language retrieval queries with
+69 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v5` scorer against each corpus independently. The 34-query
+training split contains the original benchmark, promoted measured misses, and
+four independent structural-role cases. The 11-query validation split covers
+every corpus. The 19 advisory holdout queries combine the original 11-query
+post-terms-v3 generation with eight new cases authored in isolation only after
+terms-v4 was frozen at `cffc091`. Adding that generation exposed a new
+training-corpus tie for explicit `never` termination; the miss was promoted to
+training and fixed under a new terms-v5 fingerprint before any terms-v5 holdout
+was authored. Validation and holdout queries declare precise hard-negative
+ranges. Training and validation are blocking; holdout generations remain
+advisory so their first unseen results are preserved instead of tuned away.
 
 JSON contains aggregate overall, per-corpus, and train/validation/holdout
 metrics only.
@@ -87,11 +91,15 @@ they are structural microprojects and are not booted as applications.
 Parser, symbol, signature, declaration-boundary, anchor, and Composer judgments
 are deterministic and target 100%. Framework relationship recall starts at 95%
 with 98% precision, while blocking retrieval targets recall@5 of 95%, MRR of
-90%, nDCG@5 of 90%, and zero hard-negative wins. The frozen holdout is reported
-against the same targets but remains advisory; its initial `terms-v3` baseline
-is recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win.
-Evaluate framework and language corpora independently before macro-averaging so
-a large corpus cannot hide a Drupal- or WordPress-specific regression.
+90%, nDCG@5 of 90%, and zero hard-negative wins. Holdouts are reported against
+the same targets but remain advisory. The original 11-query generation recorded
+a `terms-v3` baseline of recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one
+hard-negative win; frozen terms-v4 improves the same generation to recall@5
+`1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins. The isolated
+eight-query post-terms-v4 generation scores recall@5, MRR, and nDCG@5 `1.000`
+with zero hard-negative wins in isolation. Evaluate framework and language corpora
+independently before macro-averaging so a large corpus cannot hide a Drupal- or
+WordPress-specific regression.
 
 Additional valid declarations are not automatically failures. Add them to the
 manifest when they are part of the intended public structure. Locals from

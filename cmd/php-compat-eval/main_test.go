@@ -12,13 +12,14 @@ import (
 	"memento-mcp/internal/testutil/phpcompat"
 )
 
-func TestTermsV4IndependentTrainingCasesRankFirst(t *testing.T) {
+func TestTermSearchTrainingCasesRankFirst(t *testing.T) {
 	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	wanted := map[string]bool{
 		"php80-audit-attribute-declaration":       true,
+		"php81-never-throw":                       true,
 		"php81-normalize-first-class-callable":    true,
 		"laravel-reporting-config-definition":     true,
 		"symfony-audit-entity-repository-mapping": true,
@@ -64,6 +65,70 @@ func TestTermsV4IndependentTrainingCasesRankFirst(t *testing.T) {
 		if !seen[id] {
 			t.Errorf("training case %s was not evaluated", id)
 		}
+	}
+}
+
+func TestTermsV4PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv4-php74-voucher-deprecation":        true,
+		"postv4-php80-compiler-closure":           true,
+		"postv4-php81-beacon-hint-attachment":     true,
+		"postv4-php82-courier-retry-default":      true,
+		"postv4-php83-wire-revision":              true,
+		"postv4-php84-dock-ticket-hook":           true,
+		"postv4-laravel-skiff-harbor":             true,
+		"postv4-symfony-cloudberry-batch-default": true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			if wins != 0 {
+				t.Errorf("%s: hard negative outranked relevance: %#v", result.ID, result.Retrieved)
+			}
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-freeze holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-freeze holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
+	if !actual.Passed {
+		t.Fatalf("post-freeze holdout missed thresholds: %#v", actual)
 	}
 }
 

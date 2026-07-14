@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v4",
+    "adapter": "terms-v5",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -78,6 +78,13 @@
           "query": "Where is a typed arrow function created to delegate label normalization?",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 42, "endLine": 42}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 16, "endLine": 16}]
+        },
+        {
+          "id": "postv4-php74-voucher-deprecation",
+          "split": "holdout",
+          "query": "Where is VoucherSeal marked as deprecated for newly issued parcels?",
+          "relevant": [{"path": "holdout_20260713/celadon/VoucherSeal.php", "startLine": 9, "endLine": 9}],
+          "hardNegatives": [{"path": "holdout_20260713/celadon/LegacyParcelDecoder.php", "startLine": 11, "endLine": 11}]
         }
       ]
     },
@@ -141,6 +148,13 @@
           "query": "Which status-message helper returns its string argument unchanged?",
           "relevant": [{"path": "src/StatusMessage.php", "startLine": 11, "endLine": 11}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 44, "endLine": 44}]
+        },
+        {
+          "id": "postv4-php80-compiler-closure",
+          "split": "holdout",
+          "query": "Where is compileShard converted into a closure for later pipeline execution?",
+          "relevant": [{"path": "holdout_20260713/umber/CompilerPipeline.php", "startLine": 15, "endLine": 15}],
+          "hardNegatives": [{"path": "holdout_20260713/umber/BatchCompiler.php", "startLine": 11, "endLine": 14}]
         }
       ]
     },
@@ -207,6 +221,13 @@
           "query": "Where is a render method converted into a first-class callable?",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 14, "endLine": 14}]
+        },
+        {
+          "id": "postv4-php81-beacon-hint-attachment",
+          "split": "holdout",
+          "query": "Where is the orchard.read BeaconHint attached to the endpoint method?",
+          "relevant": [{"path": "holdout_20260713/orchard/OrchardEndpoint.php", "startLine": 18, "endLine": 19}],
+          "hardNegatives": [{"path": "holdout_20260713/orchard/BeaconRegistry.php", "startLine": 12, "endLine": 13}]
         }
       ]
     },
@@ -263,6 +284,13 @@
           "query": "Where does the readonly packet class consume the trait that supplies its kind?",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 17, "endLine": 17}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 10, "endLine": 10}]
+        },
+        {
+          "id": "postv4-php82-courier-retry-default",
+          "split": "holdout",
+          "query": "Where is the courier retry-window default set to 17 seconds?",
+          "relevant": [{"path": "holdout_20260713/copper/config/courier.php", "startLine": 5, "endLine": 5}],
+          "hardNegatives": [{"path": "holdout_20260713/copper/CourierLoop.php", "startLine": 15, "endLine": 15}]
         }
       ]
     },
@@ -317,6 +345,13 @@
           "query": "Which formatter method is explicitly marked with the Override attribute?",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 20, "endLine": 20}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 9, "endLine": 9}]
+        },
+        {
+          "id": "postv4-php83-wire-revision",
+          "split": "holdout",
+          "query": "Where is the wire revision identifier declared as the string lilac-3?",
+          "relevant": [{"path": "holdout_20260713/lilac/FrameHeader.php", "startLine": 8, "endLine": 8}],
+          "hardNegatives": [{"path": "holdout_20260713/lilac/FrameEncoder.php", "startLine": 10, "endLine": 10}]
         }
       ]
     },
@@ -374,6 +409,13 @@
           "query": "Which line annotates a title method with deprecation metadata that includes replacement guidance and a version?",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 27, "endLine": 27}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 34, "endLine": 34}]
+        },
+        {
+          "id": "postv4-php84-dock-ticket-hook",
+          "split": "holdout",
+          "query": "Where is an assigned dock-ticket code trimmed and converted to uppercase?",
+          "relevant": [{"path": "holdout_20260713/indigo/DockTicket.php", "startLine": 8, "endLine": 10}],
+          "hardNegatives": [{"path": "holdout_20260713/indigo/DockTicketImporter.php", "startLine": 11, "endLine": 11}]
         }
       ]
     },
@@ -540,6 +582,13 @@
           "query": "Which configuration line defines the Stripe key consumed by dashboard rendering?",
           "relevant": [{"path": "config/services.php", "startLine": 5, "endLine": 5}],
           "hardNegatives": [{"path": "app/Http/Controllers/DashboardController.php", "startLine": 14, "endLine": 14}]
+        },
+        {
+          "id": "postv4-laravel-skiff-harbor",
+          "split": "holdout",
+          "query": "Where is the Skiff model's harbor relationship declared?",
+          "relevant": [{"path": "holdout_20260713/seafoam/app/Models/Skiff.php", "startLine": 11, "endLine": 14}],
+          "hardNegatives": [{"path": "holdout_20260713/seafoam/app/Http/Controllers/BerthAssignmentController.php", "startLine": 11, "endLine": 17}]
         }
       ]
     },
@@ -615,6 +664,13 @@
           "query": "Which entity mapping assigns its repository class?",
           "relevant": [{"path": "src/Entity/Report.php", "startLine": 10, "endLine": 10}],
           "hardNegatives": [{"path": "src/Service/ReportService.php", "startLine": 11, "endLine": 11}]
+        },
+        {
+          "id": "postv4-symfony-cloudberry-batch-default",
+          "split": "holdout",
+          "query": "Where is Cloudberry's default spool batch size defined?",
+          "relevant": [{"path": "holdout_20260713/cloudberry/src/DependencyInjection/CloudberryConfiguration.php", "startLine": 17, "endLine": 20}],
+          "hardNegatives": [{"path": "holdout_20260713/cloudberry/src/Message/SpoolDrainer.php", "startLine": 10, "endLine": 13}]
         }
       ]
     },

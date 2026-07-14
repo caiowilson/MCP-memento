@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and a bounded path tie-break.
-const TermSearchVersion = "terms-v4"
+const TermSearchVersion = "terms-v5"
 
 type termSearchIntent struct {
 	definition          bool
@@ -17,6 +17,7 @@ type termSearchIntent struct {
 	callable            bool
 	configDefinition    bool
 	relationDeclaration bool
+	neverTermination    bool
 }
 
 var searchStopWords = map[string]struct{}{
@@ -73,6 +74,7 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 		callable:            containsAny(lower, "callable", "closure", "arrow function", "anonymous function"),
 		configDefinition:    configDefinition,
 		relationDeclaration: relationConcept && definition,
+		neverTermination:    strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
 	}
 }
 
@@ -193,6 +195,12 @@ func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
 		}
 		if strings.Contains(path, "/service/") || strings.Contains(path, "/services/") || strings.Contains(path, "/controller/") || strings.Contains(path, "/handler/") {
 			score -= exactTermUnit
+		}
+	}
+	if intent.neverTermination {
+		compact := strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "").Replace(content)
+		if strings.Contains(compact, ":never") && strings.Contains(content, "throw") {
+			score += 2 * exactTermUnit
 		}
 	}
 	if score > 3*exactTermUnit {

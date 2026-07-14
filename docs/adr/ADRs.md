@@ -23,6 +23,8 @@ This document consolidates all ADRs for this repository.
 - ADR 0011: Pure-Go tree-sitter as the shared structural parser (Accepted, 2026-07-13)
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
+- ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
+- ADR 0015: Structural query-intent retrieval (terms-v4 and terms-v5) (Accepted, 2026-07-13)
 
 ---
 
@@ -800,6 +802,77 @@ did not measure distractors explicitly.
 - Copy public framework applications into the repository: broader surface area,
   but adds licensing, size, update, and answer-leakage risks compared with
   original minimized reproductions.
+
+---
+
+## ADR 0015: Structural query-intent retrieval (terms-v4 and terms-v5)
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+The first post-freeze terms-v3 holdout preserved perfect validation but exposed
+four role-sensitive ranking gaps: declaration metadata versus a reference,
+first-class callable construction versus the referenced method, configuration
+definition versus its consumer, and entity-to-repository mapping versus service
+injection. Directly fitting those query strings would invalidate the holdout,
+while requiring embeddings would weaken the deterministic offline default.
+
+### Decision
+
+- Version the deterministic scorer as `terms-v4` and derive structural evidence
+  at query time without changing persisted chunks or the exact `SearchContext`
+  contract.
+- Classify only bounded programming-role cues for attributes, callable
+  construction, configuration definitions, and relationship declarations.
+  Require independent lexical evidence before any structural adjustment.
+- Isolate a definition clause from trailing consumer context for explicit
+  definition requests, while continuing to ignore `instead of` and `rather
+  than` contrast clauses.
+- Treat PHP `#[...]` lines as declaration metadata rather than comments. Reward
+  syntax and conventional definition paths, downrank explicit consumers, and
+  cap the total adjustment between minus one and plus three existing exact-term
+  score units.
+- Develop against new synthetic and production-shaped training identifiers.
+  Freeze the scorer at `cffc091` before opening the existing holdout, then use an
+  isolated author with no scorer, suite, query, history, or evaluator access for
+  the next holdout generation.
+- When those new files exposed a path-order tie in the existing PHP 8.1
+  `never`/throw training query, promote the measured training miss and version
+  the fix as `terms-v5`. Activate the additional signal only when the query asks
+  for never-returning termination and the candidate contains both a `: never`
+  declaration and a throw expression.
+
+### Consequences
+
+- Neutral queries preserve terms-v3 term extraction and chunk scores exactly;
+  structural requests gain deterministic role-aware ordering without a chunk
+  migration or network dependency.
+- Training and validation both score recall@5, MRR, and nDCG@5 `1.000` with zero
+  hard-negative wins. The earlier 11-query advisory generation improves from
+  recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win to
+  recall@5 `1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins.
+- The untouched terms-v4 scorer ranks all eight independently authored
+  post-freeze cases first in isolation, producing recall@5, MRR, and nDCG@5
+  `1.000` with zero hard-negative wins. Indexing the new files alongside the
+  earlier corpus also creates a training distractor that terms-v5 resolves
+  without changing the terms-v4 evidence.
+- Cue vocabulary remains intentionally narrow. Future expansions require a new
+  scorer fingerprint and a new isolated post-freeze generation.
+
+### Alternatives considered
+
+- Tune directly against the first holdout: likely improves the visible metric,
+  but destroys its value as unseen evidence.
+- Add an indexing-package dependency on MCP relationship graphs: supplies richer
+  evidence, but creates layering and evaluator-parity problems. A future batch
+  provider may add bounded direct-edge reranking through an injected interface.
+- Require semantic retrieval: may cover broader paraphrases, but adds a local
+  runtime dependency and cannot replace the deterministic offline baseline.
+- Persist symbol and relationship roles in chunk files: avoids query-time source
+  inspection, but requires a format migration and reindex for evidence that can
+  be derived cheaply from existing chunks.
 
 ---
 
