@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v3",
+    "adapter": "terms-v4",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -129,6 +129,13 @@
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 19, "endLine": 19}]
         },
         {
+          "id": "php80-audit-attribute-declaration",
+          "split": "train",
+          "query": "Where is the AuditTag attribute declared and restricted to methods?",
+          "relevant": [{"path": "src/Attribute/AuditTag.php", "startLine": 9, "endLine": 9}],
+          "hardNegatives": [{"path": "src/Handler/AuditedHandler.php", "startLine": 11, "endLine": 11}]
+        },
+        {
           "id": "php80-status-passthrough",
           "split": "holdout",
           "query": "Which status-message helper returns its string argument unchanged?",
@@ -186,6 +193,13 @@
           "query": "where does a method declare it never returns and terminate by throwing instead of serializing a value",
           "relevant": [{"path": "src/LanguageFeatures.php", "startLine": 39, "endLine": 39}],
           "hardNegatives": [{"path": "src/LanguageFeatures.php", "startLine": 32, "endLine": 32}]
+        },
+        {
+          "id": "php81-normalize-first-class-callable",
+          "split": "train",
+          "query": "Where is an object's normalize method converted into a first-class callable?",
+          "relevant": [{"path": "src/Factory/NormalizerFactory.php", "startLine": 13, "endLine": 13}],
+          "hardNegatives": [{"path": "src/Support/Normalizer.php", "startLine": 9, "endLine": 9}]
         },
         {
           "id": "php81-first-class-render-callable",
@@ -514,6 +528,13 @@
           "hardNegatives": [{"path": "app/Policies/ReportPolicy.php", "startLine": 12, "endLine": 12}]
         },
         {
+          "id": "laravel-reporting-config-definition",
+          "split": "train",
+          "query": "Which configuration entry defines the reporting endpoint consumed by ReportExporter?",
+          "relevant": [{"path": "config/reporting.php", "startLine": 4, "endLine": 4}],
+          "hardNegatives": [{"path": "app/Services/ReportExporter.php", "startLine": 11, "endLine": 11}]
+        },
+        {
           "id": "laravel-stripe-config-definition",
           "split": "holdout",
           "query": "Which configuration line defines the Stripe key consumed by dashboard rendering?",
@@ -580,6 +601,13 @@
           "query": "which subscribed-events method maps GenerateReport to the onReport callback",
           "relevant": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 14, "endLine": 14}],
           "hardNegatives": [{"path": "src/EventSubscriber/ReportSubscriber.php", "startLine": 17, "endLine": 17}]
+        },
+        {
+          "id": "symfony-audit-entity-repository-mapping",
+          "split": "train",
+          "query": "Which entity mapping assigns the AuditLog repository class?",
+          "relevant": [{"path": "src/Entity/AuditLog.php", "startLine": 10, "endLine": 10}],
+          "hardNegatives": [{"path": "src/Service/AuditReader.php", "startLine": 11, "endLine": 11}]
         },
         {
           "id": "symfony-entity-repository-mapping",

@@ -29,6 +29,67 @@ func TestMeaningfulSearchTermsExcludeContrastClause(t *testing.T) {
 	}
 }
 
+func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		check func(termSearchIntent) bool
+	}{
+		{"attribute", "Where is the AuditTag attribute declared for methods?", func(intent termSearchIntent) bool { return intent.attribute && intent.definition }},
+		{"callable", "Where is normalize converted into a first-class callable?", func(intent termSearchIntent) bool { return intent.callable }},
+		{"config definition", "Which configuration entry defines the reporting endpoint?", func(intent termSearchIntent) bool { return intent.configDefinition && intent.definition }},
+		{"relationship declaration", "Which entity mapping assigns its repository class?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.definition }},
+		{"config consumer", "Where is reporting configuration consumed by the exporter?", func(intent termSearchIntent) bool { return !intent.configDefinition }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if intent := classifyTermSearchIntent(test.query); !test.check(intent) {
+				t.Fatalf("classifyTermSearchIntent(%q) = %#v", test.query, intent)
+			}
+		})
+	}
+}
+
+func TestMeaningfulSearchTermsForDefinitionDropsConsumerContext(t *testing.T) {
+	query := "Which configuration entry defines the reporting endpoint consumed by ReportExporter?"
+	intent := classifyTermSearchIntent(query)
+	got := meaningfulSearchTermsForIntent(query, intent)
+	want := []string{"configuration", "entry", "defines", "reporting", "endpoint"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("meaningfulSearchTermsForIntent() = %#v; want %#v", got, want)
+	}
+}
+
+func TestTermsV4PreservesNeutralTermsV3Evidence(t *testing.T) {
+	query := "where does ReportService load recent reports"
+	intent := classifyTermSearchIntent(query)
+	if intent != (termSearchIntent{}) {
+		t.Fatalf("neutral query activated structural intent: %#v", intent)
+	}
+	terms := meaningfulSearchTerms(query)
+	if got := meaningfulSearchTermsForIntent(query, intent); !reflect.DeepEqual(got, terms) {
+		t.Fatalf("neutral terms changed: got=%v want=%v", got, terms)
+	}
+	chunks := []Chunk{
+		{Path: "src/Service/ReportService.php", Language: "php", Content: "public function recentReports(): array { return []; }\n"},
+		{Path: "src/Controller/ReportController.php", Language: "php", Content: "public function index(ReportService $reports): array { return $reports->recentReports(); }\n"},
+	}
+	for _, chunk := range chunks {
+		before := termAwareChunkScore(chunk, terms)
+		after := termAwareChunkScoreWithIntent(chunk, terms, intent)
+		if after != before {
+			t.Errorf("neutral score changed for %s: before=%d after=%d", chunk.Path, before, after)
+		}
+	}
+}
+
+func TestContrastClauseCannotActivateStructuralIntent(t *testing.T) {
+	query := "where does ReportExporter read the endpoint rather than which configuration entry defines it"
+	if intent := classifyTermSearchIntent(query); intent != (termSearchIntent{}) {
+		t.Fatalf("contrast clause activated structural intent: %#v", intent)
+	}
+}
+
 func TestSearchTermMatchQualityHandlesConservativeInflections(t *testing.T) {
 	for _, pair := range [][2]string{
 		{"normalized", "normalize"},
@@ -100,6 +161,106 @@ func TestPHPDeclarationEvidenceExcludesBodiesAndNonPHP(t *testing.T) {
 	nonPHP := Chunk{Path: "consumer.go", Language: "go", Content: "func dependencies() { _ = MappedThing{} }\n"}
 	if tokens := phpDeclarationHeaderTokens(nonPHP); len(tokens) != 0 {
 		t.Fatalf("non-PHP declaration evidence = %v, want none", tokens)
+	}
+}
+
+func TestPHPDeclarationEvidenceIncludesAttributes(t *testing.T) {
+	chunk := Chunk{Path: "src/Entity/AuditLog.php", Language: "php", Content: "#[ORM\\Entity(repositoryClass: AuditLogRepository::class)]\nfinal class AuditLog\n{\n}\n"}
+	tokens := phpDeclarationHeaderTokens(chunk)
+	for _, term := range []string{"entity", "repository", "class", "audit", "log"} {
+		if quality := bestSearchTermQuality(term, tokens); quality == 0 {
+			t.Errorf("attribute declaration tokens %v do not contain %q", tokens, term)
+		}
+	}
+}
+
+func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		target     Chunk
+		distractor Chunk
+	}{
+		{
+			name:       "attribute declaration",
+			query:      "Where is the AuditTag attribute declared and restricted to methods?",
+			target:     Chunk{Path: "src/Attribute/AuditTag.php", Language: "php", Content: "#[Attribute(Attribute::TARGET_METHOD)]\nfinal class AuditTag {}\n"},
+			distractor: Chunk{Path: "src/Handler/AuditedHandler.php", Language: "php", Content: "#[AuditTag]\npublic function handle(): void {}\n"},
+		},
+		{
+			name:       "first class callable",
+			query:      "Where is normalize converted into a first-class callable?",
+			target:     Chunk{Path: "src/Factory/NormalizerFactory.php", Language: "php", Content: "public function create(Normalizer $normalizer): callable\n{\n    return $normalizer->normalize(...);\n}\n"},
+			distractor: Chunk{Path: "src/Support/Normalizer.php", Language: "php", Content: "public function normalize(string $value): string\n{\n    return trim($value);\n}\n"},
+		},
+		{
+			name:       "config definition",
+			query:      "Which configuration entry defines the reporting endpoint consumed by ReportExporter?",
+			target:     Chunk{Path: "config/reporting.php", Language: "php", Content: "return ['endpoint' => env('REPORTING_ENDPOINT')];\n"},
+			distractor: Chunk{Path: "app/Services/ReportExporter.php", Language: "php", Content: "final class ReportExporter { public function endpoint(): string { return config('reporting.endpoint'); } }\n"},
+		},
+		{
+			name:       "entity repository mapping",
+			query:      "Which entity mapping assigns the AuditLog repository class?",
+			target:     Chunk{Path: "src/Entity/AuditLog.php", Language: "php", Content: "#[ORM\\Entity(repositoryClass: AuditLogRepository::class)]\nfinal class AuditLog {}\n"},
+			distractor: Chunk{Path: "src/Service/AuditReader.php", Language: "php", Content: "final class AuditReader { public function __construct(private AuditLogRepository $repository) {} }\n"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			intent := classifyTermSearchIntent(test.query)
+			terms := meaningfulSearchTermsForIntent(test.query, intent)
+			got := termAwareChunkScoreWithIntent(test.target, terms, intent)
+			want := termAwareChunkScoreWithIntent(test.distractor, terms, intent)
+			if got <= want {
+				t.Fatalf("target score %d must exceed distractor score %d", got, want)
+			}
+		})
+	}
+}
+
+func TestSearchTermsRanksIndependentStructuralFixtures(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"src/Attribute/AuditTag.php":        "<?php\nnamespace App\\Attribute;\nuse Attribute;\n#[Attribute(Attribute::TARGET_METHOD)]\nfinal class AuditTag {}\n",
+		"src/Handler/AuditedHandler.php":    "<?php\nnamespace App\\Handler;\nuse App\\Attribute\\AuditTag;\n#[AuditTag]\nfinal class AuditedHandler { public function handle(): void {} }\n",
+		"src/Factory/NormalizerFactory.php": "<?php\nfinal class NormalizerFactory { public function create(Normalizer $normalizer): callable { return $normalizer->normalize(...); } }\n",
+		"src/Support/Normalizer.php":        "<?php\nfinal class Normalizer { public function normalize(string $value): string { return trim($value); } }\n",
+		"config/reporting.php":              "<?php\nreturn ['endpoint' => env('REPORTING_ENDPOINT')];\n",
+		"app/Services/ReportExporter.php":   "<?php\nfinal class ReportExporter { public function endpoint(): string { return config('reporting.endpoint'); } }\n",
+		"src/Entity/AuditLog.php":           "<?php\nuse App\\Repository\\AuditLogRepository;\n#[ORM\\Entity(repositoryClass: AuditLogRepository::class)]\nfinal class AuditLog {}\n",
+		"src/Service/AuditReader.php":       "<?php\nfinal class AuditReader { public function __construct(private AuditLogRepository $repository) {} }\n",
+	}
+	for rel, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.indexAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	queries := map[string]string{
+		"Where is the AuditTag attribute declared and restricted to methods?":                  "src/Attribute/AuditTag.php",
+		"Where is an object's normalize method converted into a first-class callable?":         "src/Factory/NormalizerFactory.php",
+		"Which configuration entry defines the reporting endpoint consumed by ReportExporter?": "config/reporting.php",
+		"Which entity mapping assigns the AuditLog repository class?":                          "src/Entity/AuditLog.php",
+	}
+	for query, want := range queries {
+		chunks, err := idx.SearchTermsByPathContext(context.Background(), query, 5, nil)
+		if err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		if len(chunks) == 0 || chunks[0].Path != want {
+			t.Errorf("%q: rank one = %#v; want %s", query, chunks, want)
+		}
 	}
 }
 

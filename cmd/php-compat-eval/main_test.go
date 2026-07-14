@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,61 @@ import (
 	"memento-mcp/internal/indexing"
 	"memento-mcp/internal/testutil/phpcompat"
 )
+
+func TestTermsV4IndependentTrainingCasesRankFirst(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"php80-audit-attribute-declaration":       true,
+		"php81-normalize-first-class-callable":    true,
+		"laravel-reporting-config-definition":     true,
+		"symfony-audit-entity-repository-mapping": true,
+	}
+	seen := map[string]bool{}
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			if result.Metrics.MRR != 1 {
+				t.Errorf("%s: expected rank-one relevance, metrics=%#v retrieved=%#v", result.ID, result.Metrics, result.Retrieved)
+			}
+			if wins := hardNegativeWins(queries[result.ID], result.Retrieved); wins != 0 {
+				t.Errorf("%s: hard negative outranked relevance: %#v", result.ID, result.Retrieved)
+			}
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("training case %s was not evaluated", id)
+		}
+	}
+}
 
 func TestRetrievalThresholdsPass(t *testing.T) {
 	thresholds := phpcompat.Thresholds{

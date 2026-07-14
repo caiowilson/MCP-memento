@@ -7,9 +7,17 @@ import (
 )
 
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
-// conservative inflection matching, coverage boost, content evidence, and a
-// bounded path tie-break.
-const TermSearchVersion = "terms-v3"
+// conservative inflection matching, coverage boost, content evidence,
+// structural query intent, and a bounded path tie-break.
+const TermSearchVersion = "terms-v4"
+
+type termSearchIntent struct {
+	definition          bool
+	attribute           bool
+	callable            bool
+	configDefinition    bool
+	relationDeclaration bool
+}
 
 var searchStopWords = map[string]struct{}{
 	"a": {}, "all": {}, "an": {}, "and": {}, "are": {}, "be": {},
@@ -40,6 +48,45 @@ func meaningfulSearchTerms(query string) []string {
 	return out
 }
 
+func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []string {
+	if intent.definition && (intent.configDefinition || intent.relationDeclaration) {
+		query = definitionSearchClause(query)
+	}
+	return meaningfulSearchTerms(query)
+}
+
+func classifyTermSearchIntent(query string) termSearchIntent {
+	lower := strings.ToLower(positiveSearchClause(query))
+	definition := containsAny(lower,
+		" defin", " declar", " assign", " map", " wire", " register", " restrict", " annotat", " marked with ",
+	)
+	configConcept := containsAny(lower, "config", "setting", "service container")
+	configDefinition := configConcept && (definition || containsAny(lower,
+		"configuration line", "configuration entry", "configuration value", "config line", "config entry", "config key",
+	))
+	relationConcept := containsAny(lower,
+		"relationship", "repository class", "repository mapping", "entity mapping", "belongs-to", "belongs to", "has-many", "has many", "has-one", "has one", "many-to-one", "one-to-many",
+	)
+	return termSearchIntent{
+		definition:          definition,
+		attribute:           containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
+		callable:            containsAny(lower, "callable", "closure", "arrow function", "anonymous function"),
+		configDefinition:    configDefinition,
+		relationDeclaration: relationConcept && definition,
+	}
+}
+
+func definitionSearchClause(query string) string {
+	lower := strings.ToLower(query)
+	end := len(query)
+	for _, marker := range []string{" consumed by ", " used by ", " read by ", " referenced by ", " injected into "} {
+		if index := strings.Index(lower, marker); index >= 0 && index < end {
+			end = index
+		}
+	}
+	return query[:end]
+}
+
 func positiveSearchClause(query string) string {
 	lower := strings.ToLower(query)
 	end := len(query)
@@ -52,6 +99,10 @@ func positiveSearchClause(query string) string {
 }
 
 func termAwareChunkScore(chunk Chunk, queryTerms []string) int {
+	return termAwareChunkScoreWithIntent(chunk, queryTerms, termSearchIntent{})
+}
+
+func termAwareChunkScoreWithIntent(chunk Chunk, queryTerms []string, intent termSearchIntent) int {
 	contentTokens := identifierSearchTokens(chunk.Content)
 	pathTokens := identifierSearchTokens(filepath.ToSlash(chunk.Path))
 	declarationTokens := phpDeclarationHeaderTokens(chunk)
@@ -90,7 +141,82 @@ func termAwareChunkScore(chunk Chunk, queryTerms []string) int {
 		// boilerplate to outrank the declaration that carries the answer.
 		score /= 4
 	}
+	score += termSearchStructuralScore(chunk, intent)
+	if score < 1 {
+		return 1
+	}
 	return score
+}
+
+func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
+	const exactTermUnit = 20
+
+	content := strings.ToLower(chunk.Content)
+	path := strings.ToLower(filepath.ToSlash(chunk.Path))
+	score := 0
+
+	if intent.attribute && strings.Contains(content, "#[") {
+		score += exactTermUnit
+		if intent.definition && strings.Contains(content, "#[attribute") {
+			score += exactTermUnit
+		}
+	}
+	if intent.callable {
+		compact := strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "").Replace(content)
+		if (strings.Contains(compact, "->") || strings.Contains(compact, "::")) && strings.Contains(compact, "(...)") {
+			score += 2 * exactTermUnit
+		}
+		if strings.Contains(compact, "fn(") || strings.Contains(compact, "staticfunction(") || strings.Contains(compact, "function(") {
+			score += exactTermUnit
+		}
+	}
+	if intent.configDefinition {
+		if isConfigurationPath(path) {
+			score += 2 * exactTermUnit
+			if strings.Contains(content, "=>") || strings.Contains(content, ":") || strings.Contains(content, "=") {
+				score += exactTermUnit
+			}
+		}
+		if containsAny(content, "config(", "getenv(", "->getparameter(") {
+			score -= exactTermUnit
+		}
+	}
+	if intent.relationDeclaration {
+		if strings.Contains(content, "repositoryclass") {
+			score += 2 * exactTermUnit
+		}
+		if containsAny(content, "belongsto(", "hasmany(", "hasone(", "manytoone", "onetomany") {
+			score += 2 * exactTermUnit
+		}
+		if strings.Contains(path, "/entity/") || strings.Contains(path, "/models/") || strings.HasPrefix(path, "entity/") || strings.HasPrefix(path, "models/") {
+			score += exactTermUnit
+		}
+		if strings.Contains(path, "/service/") || strings.Contains(path, "/services/") || strings.Contains(path, "/controller/") || strings.Contains(path, "/handler/") {
+			score -= exactTermUnit
+		}
+	}
+	if score > 3*exactTermUnit {
+		return 3 * exactTermUnit
+	}
+	if score < -exactTermUnit {
+		return -exactTermUnit
+	}
+	return score
+}
+
+func isConfigurationPath(path string) bool {
+	base := filepath.Base(path)
+	ext := strings.ToLower(filepath.Ext(path))
+	return strings.Contains(path, "/config/") || strings.HasPrefix(path, "config/") || strings.HasPrefix(base, "config.") || ext == ".yaml" || ext == ".yml" || ext == ".json" || ext == ".toml"
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func phpDeclarationHeaderTokens(chunk Chunk) []string {
@@ -100,7 +226,7 @@ func phpDeclarationHeaderTokens(chunk Chunk) []string {
 	var header strings.Builder
 	for _, line := range strings.Split(chunk.Content, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || line == "<?php" || line == "?>" || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*") {
+		if line == "" || line == "<?php" || line == "?>" || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "#[") || strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*") {
 			continue
 		}
 		if strings.HasPrefix(line, "declare(") || strings.HasPrefix(line, "require") {
