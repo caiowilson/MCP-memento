@@ -1,0 +1,11 @@
+{
+    "name": "virellium-k9/aurora-catalog",
+    "require": {
+        "php": "^8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "VirelliumK9\\Aurora\\": "engine/Aurora/"
+        }
+    }
+}

@@ -878,6 +878,11 @@ while requiring embeddings would weaken the deterministic offline default.
   relationship method. This remains immutable terms-v6 evidence; the one miss
   is promoted under terms-v7, whose 36-query training gate ranks every relevant
   answer first with zero hard-negative wins.
+- The five-query post-terms-v7 generation records recall@5 `0.800`, MRR `0.567`,
+  nDCG@5 `0.626`, and two hard-negative wins. The independently phrased
+  Doctrine association ranks first, confirming the collection relationship
+  intent generalizes. Shutdown registration, backed-enum definition, and
+  WordPress uninstall registration remain immutable terms-v7 misses.
 - Cue vocabulary remains intentionally narrow. Future expansions require a new
   scorer fingerprint and a new isolated post-freeze generation.
 

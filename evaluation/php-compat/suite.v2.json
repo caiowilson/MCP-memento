@@ -169,6 +169,13 @@
           "query": "Which file introduces HandlesLocale so it can be placed above methods for a particular locale?",
           "relevant": [{"path": "holdout_20260713_v5/locale/HandlesLocale.php", "startLine": 9, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260713_v5/locale/WelcomeText.php", "startLine": 9, "endLine": 13}]
+        },
+        {
+          "id": "postv7-php80-final-pulse-shutdown",
+          "split": "holdout",
+          "query": "Which implementation installs the callback that appends the final audit marker after script termination, including an early exit?",
+          "relevant": [{"path": "holdout_20260713_v7/shutdown_callback/src/Terminal/TerminalPulse.php", "startLine": 8, "endLine": 12}],
+          "hardNegatives": [{"path": "holdout_20260713_v7/shutdown_callback/bin/pulse-worker.php", "startLine": 8, "endLine": 12}]
         }
       ]
     },
@@ -263,6 +270,13 @@
           "query": "Which routine's contract says that control can never come back after it is entered because the process is deliberately stopped?",
           "relevant": [{"path": "holdout_20260713_v6/terminal_contract/src/OssavyrBreachTerminus.php", "startLine": 7, "endLine": 12}],
           "hardNegatives": [{"path": "holdout_20260713_v6/terminal_contract/app/OssavyrBoundaryGate.php", "startLine": 7, "endLine": 14}]
+        },
+        {
+          "id": "postv7-php81-glint-phase-values",
+          "split": "holdout",
+          "query": "Where are the allowed processing phases and their persisted string values defined?",
+          "relevant": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Domain/GlintPhase.php", "startLine": 6, "endLine": 11}],
+          "hardNegatives": [{"path": "holdout_20260713_v7/backed_enum/src/VirelliumK9/Application/GlintPhasePresenter.php", "startLine": 12, "endLine": 16}]
         }
       ]
     },
@@ -553,6 +567,13 @@
           "query": "Where does the package state which folder should supply classes belonging to its own namespace?",
           "relevant": [{"path": "holdout_20260713_v6/package_mapping/composer.json", "startLine": 5, "endLine": 9}],
           "hardNegatives": [{"path": "holdout_20260713_v6/package_mapping/tools/inspect_moire.php", "startLine": 3, "endLine": 8}]
+        },
+        {
+          "id": "postv7-composer-aurora-namespace",
+          "split": "holdout",
+          "query": "Which configuration makes classes beginning with VirelliumK9\\Aurora resolve from engine/Aurora without individual file includes?",
+          "relevant": [{"path": "holdout_20260713_v7/namespace_mapping/composer.json", "startLine": 6, "endLine": 10}],
+          "hardNegatives": [{"path": "holdout_20260713_v7/namespace_mapping/public/index.php", "startLine": 4, "endLine": 6}]
         }
       ]
     },
@@ -741,6 +762,13 @@
           "query": "Where does a Studio say that it can have many SessionSlot records?",
           "relevant": [{"path": "holdout_20260713_v5/src/Entity/Studio.php", "startLine": 14, "endLine": 16}],
           "hardNegatives": [{"path": "holdout_20260713_v5/src/Scheduling/StudioSchedule.php", "startLine": 11, "endLine": 20}]
+        },
+        {
+          "id": "postv7-symfony-prism-vault-association",
+          "split": "holdout",
+          "query": "Where is it declared that every shard belongs to a vault and that the vault maintains the opposite collection?",
+          "relevant": [{"path": "holdout_20260713_v7/entity_association/src/Ledger/Entity/PrismShard.php", "startLine": 16, "endLine": 18}],
+          "hardNegatives": [{"path": "holdout_20260713_v7/entity_association/src/Ledger/Controller/PrismShardView.php", "startLine": 10, "endLine": 12}]
         }
       ]
     },
@@ -800,6 +828,13 @@
           "query": "Which plugin constructor receives the report repository as a private dependency?",
           "relevant": [{"path": "includes/class-report-plugin.php", "startLine": 7, "endLine": 7}],
           "hardNegatives": [{"path": "includes/class-report-repository.php", "startLine": 5, "endLine": 5}]
+        },
+        {
+          "id": "postv7-wordpress-ember-uninstall",
+          "split": "holdout",
+          "query": "Which registration makes permanent option cleanup occur when the plugin is deleted, rather than when it is merely switched off?",
+          "relevant": [{"path": "holdout_20260713_v7/uninstall_hook/virellium-k9-ember-ledger.php", "startLine": 9, "endLine": 9}],
+          "hardNegatives": [{"path": "holdout_20260713_v7/uninstall_hook/src/Deactivation.php", "startLine": 6, "endLine": 9}]
         }
       ]
     },
