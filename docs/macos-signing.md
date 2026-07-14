@@ -4,8 +4,8 @@ Versioned `server/v*` releases always publish checksum-protected raw macOS
 binaries for Intel and Apple silicon. When the repository variable
 `MACOS_NOTARIZATION_ENABLED` is `true`, the same release also publishes signed,
 notarized, stapled `.pkg` installers. The `server/latest` workflow waits for the
-versioned release, verifies the exact configured 14- or 16-asset manifest and
-all six binary checksums, then mirrors the same assets. It never rebuilds a
+versioned release, verifies the exact configured 16- or 18-asset manifest and
+all six binary checksums plus the installer checksum, then mirrors the same assets. It never rebuilds a
 second set of macOS artifacts.
 
 The raw macOS binaries are unsigned cross-builds in both modes. Their published
@@ -162,8 +162,8 @@ spctl --assess --type install --verbose=4 dist/memento-mcp_VERSION_darwin_ARCH.p
   verify network access to Apple, and confirm the submitted file is byte-for-byte
   identical to the file being stapled.
 - **`server/latest` times out:** inspect the versioned release first. It must
-  contain exactly six binaries, six matching `.sha256` sidecars, and two `.deb`
-  packages. When `MACOS_NOTARIZATION_ENABLED=true`, it must also contain two
+  contain exactly six binaries, six matching binary `.sha256` sidecars, two `.deb`
+  packages, and `install.sh` with its own `.sha256` sidecar. When `MACOS_NOTARIZATION_ENABLED=true`, it must also contain two
   notarized `.pkg` packages. The latest workflow deliberately rejects partial
   or extra manifests.
 

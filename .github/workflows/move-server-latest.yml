@@ -69,6 +69,8 @@ jobs:
           expected_assets() {
             {
               printf '%s\n' \
+                install.sh \
+                install.sh.sha256 \
                 memento-mcp_darwin_x64 \
                 memento-mcp_darwin_x64.sha256 \
                 memento-mcp_darwin_arm64 \

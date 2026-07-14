@@ -4,6 +4,18 @@ This is the canonical page for configuring `memento-mcp` in Claude Code, Claude 
 
 ## Quick start
 
+Install the verified standalone release and automatically configure detected Codex and Claude Code CLIs:
+
+```bash
+curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
+```
+
+For explicit client selection, pass arguments through the shell:
+
+```bash
+curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh -s -- --clients codex,claude
+```
+
 Build the binary from the repo root:
 
 ```bash
@@ -17,10 +29,17 @@ Let Memento detect supported clients and write their configuration, or preview t
 ./bin/memento-mcp setup --print-only
 ```
 
-For a deterministic non-interactive target, repeat `--client` as needed. Supported values are `vscode`, `cursor`, `claude-desktop`, and `windsurf`. For example:
+For a deterministic non-interactive target, repeat `--client` or pass a comma-separated `--clients` list. Supported values are `codex`, `claude`/`claude-code`, `vscode`, `cursor`, `claude-desktop`, and `windsurf`. For example:
 
 ```bash
 ./bin/memento-mcp setup --client=vscode --client=cursor
+./bin/memento-mcp setup --clients=codex,claude
+```
+
+Setup validates all selected targets before mutation, preserves existing server entries, refuses malformed JSON, writes JSON atomically, and requires `--force` before replacing a CLI registration that points to another executable. Validate the installed binary and exact registrations without changing them:
+
+```bash
+./bin/memento-mcp doctor --clients=codex,claude
 ```
 
 Print a generic MCP config snippet:
@@ -54,7 +73,7 @@ memento-mcp update --check
 memento-mcp update
 ```
 
-The update command downloads the matching macOS, Linux, or Windows asset, verifies its published SHA-256 sidecar, and replaces the current executable only after verification succeeds. On Windows, a short-lived PowerShell helper finishes the replacement after the running update command exits. A failed download or checksum leaves the current executable unchanged. Plugin-managed installs are intentionally rejected because the plugin pins its launcher and server versions together.
+The update command downloads the matching macOS, Linux, or Windows asset, verifies its published SHA-256 sidecar, and replaces the current executable only after verification succeeds. On Windows, a short-lived PowerShell helper finishes the replacement after the running update command exits. A failed download or checksum leaves the current executable unchanged. Plugin-managed installs are intentionally rejected because the plugin pins its launcher and server versions together. Re-running the installer is also safe: it preflights the staged binary and retains the prior standalone executable as `.previous`.
 
 Published builds check for a newer server release in the background at most once every 24 hours. The request contains no workspace path or repository content. Only an available-update notice is written to stderr, keeping MCP stdout protocol-safe; network and cache failures stay silent. Set `MEMENTO_UPDATE_CHECK=false` to opt out. Development builds do not perform the automatic check.
 

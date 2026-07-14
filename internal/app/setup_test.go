@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,7 +98,10 @@ func TestServerConfigForServeLeavesAbsentRootEmpty(t *testing.T) {
 }
 
 func TestParseSetupFlags(t *testing.T) {
-	opts := parseSetupFlags([]string{"--client=vscode", "--client=cursor", "--print-only"})
+	opts, err := parseSetupFlags([]string{"--client=vscode", "--client=cursor", "--print-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !opts.printOnly {
 		t.Error("expected printOnly=true")
 	}
@@ -116,7 +120,7 @@ func TestBuildClientConfigWithCwd(t *testing.T) {
 	if cfg["cwd"] != "${workspaceFolder}" {
 		t.Errorf("expected cwd for VS Code, got %v", cfg["cwd"])
 	}
-	if cfg["name"] != "memento-mcp" {
+	if cfg["name"] != "memento" {
 		t.Errorf("expected name for VS Code, got %v", cfg["name"])
 	}
 	if cfg["transport"] != "stdio" {
@@ -157,8 +161,8 @@ func TestUpsertConfigNewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	servers := result["mcpServers"].(map[string]any)
-	if _, ok := servers["memento-mcp"]; !ok {
-		t.Error("expected memento-mcp entry")
+	if _, ok := servers["memento"]; !ok {
+		t.Error("expected memento entry")
 	}
 }
 
@@ -193,8 +197,8 @@ func TestUpsertConfigPreservesOtherServers(t *testing.T) {
 	if _, ok := servers["other-server"]; !ok {
 		t.Error("upsert should preserve other servers")
 	}
-	if _, ok := servers["memento-mcp"]; !ok {
-		t.Error("upsert should add memento-mcp")
+	if _, ok := servers["memento"]; !ok {
+		t.Error("upsert should add memento")
 	}
 }
 
@@ -237,7 +241,7 @@ func TestConfigureClientsPrintOnly(t *testing.T) {
 			ConfigPath: "/fake/path/mcp.json"},
 	}
 
-	err := configureClients(clients, "/bin/memento-mcp", true, &buf)
+	err := configureClients(clients, "/bin/memento-mcp", setupOptions{printOnly: true}, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +268,7 @@ func TestConfigureClientsWritesFile(t *testing.T) {
 			ConfigPath: configPath},
 	}
 
-	err := configureClients(clients, "/bin/memento-mcp", false, &buf)
+	err := configureClients(clients, "/bin/memento-mcp", setupOptions{}, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +295,10 @@ func TestFilterClients(t *testing.T) {
 		{Slug: "claude-desktop"},
 	}
 
-	got := filterClients(all, []string{"vscode", "claude-desktop"})
+	got, err := filterClients(all, []string{"vscode", "claude-desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2, got %d", len(got))
 	}
@@ -336,7 +343,7 @@ func TestSetupNonInteractiveInvalidClient(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown client")
 	}
-	if !strings.Contains(err.Error(), "no matching clients") {
+	if !strings.Contains(err.Error(), "unknown client selection") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -353,5 +360,171 @@ func TestSetupCLIIntegration(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "memento-mcp") {
 		t.Error("output should contain config")
+	}
+}
+
+func TestParseSetupFlagsSupportsClientListsAndRejectsUnknown(t *testing.T) {
+	opts, err := parseSetupFlags([]string{"--clients", "codex,claude", "--force"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.force || len(opts.clients) != 2 || opts.clients[1] != "claude-code" {
+		t.Fatalf("unexpected options: %#v", opts)
+	}
+	if _, err := parseSetupFlags([]string{"--wat"}); err == nil {
+		t.Fatal("expected unknown option to fail")
+	}
+}
+
+func TestConfigureClientsRefusesInvalidJSONWithoutChangingIt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.json")
+	original := []byte("{ definitely not json\n")
+	if err := os.WriteFile(path, original, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	client := mcpClient{Name: "Test", Slug: "test", ConfigPath: path}
+	err := configureClients([]mcpClient{client}, "/bin/memento-mcp", setupOptions{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid JSON") {
+		t.Fatalf("expected invalid JSON error, got %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("configuration changed: %q", got)
+	}
+}
+
+func TestUpsertConfigRefusesWrongContainerAndConflictingAliases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upsertConfig(path, map[string]any{"command": "/bin/memento"}); err == nil {
+		t.Fatal("expected wrong mcpServers type to fail")
+	}
+	conflict := `{"mcpServers":{"memento":{"command":"/one"},"memento-mcp":{"command":"/two"}}}`
+	if err := os.WriteFile(path, []byte(conflict), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upsertConfig(path, map[string]any{"command": "/bin/memento"}); err == nil {
+		t.Fatal("expected alias conflict to fail")
+	}
+}
+
+func TestWriteConfigIsAtomicAndPreservesMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.json")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeConfig(path, []byte(`{"ok":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode = %o, want 640", info.Mode().Perm())
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".memento-config-*")); len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
+func TestConfigureCodexUsesOfficialCLIAndIsIdempotent(t *testing.T) {
+	oldLookPath, oldCommand := clientLookPath, clientCommand
+	t.Cleanup(func() { clientLookPath, clientCommand = oldLookPath, oldCommand })
+	clientLookPath = func(name string) (string, error) { return "/bin/" + name, nil }
+	var calls [][]string
+	configured := false
+	clientCommand = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		if len(args) >= 3 && args[0] == "mcp" && args[1] == "list" {
+			if configured {
+				return []byte(`[{"name":"memento","transport":{"type":"stdio","command":"/bin/memento-mcp"}}]`), nil
+			}
+			return []byte(`[]`), nil
+		}
+		configured = true
+		return nil, nil
+	}
+	client := mcpClient{Name: "Codex", Slug: "codex", Kind: cliClient, CLI: "codex"}
+	var out bytes.Buffer
+	if err := configureClients([]mcpClient{client}, "/bin/memento-mcp", setupOptions{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || strings.Join(calls[1], " ") != "codex mcp add memento -- /bin/memento-mcp" {
+		t.Fatalf("unexpected calls: %v", calls)
+	}
+	calls = nil
+	if err := configureClients([]mcpClient{client}, "/bin/memento-mcp", setupOptions{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("idempotent setup should only inspect, got %v", calls)
+	}
+}
+
+func TestClaudeForcedReplacementRestoresExactConfigOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".claude.json")
+	original := []byte(`{"mcpServers":{"memento":{"command":"/old"}}}`)
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldCommand := clientCommand
+	t.Cleanup(func() { clientCommand = oldCommand })
+	clientCommand = func(name string, args ...string) ([]byte, error) {
+		if len(args) >= 3 && args[1] == "remove" {
+			if err := os.WriteFile(path, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		return nil, errors.New("simulated add failure")
+	}
+	client := mcpClient{Name: "Claude Code", Slug: "claude-code", Kind: cliClient, CLI: "claude", ConfigPath: path}
+	err := configureCLIClient(client, clientState{Status: "stale", Name: "memento"}, "/new", true)
+	if err == nil || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("expected restored failure, got %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("restored bytes differ: %q", got)
+	}
+}
+
+func TestConfigureClientsPreflightsAllJSONBeforeWriting(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.json")
+	invalid := filepath.Join(dir, "invalid.json")
+	if err := os.WriteFile(invalid, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clients := []mcpClient{
+		{Name: "First", Slug: "first", ConfigPath: first},
+		{Name: "Invalid", Slug: "invalid", ConfigPath: invalid},
+	}
+	if err := configureClients(clients, "/bin/memento", setupOptions{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected preflight failure")
+	}
+	if _, err := os.Stat(first); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("first target was written before preflight completed: %v", err)
+	}
+}
+
+func TestRunSetupRefusesPluginManagedExecutablePath(t *testing.T) {
+	t.Setenv("CLAUDE_PLUGIN_DATA", t.TempDir())
+	err := runSetup([]string{"--client=vscode"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "plugin-managed cache path") {
+		t.Fatalf("expected plugin-managed setup refusal, got %v", err)
 	}
 }

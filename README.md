@@ -59,16 +59,17 @@ It provides bounded repository orientation, local change review, and user-confir
 
 ### Standalone binary
 
-Install the latest prebuilt server to `~/.local/bin`:
+Install the latest prebuilt server to `~/.local/bin`, then automatically register and verify it in any detected Codex and Claude Code CLIs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/caiowilson/MCP-memento/main/install.sh | sh
+curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
 ```
 
-Set `MEMENTO_INSTALL_DIR` to choose another directory. The installer supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
+The installer downloads the platform binary and its SHA-256 sidecar, validates the sidecar filename and digest, executes a staged version preflight, atomically replaces the target, retains the prior binary as `.previous`, runs idempotent client setup, and finishes with `doctor`. Set `MEMENTO_INSTALL_DIR` or pass `--install-dir`; use `--clients codex,claude`, `--no-setup`, or `--version 0.11.0` for deterministic control. It supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
 
 ```bash
 memento-mcp help
+memento-mcp doctor
 ```
 
 Update a standalone installation in place:
@@ -99,6 +100,8 @@ For a standalone build, let Memento detect and configure installed clients, or p
 ```bash
 memento-mcp setup
 memento-mcp setup --print-only
+memento-mcp setup --clients=codex,claude
+memento-mcp doctor --clients=codex,claude
 ```
 
 Use `memento-mcp print-config` for a generic JSON entry and `memento-mcp print-guidance` for the canonical agent instructions. Claude Code plugin users need no separate MCP configuration; verify the automatically started server with `/mcp`.

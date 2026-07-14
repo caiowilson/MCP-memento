@@ -52,16 +52,17 @@ Ele oferece orientação limitada do repositório, revisão de mudanças locais 
 
 ### Binário independente
 
-Instale a versão mais recente do servidor pré-compilado em `~/.local/bin`:
+Instale a versão mais recente do servidor pré-compilado em `~/.local/bin` e registre-a automaticamente nos CLIs do Codex e do Claude Code detectados:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/caiowilson/MCP-memento/main/install.sh | sh
+curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
 ```
 
-Defina `MEMENTO_INSTALL_DIR` para escolher outro diretório. O instalador suporta macOS, Linux e ambientes Windows com shell POSIX em x64 e arm64. Garanta que o diretório escolhido esteja no `PATH` e verifique o binário:
+O instalador verifica o sidecar SHA-256, testa o binário antes da troca, preserva a versão anterior como `.previous`, configura os clientes de forma idempotente e termina executando `doctor`. Defina `MEMENTO_INSTALL_DIR`, passe `--install-dir`, use `--clients codex,claude`, `--no-setup` ou fixe uma release com `--version 0.11.0`. O instalador suporta macOS, Linux e ambientes Windows com shell POSIX em x64 e arm64. Garanta que o diretório escolhido esteja no `PATH` e verifique o binário:
 
 ```bash
 memento-mcp help
+memento-mcp doctor
 ```
 
 Atualize uma instalação independente no próprio local:

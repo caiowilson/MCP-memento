@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -32,9 +33,10 @@ type releaseAsset struct {
 }
 
 type serverRelease struct {
-	TagName string         `json:"tag_name"`
-	Draft   bool           `json:"draft"`
-	Assets  []releaseAsset `json:"assets"`
+	TagName    string         `json:"tag_name"`
+	Draft      bool           `json:"draft"`
+	Prerelease bool           `json:"prerelease"`
+	Assets     []releaseAsset `json:"assets"`
 }
 
 func (r serverRelease) version() string {
@@ -48,6 +50,7 @@ type updater struct {
 	goos           string
 	goarch         string
 	executable     func() (string, error)
+	validate       func(path, expectedVersion string) error
 }
 
 func defaultUpdater() updater {
@@ -58,6 +61,7 @@ func defaultUpdater() updater {
 		goos:           runtime.GOOS,
 		goarch:         runtime.GOARCH,
 		executable:     os.Executable,
+		validate:       validateReleaseBinary,
 	}
 }
 
@@ -121,7 +125,10 @@ func (u updater) latestRelease(ctx context.Context) (serverRelease, error) {
 	}
 	var latest serverRelease
 	for _, release := range releases {
-		if release.Draft || !strings.HasPrefix(release.TagName, "server/v") {
+		if release.Draft || release.Prerelease || !strings.HasPrefix(release.TagName, "server/v") {
+			continue
+		}
+		if _, ok := compareVersions(release.version(), release.version()); !ok {
 			continue
 		}
 		if latest.TagName == "" {
@@ -183,12 +190,17 @@ func (u updater) install(ctx context.Context, release serverRelease, target stri
 		return fmt.Errorf("release %s does not contain %s and its checksum", release.TagName, assetName)
 	}
 
-	want, err := u.fetchChecksum(ctx, checksumURL)
+	want, err := u.fetchChecksum(ctx, checksumURL, assetName)
 	if err != nil {
 		return fmt.Errorf("download checksum: %w", err)
 	}
 
 	dir := filepath.Dir(target)
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to replace symlinked executable %s", target)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect executable %s: %w", target, err)
+	}
 	tmp, err := os.CreateTemp(dir, ".memento-mcp-update-*")
 	if err != nil {
 		return fmt.Errorf("create update beside %s: %w", target, err)
@@ -235,13 +247,18 @@ func (u updater) install(ctx context.Context, release serverRelease, target stri
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close update: %w", err)
 	}
+	if u.validate != nil {
+		if err := u.validate(tmpPath, release.version()); err != nil {
+			return fmt.Errorf("validate staged update: %w", err)
+		}
+	}
 	if err := replaceExecutable(tmpPath, target); err != nil {
 		return fmt.Errorf("replace %s: %w", target, err)
 	}
 	return nil
 }
 
-func (u updater) fetchChecksum(ctx context.Context, url string) (string, error) {
+func (u updater) fetchChecksum(ctx context.Context, url, assetName string) (string, error) {
 	resp, err := u.request(ctx, url)
 	if err != nil {
 		return "", err
@@ -252,13 +269,25 @@ func (u updater) fetchChecksum(ctx context.Context, url string) (string, error) 
 		return "", err
 	}
 	fields := strings.Fields(string(b))
-	if len(fields) == 0 || len(fields[0]) != sha256.Size*2 {
+	if len(fields) != 2 || len(fields[0]) != sha256.Size*2 || strings.TrimPrefix(fields[1], "*") != assetName {
 		return "", errors.New("invalid SHA-256 sidecar")
 	}
 	if _, err := hex.DecodeString(fields[0]); err != nil {
 		return "", errors.New("invalid SHA-256 sidecar")
 	}
 	return strings.ToLower(fields[0]), nil
+}
+
+func validateReleaseBinary(path, expectedVersion string) error {
+	out, err := exec.Command(path, "version").Output()
+	if err != nil {
+		return err
+	}
+	got := strings.TrimSpace(string(out))
+	if got != expectedVersion {
+		return fmt.Errorf("reported version %q, expected %q", got, expectedVersion)
+	}
+	return nil
 }
 
 func binaryAssetName(goos, goarch string) (string, error) {
