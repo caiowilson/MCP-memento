@@ -12,7 +12,7 @@ import (
 
 func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	suite := loadCheckedInSuite(t)
-	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v6" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
+	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v7" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
 		t.Fatalf("unexpected retrieval policy: version=%d policy=%#v", suite.Version, suite.RetrievalPolicy)
 	}
 	wantIDs := []string{
@@ -68,7 +68,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 74 || retrievalJudgments != 79 || retrievalSplits[RetrievalSplitTrain] != 35 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 28 {
+	if retrievalQueries != 74 || retrievalJudgments != 79 || retrievalSplits[RetrievalSplitTrain] != 36 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 27 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
 	}
 }

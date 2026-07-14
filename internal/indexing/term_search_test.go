@@ -40,6 +40,7 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"deferred callable", "Where is formatLabel packaged up so it can be passed around and run later?", func(intent termSearchIntent) bool { return intent.callable }},
 		{"config definition", "Which configuration entry defines the reporting endpoint?", func(intent termSearchIntent) bool { return intent.configDefinition && intent.definition }},
 		{"relationship declaration", "Which entity mapping assigns its repository class?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.definition }},
+		{"collection relationship", "Where does the data model state that one parent record is connected to a collection of dependent records?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.collectionRelation }},
 		{"never termination", "Which method declares it never returns and terminates by throwing?", func(intent termSearchIntent) bool { return intent.neverTermination }},
 		{"config consumer", "Where is reporting configuration consumed by the exporter?", func(intent termSearchIntent) bool { return !intent.configDefinition }},
 	}
@@ -212,6 +213,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Which entity mapping assigns the AuditLog repository class?",
 			target:     Chunk{Path: "src/Entity/AuditLog.php", Language: "php", Content: "#[ORM\\Entity(repositoryClass: AuditLogRepository::class)]\nfinal class AuditLog {}\n"},
 			distractor: Chunk{Path: "src/Service/AuditReader.php", Language: "php", Content: "final class AuditReader { public function __construct(private AuditLogRepository $repository) {} }\n"},
+		},
+		{
+			name:       "parent collection relationship",
+			query:      "Where does the data model state that one parent record is connected to a collection of dependent records?",
+			target:     Chunk{Path: "app/Models/VaultRecord.php", Language: "php", Content: "public function fragments(): HasMany\n{\n    return $this->hasMany(FragmentRecord::class);\n}\n"},
+			distractor: Chunk{Path: "app/Http/Controllers/VaultPresenter.php", Language: "php", Content: "public function present(VaultRecord $vault): array\n{\n    return $vault->fragments()->all();\n}\n"},
 		},
 		{
 			name:       "never termination",

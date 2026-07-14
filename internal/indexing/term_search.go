@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and a bounded path tie-break.
-const TermSearchVersion = "terms-v6"
+const TermSearchVersion = "terms-v7"
 
 type termSearchIntent struct {
 	definition          bool
@@ -17,6 +17,7 @@ type termSearchIntent struct {
 	callable            bool
 	configDefinition    bool
 	relationDeclaration bool
+	collectionRelation  bool
 	neverTermination    bool
 }
 
@@ -71,12 +72,16 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	relationConcept := containsAny(lower,
 		"relationship", "repository class", "repository mapping", "entity mapping", "belongs-to", "belongs to", "has-many", "has many", "has-one", "has one", "many-to-one", "one-to-many",
 	)
+	collectionRelation := containsAny(lower, "parent record", "parent model", "one parent") && containsAny(lower,
+		"collection of dependent", "collection of child", "collection of related", "many dependent records", "many child records",
+	)
 	return termSearchIntent{
 		definition:          definition,
 		attribute:           containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
 		callable:            callableIntent,
 		configDefinition:    configDefinition,
-		relationDeclaration: relationConcept && definition,
+		relationDeclaration: relationConcept && definition || collectionRelation,
+		collectionRelation:  collectionRelation,
 		neverTermination:    strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
 	}
 }
@@ -187,13 +192,14 @@ func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
 		}
 	}
 	if intent.relationDeclaration {
+		relationSyntax := containsAny(content, "belongsto(", "hasmany(", "hasone(", "manytoone", "onetomany")
 		if strings.Contains(content, "repositoryclass") {
 			score += 2 * exactTermUnit
 		}
-		if containsAny(content, "belongsto(", "hasmany(", "hasone(", "manytoone", "onetomany") {
+		if relationSyntax {
 			score += 2 * exactTermUnit
 		}
-		if strings.Contains(path, "/entity/") || strings.Contains(path, "/models/") || strings.HasPrefix(path, "entity/") || strings.HasPrefix(path, "models/") {
+		if (!intent.collectionRelation || relationSyntax) && (strings.Contains(path, "/entity/") || strings.Contains(path, "/models/") || strings.HasPrefix(path, "entity/") || strings.HasPrefix(path, "models/")) {
 			score += exactTermUnit
 		}
 		if strings.Contains(path, "/service/") || strings.Contains(path, "/services/") || strings.Contains(path, "/controller/") || strings.Contains(path, "/handler/") {

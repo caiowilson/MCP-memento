@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v6",
+    "adapter": "terms-v7",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -648,7 +648,7 @@
         },
         {
           "id": "postv6-laravel-model-association",
-          "split": "holdout",
+          "split": "train",
           "query": "Where does the data model state that one parent record is connected to a collection of dependent records?",
           "relevant": [{"path": "holdout_20260713_v6/model_association/app/Models/BrumelithVaultRecord.php", "startLine": 12, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260713_v6/model_association/app/Http/Controllers/BrumelithVaultPresenter.php", "startLine": 9, "endLine": 18}]

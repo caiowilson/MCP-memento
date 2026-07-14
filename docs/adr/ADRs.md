@@ -24,7 +24,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
 - ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
-- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v6) (Accepted, 2026-07-13)
+- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v7) (Accepted, 2026-07-13)
 
 ---
 
@@ -805,7 +805,7 @@ did not measure distractors explicitly.
 
 ---
 
-## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v6)
+## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v7)
 
 - Status: Accepted
 - Date: 2026-07-13
@@ -848,6 +848,11 @@ while requiring embeddings would weaken the deterministic offline default.
   one hard-negative win was promoted to training, and `terms-v6` recognizes a
   bounded set of deferred-execution phrases before applying the existing
   first-class-callable syntax bonus.
+- The independently authored post-terms-v6 generation described an ORM
+  association without framework terms. Promote only that miss and version the
+  fix as `terms-v7`: paired parent and dependent-collection roles activate the
+  intent, while only concrete `hasMany` or equivalent ORM syntax receives the
+  model-path bonus. Model class shells therefore cannot win on path alone.
 
 ### Consequences
 
@@ -870,8 +875,9 @@ while requiring embeddings would weaken the deterministic offline default.
   nDCG@5 `0.658`, and one hard-negative win. Deferred behavior and Composer
   mapping rank first, a never-returning routine ranks second, and
   framework-neutral parent-to-collection wording misses the Eloquent
-  relationship method. This remains immutable terms-v6 evidence and may only
-  become training input for a separately versioned scorer.
+  relationship method. This remains immutable terms-v6 evidence; the one miss
+  is promoted under terms-v7, whose 36-query training gate ranks every relevant
+  answer first with zero hard-negative wins.
 - Cue vocabulary remains intentionally narrow. Future expansions require a new
   scorer fingerprint and a new isolated post-freeze generation.
 
