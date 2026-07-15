@@ -8,20 +8,22 @@ import (
 
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
-// structural query intent, and a bounded path tie-break.
-const TermSearchVersion = "terms-v8"
+// structural query intent, and bounded relationship-role evidence.
+const TermSearchVersion = "terms-v9"
 
 type termSearchIntent struct {
-	definition            bool
-	attribute             bool
-	callable              bool
-	configDefinition      bool
-	relationDeclaration   bool
-	collectionRelation    bool
-	neverTermination      bool
-	backedEnumDefinition  bool
-	shutdownRegistration  bool
-	uninstallRegistration bool
+	definition               bool
+	attribute                bool
+	callable                 bool
+	configDefinition         bool
+	relationDeclaration      bool
+	collectionRelation       bool
+	neverTermination         bool
+	backedEnumDefinition     bool
+	shutdownRegistration     bool
+	uninstallRegistration    bool
+	preferRelationshipTarget bool
+	preferRelationshipSource bool
 }
 
 var searchStopWords = map[string]struct{}{
@@ -66,7 +68,7 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
 	)
 	definition := containsAny(lower,
-		" defin", " declar", " assign", " map", " wire", " register", " restrict", " annotat", " marked with ",
+		" defin", " declar", " assign", " map", " wire", " register", " restrict", " annotat", " marked with ", " attach", " bind",
 	)
 	configConcept := containsAny(lower, "config", "setting", "service container")
 	configDefinition := configConcept && (definition || containsAny(lower,
@@ -78,10 +80,19 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	collectionRelation := containsAny(lower, "parent record", "parent model", "one parent") && containsAny(lower,
 		"collection of dependent", "collection of child", "collection of related", "many dependent records", "many child records",
 	)
-	backedEnumDefinition := definition && containsAny(lower, "allowed", "persisted") && containsAny(lower, "phase", "state", "status", "value")
-	shutdownRegistration := containsAny(lower, "script termination", "shutdown", "after termination", "early exit") && containsAny(lower, "callback", "function") && containsAny(lower, "install", "register", "registration", "implementation")
-	uninstallRegistration := containsAny(lower, "plugin is deleted", "plugin deletion", "deleted plugin", "uninstall") && containsAny(lower, "registration", "register", "hook")
-	return termSearchIntent{
+	enumConcept := containsAny(lower, "phase", "state", "status", "outcome", "verdict", "option", "choice")
+	serializedValueConcept := containsAny(lower, "persist", "string", "integer", "int code", "code", "value")
+	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every")
+	terminationConcept := containsAny(lower,
+		"script termination", "process termination", "process terminates", "process exits", "shutdown", "after termination", "early exit", "last-chance", "finalization",
+	)
+	bindingConcept := containsAny(lower, "install", "register", "registration", "implementation", "attach", "bind", "hook", "wire")
+	shutdownRegistration := terminationConcept && containsAny(lower, "callback", "function", "hook") && bindingConcept
+	pluginDeletion := strings.Contains(lower, "plugin") && containsAny(lower,
+		"is deleted", "deletes the plugin", "delete the plugin", "plugin deletion", "deleted plugin", "uninstall", "is removed", "removes the plugin",
+	)
+	uninstallRegistration := pluginDeletion && bindingConcept
+	intent := termSearchIntent{
 		definition:            definition,
 		attribute:             containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
 		callable:              callableIntent,
@@ -93,6 +104,42 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 		shutdownRegistration:  shutdownRegistration,
 		uninstallRegistration: uninstallRegistration,
 	}
+	intent.preferRelationshipTarget = backedEnumDefinition || shutdownRegistration || configDefinition
+	intent.preferRelationshipSource = relationConcept && definition || collectionRelation || uninstallRegistration
+	return intent
+}
+
+func (intent termSearchIntent) usesRelationships() bool {
+	return intent.preferRelationshipTarget || intent.preferRelationshipSource
+}
+
+func termSearchRelationshipBonuses(candidatePaths []string, edges []RelationshipEdge, intent termSearchIntent) map[string]int {
+	const relationshipUnit = 20
+	candidates := make(map[string]struct{}, len(candidatePaths))
+	for _, path := range candidatePaths {
+		candidates[filepath.ToSlash(filepath.Clean(path))] = struct{}{}
+	}
+	bonuses := map[string]int{}
+	for _, edge := range edges {
+		from := filepath.ToSlash(filepath.Clean(edge.FromPath))
+		to := filepath.ToSlash(filepath.Clean(edge.ToPath))
+		if from == to {
+			continue
+		}
+		if _, ok := candidates[from]; !ok {
+			continue
+		}
+		if _, ok := candidates[to]; !ok {
+			continue
+		}
+		if intent.preferRelationshipSource {
+			bonuses[from] = relationshipUnit
+		}
+		if intent.preferRelationshipTarget {
+			bonuses[to] = relationshipUnit
+		}
+	}
+	return bonuses
 }
 
 func definitionSearchClause(query string) string {

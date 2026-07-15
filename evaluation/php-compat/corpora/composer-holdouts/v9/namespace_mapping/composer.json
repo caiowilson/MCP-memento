@@ -1,0 +1,11 @@
+{
+  "name": "northstar/freight-console",
+  "require": {
+    "php": "^8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "Northstar\\Freight\\": "library/Freight/"
+    }
+  }
+}

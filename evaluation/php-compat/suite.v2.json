@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v8",
+    "adapter": "terms-v9+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -280,14 +280,14 @@
         },
         {
           "id": "postv8-php81-parcel-verdict-codes",
-          "split": "holdout",
+          "split": "train",
           "query": "Where are the canonical string codes for every parcel review outcome declared?",
           "relevant": [{"path": "holdout_20260713_v8/backed_enum/src/Domain/ParcelVerdict.php", "startLine": 7, "endLine": 11}],
           "hardNegatives": [{"path": "holdout_20260713_v8/backed_enum/src/Presentation/VerdictPresenter.php", "startLine": 12, "endLine": 18}]
         },
         {
           "id": "postv8-php81-finalization-hook",
-          "split": "holdout",
+          "split": "train",
           "query": "Where is the last-chance drain callback itself attached so pending ledger records flush when the PHP process terminates?",
           "relevant": [{"path": "holdout_20260713_v8/shutdown_callback/src/Runtime/FinalizationHooks.php", "startLine": 11, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260713_v8/shutdown_callback/bin/export-ledger.php", "startLine": 10, "endLine": 15}]
@@ -298,6 +298,20 @@
           "query": "Where are Ember Vault's built-in retention window and per-run batch limit assigned?",
           "relevant": [{"path": "holdout_20260713_v8/config_defaults/config/archive.php", "startLine": 6, "endLine": 7}],
           "hardNegatives": [{"path": "holdout_20260713_v8/config_defaults/src/Archive/ArchivePlanner.php", "startLine": 15, "endLine": 20}]
+        },
+        {
+          "id": "postv9-php81-transit-disposition-labels",
+          "split": "holdout",
+          "query": "Which source establishes the stable wire labels for every transit disposition?",
+          "relevant": [{"path": "holdout_20260715_v9/backed_enum/src/Domain/TransitDisposition.php", "startLine": 7, "endLine": 11}],
+          "hardNegatives": [{"path": "holdout_20260715_v9/backed_enum/src/Api/DispositionSerializer.php", "startLine": 11, "endLine": 18}]
+        },
+        {
+          "id": "postv9-php81-cargo-exit-flush",
+          "split": "holdout",
+          "query": "Where is the final process-exit handler connected so queued cargo telemetry is committed?",
+          "relevant": [{"path": "holdout_20260715_v9/shutdown_registration/src/Runtime/ExitFlush.php", "startLine": 11, "endLine": 15}],
+          "hardNegatives": [{"path": "holdout_20260715_v9/shutdown_registration/bin/reconcile-cargo.php", "startLine": 10, "endLine": 15}]
         }
       ]
     },
@@ -612,6 +626,13 @@
           "query": "Which declaration makes the application's beacon classes beneath src/Beacon discoverable without hand-written includes?",
           "relevant": [{"path": "v8/namespace_mapping/composer.json", "startLine": 7, "endLine": 9}],
           "hardNegatives": [{"path": "v8/namespace_mapping/public/index.php", "startLine": 5, "endLine": 10}]
+        },
+        {
+          "id": "postv9-composer-northstar-freight-mapping",
+          "split": "holdout",
+          "query": "What package metadata makes Northstar Freight classes under library/Freight loadable without manual includes?",
+          "relevant": [{"path": "v9/namespace_mapping/composer.json", "startLine": 6, "endLine": 10}],
+          "hardNegatives": [{"path": "v9/namespace_mapping/bin/dispatch-route.php", "startLine": 5, "endLine": 10}]
         }
       ]
     },
@@ -711,6 +732,13 @@
           "query": "Where does the data model state that one parent record is connected to a collection of dependent records?",
           "relevant": [{"path": "holdout_20260713_v6/model_association/app/Models/BrumelithVaultRecord.php", "startLine": 12, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260713_v6/model_association/app/Http/Controllers/BrumelithVaultPresenter.php", "startLine": 9, "endLine": 18}]
+        },
+        {
+          "id": "postv9-laravel-manifest-cache-lifetime",
+          "split": "holdout",
+          "query": "Where is the application-wide fallback lifetime for shipping manifests established as nineteen minutes?",
+          "relevant": [{"path": "holdout_20260715_v9/config_defaults/config/manifest.php", "startLine": 3, "endLine": 6}],
+          "hardNegatives": [{"path": "holdout_20260715_v9/config_defaults/app/Services/ManifestCache.php", "startLine": 11, "endLine": 16}]
         }
       ]
     },
@@ -814,6 +842,13 @@
           "query": "Where is the lighthouse-to-inspection-note collection relationship declared, including its inverse field, persistence behavior, and removal of detached notes?",
           "relevant": [{"path": "holdout_20260713_v8/collection_association/src/Entity/Lighthouse.php", "startLine": 15, "endLine": 21}],
           "hardNegatives": [{"path": "holdout_20260713_v8/collection_association/src/Reporting/InspectionDigest.php", "startLine": 12, "endLine": 22}]
+        },
+        {
+          "id": "postv9-symfony-convoy-checkpoints",
+          "split": "holdout",
+          "query": "Which model member owns the convoy's checkpoint collection, names its inverse, and removes orphaned checkpoints?",
+          "relevant": [{"path": "holdout_20260715_v9/collection_association/src/Entity/Convoy.php", "startLine": 12, "endLine": 14}],
+          "hardNegatives": [{"path": "holdout_20260715_v9/collection_association/src/Reporting/CheckpointDigest.php", "startLine": 12, "endLine": 21}]
         }
       ]
     },
@@ -883,10 +918,30 @@
         },
         {
           "id": "postv8-wordpress-orchard-purge-hook",
-          "split": "holdout",
+          "split": "train",
           "query": "Where does the plugin bind its permanent data purge to the moment an administrator deletes the plugin?",
-          "relevant": [{"path": "holdout_20260713_v8/uninstall_hook/mica-orchard.php", "startLine": 11, "endLine": 14}],
+          "relevant": [
+            {"path": "holdout_20260713_v8/uninstall_hook/mica-orchard.php", "startLine": 11, "endLine": 14},
+            {"path": "holdout_20260713_v7/uninstall_hook/virellium-k9-ember-ledger.php", "startLine": 9, "endLine": 9}
+          ],
           "hardNegatives": [{"path": "holdout_20260713_v8/uninstall_hook/src/Lifecycle/OrchardPurge.php", "startLine": 9, "endLine": 14}]
+        }
+      ]
+    },
+    {
+      "id": "wordpress-holdouts",
+      "kind": "framework",
+      "phpVersion": "7.4",
+      "root": "corpora/wordpress-holdouts",
+      "modelledOn": "Independent WordPress plugin conventions for retrieval holdouts",
+      "files": [],
+      "retrieval": [
+        {
+          "id": "postv9-wordpress-opal-harbor-removal",
+          "split": "holdout",
+          "query": "Which bootstrap binds irreversible harbor cleanup to removal of the extension from WordPress?",
+          "relevant": [{"path": "v9/uninstall_hook/opal-harbor.php", "startLine": 11, "endLine": 14}],
+          "hardNegatives": [{"path": "v9/uninstall_hook/src/Maintenance/HarborEraser.php", "startLine": 9, "endLine": 14}]
         }
       ]
     },

@@ -11,6 +11,7 @@ import (
 
 	"memento-mcp/evaluation"
 	"memento-mcp/internal/indexing"
+	"memento-mcp/internal/mcp"
 	"memento-mcp/internal/parsing"
 	"memento-mcp/internal/testutil/phpcompat"
 )
@@ -139,8 +140,9 @@ func main() {
 }
 
 func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
-	if suite.RetrievalPolicy.Adapter != indexing.TermSearchVersion {
-		return report{}, fmt.Errorf("retrieval adapter %q does not match runtime %q", suite.RetrievalPolicy.Adapter, indexing.TermSearchVersion)
+	runtimeAdapter := indexing.TermSearchAdapterVersion(mcp.NewPHPRelationshipProvider(filepath.Dir(suitePath)))
+	if suite.RetrievalPolicy.Adapter != runtimeAdapter {
+		return report{}, fmt.Errorf("retrieval adapter %q does not match runtime %q", suite.RetrievalPolicy.Adapter, runtimeAdapter)
 	}
 	out := report{Version: reportVersion, Suite: filepath.Base(suitePath), Thresholds: suite.Thresholds, Passed: true}
 	var overall counts
@@ -236,7 +238,10 @@ func evaluate(suitePath string, suite phpcompat.Suite) (report, error) {
 				root,
 				filepath.Join(retrievalStore, corpus.ID),
 				fixtures,
-				evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+				evaluation.ExecuteConfig{
+					TermAware: true, DistinctPaths: true,
+					RelationshipProvider: mcp.NewPHPRelationshipProvider(root),
+				},
 			)
 			if err != nil {
 				return report{}, fmt.Errorf("%s retrieval: %w", corpus.ID, err)

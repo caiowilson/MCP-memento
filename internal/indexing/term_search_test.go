@@ -43,8 +43,17 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"collection relationship", "Where does the data model state that one parent record is connected to a collection of dependent records?", func(intent termSearchIntent) bool { return intent.relationDeclaration && intent.collectionRelation }},
 		{"never termination", "Which method declares it never returns and terminates by throwing?", func(intent termSearchIntent) bool { return intent.neverTermination }},
 		{"backed enum definition", "Where are the allowed phases and their persisted string values defined?", func(intent termSearchIntent) bool { return intent.backedEnumDefinition }},
+		{"backed enum paraphrase", "Where are the canonical string codes for every parcel review outcome declared?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
+		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
+			return intent.shutdownRegistration && intent.preferRelationshipTarget
+		}},
 		{"uninstall registration", "Which registration cleans up when the plugin is deleted?", func(intent termSearchIntent) bool { return intent.uninstallRegistration }},
+		{"uninstall binding paraphrase", "Where does the plugin bind its permanent purge to when an administrator deletes the plugin?", func(intent termSearchIntent) bool {
+			return intent.uninstallRegistration && intent.preferRelationshipSource
+		}},
 		{"config consumer", "Where is reporting configuration consumed by the exporter?", func(intent termSearchIntent) bool { return !intent.configDefinition }},
 	}
 	for _, test := range tests {
@@ -53,6 +62,24 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 				t.Fatalf("classifyTermSearchIntent(%q) = %#v", test.query, intent)
 			}
 		})
+	}
+}
+
+func TestTermSearchRelationshipBonusesAreDirectionalAndCandidateBounded(t *testing.T) {
+	edges := []RelationshipEdge{
+		{FromPath: "consumer.php", ToPath: "provider.php"},
+		{FromPath: "consumer.php", ToPath: "outside.php"},
+		{FromPath: "provider.php", ToPath: "provider.php"},
+	}
+	candidates := []string{"consumer.php", "provider.php"}
+
+	inbound := termSearchRelationshipBonuses(candidates, edges, termSearchIntent{preferRelationshipTarget: true})
+	if inbound["provider.php"] != 20 || inbound["consumer.php"] != 0 || inbound["outside.php"] != 0 {
+		t.Fatalf("unexpected inbound bonuses: %#v", inbound)
+	}
+	outbound := termSearchRelationshipBonuses(candidates, edges, termSearchIntent{preferRelationshipSource: true})
+	if outbound["consumer.php"] != 20 || outbound["provider.php"] != 0 || outbound["outside.php"] != 0 {
+		t.Fatalf("unexpected outbound bonuses: %#v", outbound)
 	}
 }
 
@@ -236,16 +263,34 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			distractor: Chunk{Path: "src/Application/GlintPhasePresenter.php", Language: "php", Content: "return match ($phase) { GlintPhase::Seeded => 'Queued' };\n"},
 		},
 		{
+			name:       "backed enum canonical-code paraphrase",
+			query:      "Where are the canonical string codes for every parcel review outcome declared?",
+			target:     Chunk{Path: "src/Domain/ParcelVerdict.php", Language: "php", Content: "enum ParcelVerdict: string\n{\n    case Cleared = 'cleared';\n}\n"},
+			distractor: Chunk{Path: "src/Presentation/VerdictPresenter.php", Language: "php", Content: "return match ($verdict) { ParcelVerdict::Cleared => 'Cleared' };\n"},
+		},
+		{
 			name:       "shutdown callback registration",
 			query:      "Which implementation installs the callback that appends the final marker after script termination, including an early exit?",
 			target:     Chunk{Path: "src/TerminalPulse.php", Language: "php", Content: "register_shutdown_function(static function (): void { appendFinalMarker(); });\n"},
 			distractor: Chunk{Path: "bin/worker.php", Language: "php", Content: "appendFinalPulse($path);\nif ($halt) { exit(17); }\n"},
 		},
 		{
+			name:       "shutdown attachment paraphrase",
+			query:      "Where is the last-chance drain callback attached so records flush when the PHP process terminates?",
+			target:     Chunk{Path: "src/FinalizationHooks.php", Language: "php", Content: "register_shutdown_function(static function (): void { drainPending(); });\n"},
+			distractor: Chunk{Path: "bin/export.php", Language: "php", Content: "FinalizationHooks::install($drainer);\nif ($abort) { exit(2); }\n"},
+		},
+		{
 			name:       "WordPress uninstall registration",
 			query:      "Which registration makes cleanup occur when the plugin is deleted rather than merely switched off?",
 			target:     Chunk{Path: "plugin.php", Language: "php", Content: "register_uninstall_hook(__FILE__, 'purgePlugin');\n"},
 			distractor: Chunk{Path: "src/Deactivation.php", Language: "php", Content: "register_deactivation_hook(__FILE__, 'pausePlugin');\n"},
+		},
+		{
+			name:       "WordPress uninstall binding paraphrase",
+			query:      "Where does the plugin bind its permanent data purge to the moment an administrator deletes the plugin?",
+			target:     Chunk{Path: "plugin.php", Language: "php", Content: "register_uninstall_hook(__FILE__, [OrchardPurge::class, 'eraseAll']);\n"},
+			distractor: Chunk{Path: "src/OrchardPurge.php", Language: "php", Content: "public static function eraseAll(): void { delete_option('orchard'); }\n"},
 		},
 	}
 	for _, test := range tests {

@@ -25,6 +25,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
 - ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
 - ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8) (Accepted, 2026-07-13)
+- ADR 0016: Candidate-bounded relationship ranking (terms-v9) (Accepted, 2026-07-15)
 
 ---
 
@@ -916,6 +917,89 @@ while requiring embeddings would weaken the deterministic offline default.
 - Persist symbol and relationship roles in chunk files: avoids query-time source
   inspection, but requires a format migration and reindex for evidence that can
   be derived cheaply from existing chunks.
+
+---
+
+## ADR 0016: Candidate-bounded relationship ranking (terms-v9)
+
+- Status: Accepted
+- Date: 2026-07-15
+
+### Context
+
+The final post-terms-v8 holdout preserved recall@5 `1.000`, but three explicit
+provider requests ranked a consumer first: an enum presenter ahead of the
+backed enum, a bootstrap caller ahead of shutdown-function registration, and a
+WordPress purge implementation ahead of the uninstall-hook binding. Memento's
+PHP analysis already produced directional parser-, Composer-, and
+framework-backed relationships, but term-aware ranking could see only chunk
+content, paths, and declaration headers.
+
+### Decision
+
+- Promote the three measured provider-versus-consumer misses before changing
+  the scorer and identify the resulting production/evaluator adapter as
+  `terms-v9+php-relationships-v1`.
+- Expand the existing syntax-gated intents only for the measured semantic roles:
+  canonical serialized enum values, shutdown callback attachment at process
+  termination, and binding permanent cleanup to plugin deletion.
+- Inject a language-neutral `RelationshipProvider` into indexing rather than
+  importing MCP graph internals. The production server adapts its cached PHP
+  graph, and the evaluator receives the same provider through `ExecuteConfig`.
+- Limit relationship input to the 20-100 highest-ranked distinct paths, based
+  on four times the requested result count. Only candidates with independent
+  lexical evidence participate; relationships cannot add a file or convert a
+  semantic-only match into a lexical match.
+- Accept only direct candidate-to-candidate edges and cap each path's graph
+  adjustment at one exact-term unit (`+20`), regardless of edge count. Prefer
+  the edge target for explicit provider/configuration and shutdown-attachment
+  intents; prefer the edge source for ORM and uninstall-binding intents.
+- Apply the bounded adjustment before lexical normalization so hybrid retrieval
+  uses the same adjusted score. Provider absence or error preserves the
+  deterministic lexical result; cancellation still terminates the request.
+- Expose the effective term-search version and relationship-ranking state in
+  index debug output. Require every provider to expose a non-empty fingerprint
+  so a missing or different provider cannot satisfy the evaluator's adapter
+  guard. Keep literal `SearchContext` and `repo_search` behavior unchanged.
+- Freeze the scorer before opening an independently authored post-terms-v9
+  holdout and record that first result without tuning.
+
+### Consequences
+
+- Production and evaluation now share the same relationship-aware ranking path
+  without making indexing depend on MCP or persisting new chunk metadata.
+- Against the unchanged 85-query pre-promotion suite, terms-v9 preserves
+  recall@5 `1.000`, raises MRR from `0.969` to `0.982` and nDCG@5 from `0.976`
+  to `0.986`, and reduces hard-negative wins from three to zero. The original
+  35-query holdout improves from MRR `0.924` and nDCG@5 `0.944` to MRR `0.957`
+  and nDCG@5 `0.968`, with recall unchanged and zero hard-negative wins.
+- A structural query can pay the PHP graph's first-build cost. The graph is
+  cached, singleflight-built, and already bounded by repository ignore rules
+  and file-size limits; cached queries inspect adjacency only for at most 100
+  distinct lexical paths. Successful reindex, incremental index, removal, and
+  clear operations invalidate provider state.
+- Path-level relationships cannot identify a specific declaration when several
+  chunks in one file are plausible. Existing declaration scoring still chooses
+  the file's best chunk, and line-bounded judgments continue to detect errors.
+- The independently authored six-query post-terms-v9 generation records
+  recall@5 `1.000`, MRR `0.917`, nDCG@5 `0.938`, and one hard-negative win. Five
+  controls rank first; a serialized enum definition ranks second behind its
+  consumer. That miss remains advisory and terms-v9 is unchanged. Across the
+  expanded suite, training and validation retain zero hard-negative wins while
+  the 38-query holdout records recall@5 `1.000`, MRR `0.961`, and nDCG@5
+  `0.971` with the one preserved miss.
+
+### Alternatives considered
+
+- Continue adding phrase-specific structural bonuses: closes visible cases but
+  does not use the stable provider/consumer direction already available.
+- Move the PHP graph into indexing: avoids injection plumbing but reverses the
+  package boundary and makes evaluator parity harder to enforce.
+- Let relationships introduce candidates: can improve recall, but risks hub
+  bias and makes graph quality override explicit lexical evidence.
+- Penalize consumers: creates larger ranking swings and can harm queries asking
+  for use sites. A capped positive adjustment is easier to reason about and
+  preserves unrelated scores.
 
 ---
 

@@ -12,7 +12,7 @@ import (
 
 func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	suite := loadCheckedInSuite(t)
-	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v8" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
+	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v9+php-relationships-v1" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
 		t.Fatalf("unexpected retrieval policy: version=%d policy=%#v", suite.Version, suite.RetrievalPolicy)
 	}
 	wantIDs := []string{
@@ -27,6 +27,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 		"php-8.3",
 		"php-8.4",
 		"symfony-app",
+		"wordpress-holdouts",
 		"wordpress-plugin-theme",
 	}
 	if got := SortedCorpusIDs(suite); !reflect.DeepEqual(got, wantIDs) {
@@ -69,7 +70,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 85 || retrievalJudgments != 90 || retrievalSplits[RetrievalSplitTrain] != 39 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 35 {
+	if retrievalQueries != 91 || retrievalJudgments != 97 || retrievalSplits[RetrievalSplitTrain] != 42 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 38 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
 	}
 }

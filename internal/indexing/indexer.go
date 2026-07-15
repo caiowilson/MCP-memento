@@ -24,22 +24,23 @@ import (
 )
 
 type Config struct {
-	RootAbs            string
-	StoreDir           string
-	MaxTotalBytes      int64
-	MaxFileBytes       int64
-	MaxChunkBytes      int
-	MaxChunkLines      int
-	PollInterval       time.Duration
-	PreferredExts      []string
-	AllowGlobs         []string
-	DenyGlobs          []string
-	ExtraIgnoreDirs    []string
-	ExtraIgnoreGlobs   []string
-	Redactor           *redact.Redactor
-	Embedder           embedding.Embedder
-	SemanticWeight     float64
-	EmbeddingBatchSize int
+	RootAbs              string
+	StoreDir             string
+	MaxTotalBytes        int64
+	MaxFileBytes         int64
+	MaxChunkBytes        int
+	MaxChunkLines        int
+	PollInterval         time.Duration
+	PreferredExts        []string
+	AllowGlobs           []string
+	DenyGlobs            []string
+	ExtraIgnoreDirs      []string
+	ExtraIgnoreGlobs     []string
+	Redactor             *redact.Redactor
+	Embedder             embedding.Embedder
+	SemanticWeight       float64
+	EmbeddingBatchSize   int
+	RelationshipProvider RelationshipProvider
 }
 
 type Status struct {
@@ -52,13 +53,14 @@ type Status struct {
 }
 
 type Indexer struct {
-	rootAbs     string
-	dir         string
-	cfg         Config
-	defaultDeny bool
-	ignoreRules *ignoreRules
-	redactor    *redact.Redactor
-	embedder    embedding.Embedder
+	rootAbs              string
+	dir                  string
+	cfg                  Config
+	defaultDeny          bool
+	ignoreRules          *ignoreRules
+	redactor             *redact.Redactor
+	embedder             embedding.Embedder
+	relationshipProvider RelationshipProvider
 
 	mu                    sync.Mutex
 	manifest              manifest
@@ -79,6 +81,13 @@ type request struct {
 	done  chan error
 }
 
+type scoredSearchResult struct {
+	chunk    Chunk
+	lexical  int
+	semantic float64
+	hybrid   float64
+}
+
 var (
 	errEmbeddingBackoff  = errors.New("embedding runtime is in retry backoff")
 	errIndexCapacity     = errors.New("index total-byte capacity exceeded")
@@ -90,6 +99,9 @@ var (
 func New(cfg Config) (*Indexer, error) {
 	if cfg.RootAbs == "" {
 		return nil, errors.New("RootAbs is required")
+	}
+	if cfg.RelationshipProvider != nil && strings.TrimSpace(cfg.RelationshipProvider.Fingerprint()) == "" {
+		return nil, errors.New("RelationshipProvider fingerprint is required")
 	}
 	rootAbs, err := filepath.Abs(cfg.RootAbs)
 	if err != nil {
@@ -121,16 +133,17 @@ func New(cfg Config) (*Indexer, error) {
 	}
 
 	idx := &Indexer{
-		rootAbs:       rootAbs,
-		dir:           dir,
-		cfg:           cfg,
-		defaultDeny:   useDefaultDeny,
-		redactor:      cfg.Redactor,
-		embedder:      cfg.Embedder,
-		trigrams:      newTrigramIndex(),
-		reqCh:         make(chan request, 8),
-		workerStarted: make(chan struct{}),
-		workerDone:    make(chan struct{}),
+		rootAbs:              rootAbs,
+		dir:                  dir,
+		cfg:                  cfg,
+		defaultDeny:          useDefaultDeny,
+		redactor:             cfg.Redactor,
+		embedder:             cfg.Embedder,
+		relationshipProvider: cfg.RelationshipProvider,
+		trigrams:             newTrigramIndex(),
+		reqCh:                make(chan request, 8),
+		workerStarted:        make(chan struct{}),
+		workerDone:           make(chan struct{}),
 	}
 
 	rules, err := loadIgnoreRules(rootAbs)
@@ -271,11 +284,25 @@ func (i *Indexer) IndexAll(ctx context.Context) error {
 	if err := i.RefreshIgnoreRules(ctx); err != nil {
 		return err
 	}
-	return i.submitRequest(ctx, request{full: true})
+	if err := i.submitRequest(ctx, request{full: true}); err != nil {
+		return err
+	}
+	i.invalidateRelationships()
+	return nil
 }
 
 func (i *Indexer) EnsureIndexed(ctx context.Context, relPaths []string) error {
-	return i.submitRequest(ctx, request{paths: relPaths, full: false})
+	if err := i.submitRequest(ctx, request{paths: relPaths, full: false}); err != nil {
+		return err
+	}
+	i.invalidateRelationships()
+	return nil
+}
+
+func (i *Indexer) invalidateRelationships() {
+	if invalidator, ok := i.relationshipProvider.(relationshipInvalidator); ok {
+		invalidator.InvalidateRelationships()
+	}
 }
 
 func (i *Indexer) submitRequest(ctx context.Context, req request) error {
@@ -336,7 +363,11 @@ func (i *Indexer) RemovePaths(relPaths []string) error {
 		i.trigrams.remove(rel)
 	}
 	i.mu.Unlock()
-	return i.saveManifest()
+	if err := i.saveManifest(); err != nil {
+		return err
+	}
+	i.invalidateRelationships()
+	return nil
 }
 
 func (i *Indexer) Status() Status {
@@ -346,22 +377,25 @@ func (i *Indexer) Status() Status {
 }
 
 type DebugInfo struct {
-	RootAbs          string   `json:"root"`
-	StoreDir         string   `json:"storeDir"`
-	FilesIndexed     int      `json:"filesIndexed"`
-	TotalBytes       int64    `json:"totalBytes"`
-	PreferredExts    []string `json:"preferredExts"`
-	AllowGlobs       []string `json:"allowGlobs"`
-	DenyGlobs        []string `json:"denyGlobs"`
-	ExtraIgnoreDirs  []string `json:"extraIgnoreDirs"`
-	ExtraIgnoreGlobs []string `json:"extraIgnoreGlobs"`
-	SemanticEnabled  bool     `json:"semanticEnabled"`
-	EmbeddingModel   string   `json:"embeddingModel,omitempty"`
-	SemanticWeight   float64  `json:"semanticWeight,omitempty"`
-	ChunkingVersion  string   `json:"chunkingVersion"`
-	ChunkingIdentity string   `json:"chunkingFingerprint"`
-	VectorsIndexed   int      `json:"vectorsIndexed"`
-	LastError        string   `json:"lastError,omitempty"`
+	RootAbs              string   `json:"root"`
+	StoreDir             string   `json:"storeDir"`
+	FilesIndexed         int      `json:"filesIndexed"`
+	TotalBytes           int64    `json:"totalBytes"`
+	PreferredExts        []string `json:"preferredExts"`
+	AllowGlobs           []string `json:"allowGlobs"`
+	DenyGlobs            []string `json:"denyGlobs"`
+	ExtraIgnoreDirs      []string `json:"extraIgnoreDirs"`
+	ExtraIgnoreGlobs     []string `json:"extraIgnoreGlobs"`
+	SemanticEnabled      bool     `json:"semanticEnabled"`
+	EmbeddingModel       string   `json:"embeddingModel,omitempty"`
+	SemanticWeight       float64  `json:"semanticWeight,omitempty"`
+	ChunkingVersion      string   `json:"chunkingVersion"`
+	ChunkingIdentity     string   `json:"chunkingFingerprint"`
+	TermSearchVersion    string   `json:"termSearchVersion"`
+	RelationshipRanking  bool     `json:"relationshipRanking"`
+	RelationshipProvider string   `json:"relationshipProvider,omitempty"`
+	VectorsIndexed       int      `json:"vectorsIndexed"`
+	LastError            string   `json:"lastError,omitempty"`
 }
 
 func (i *Indexer) FileChunks(relPath string) ([]Chunk, error) {
@@ -382,20 +416,25 @@ func (i *Indexer) DebugInfo() DebugInfo {
 		vectorsIndexed += entry.Vectors
 	}
 	info := DebugInfo{
-		RootAbs:          i.rootAbs,
-		StoreDir:         i.dir,
-		FilesIndexed:     len(i.manifest.Files),
-		TotalBytes:       i.manifest.TotalBytes,
-		PreferredExts:    append([]string{}, i.cfg.PreferredExts...),
-		AllowGlobs:       append([]string{}, i.cfg.AllowGlobs...),
-		DenyGlobs:        append([]string{}, i.cfg.DenyGlobs...),
-		ExtraIgnoreDirs:  append([]string{}, i.cfg.ExtraIgnoreDirs...),
-		ExtraIgnoreGlobs: append([]string{}, i.cfg.ExtraIgnoreGlobs...),
-		SemanticEnabled:  i.embedder != nil,
-		ChunkingVersion:  ChunkingVersion,
-		ChunkingIdentity: i.chunkingFingerprint(),
-		VectorsIndexed:   vectorsIndexed,
-		LastError:        i.status.Error,
+		RootAbs:             i.rootAbs,
+		StoreDir:            i.dir,
+		FilesIndexed:        len(i.manifest.Files),
+		TotalBytes:          i.manifest.TotalBytes,
+		PreferredExts:       append([]string{}, i.cfg.PreferredExts...),
+		AllowGlobs:          append([]string{}, i.cfg.AllowGlobs...),
+		DenyGlobs:           append([]string{}, i.cfg.DenyGlobs...),
+		ExtraIgnoreDirs:     append([]string{}, i.cfg.ExtraIgnoreDirs...),
+		ExtraIgnoreGlobs:    append([]string{}, i.cfg.ExtraIgnoreGlobs...),
+		SemanticEnabled:     i.embedder != nil,
+		ChunkingVersion:     ChunkingVersion,
+		ChunkingIdentity:    i.chunkingFingerprint(),
+		TermSearchVersion:   TermSearchAdapterVersion(i.relationshipProvider),
+		RelationshipRanking: i.relationshipProvider != nil,
+		VectorsIndexed:      vectorsIndexed,
+		LastError:           i.status.Error,
+	}
+	if i.relationshipProvider != nil {
+		info.RelationshipProvider = i.relationshipProvider.Fingerprint()
 	}
 	if i.embedder != nil {
 		info.EmbeddingModel = i.embedder.Name()
@@ -423,7 +462,11 @@ func (i *Indexer) Clear() error {
 		_ = os.Remove(i.chunkFilePath(id))
 		i.removeVectorFile(id)
 	}
-	return i.saveManifest()
+	if err := i.saveManifest(); err != nil {
+		return err
+	}
+	i.invalidateRelationships()
+	return nil
 }
 
 func (i *Indexer) Search(query string, maxResults int, restrictPaths []string) ([]Chunk, error) {
@@ -531,14 +574,7 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 
 	sort.Strings(paths)
 
-	type scored struct {
-		chunk    Chunk
-		lexical  int
-		semantic float64
-		hybrid   float64
-	}
-	results := make([]scored, 0, min(maxResults, 128))
-	maxLexical := 0
+	results := make([]scoredSearchResult, 0, min(maxResults, 128))
 	semanticUsed := false
 
 	for _, p := range paths {
@@ -581,9 +617,6 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 			if termAware {
 				lexical = termAwareChunkScoreWithIntent(ch, queryTerms, queryIntent)
 			}
-			if lexical > maxLexical {
-				maxLexical = lexical
-			}
 			semantic := 0.0
 			hasVector := false
 			if values, ok := vectorByLine[[2]int{ch.StartLine, ch.EndLine}]; ok && len(values) == len(queryVector) {
@@ -599,7 +632,33 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 			if lexical == 0 && (!hasVector || semantic == 0) {
 				continue
 			}
-			results = append(results, scored{chunk: ch, lexical: lexical, semantic: semantic})
+			results = append(results, scoredSearchResult{chunk: ch, lexical: lexical, semantic: semantic})
+		}
+	}
+
+	if termAware && i.relationshipProvider != nil && queryIntent.usesRelationships() {
+		candidatePaths := relationshipRankingWindow(results, maxResults)
+		if len(candidatePaths) > 1 {
+			edges, relationshipErr := i.relationshipProvider.Relationships(ctx, candidatePaths)
+			if relationshipErr == nil {
+				bonuses := termSearchRelationshipBonuses(candidatePaths, edges, queryIntent)
+				for index := range results {
+					if results[index].lexical <= 0 {
+						continue
+					}
+					path := filepath.ToSlash(filepath.Clean(results[index].chunk.Path))
+					results[index].lexical += bonuses[path]
+				}
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	maxLexical := 0
+	for _, result := range results {
+		if result.lexical > maxLexical {
+			maxLexical = result.lexical
 		}
 	}
 

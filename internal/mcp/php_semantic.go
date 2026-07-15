@@ -12,7 +12,13 @@ import (
 	"memento-mcp/internal/parsing"
 )
 
-var phpGraphCache sync.Map // key: cleaned rootAbs, value: *importGraph
+type phpGraphCacheEntry struct {
+	ready chan struct{}
+	graph *importGraph
+	err   error
+}
+
+var phpGraphCache sync.Map // key: cleaned rootAbs, value: *phpGraphCacheEntry
 
 type phpFileRelations struct {
 	abs        string
@@ -32,15 +38,23 @@ type phpFileRelations struct {
 
 func getPHPIncludeGraph(ctx context.Context, rootAbs string) (*importGraph, error) {
 	rootAbs = filepath.Clean(rootAbs)
-	if v, ok := phpGraphCache.Load(rootAbs); ok {
-		return v.(*importGraph), nil
+	pending := &phpGraphCacheEntry{ready: make(chan struct{})}
+	value, loaded := phpGraphCache.LoadOrStore(rootAbs, pending)
+	entry := value.(*phpGraphCacheEntry)
+	if loaded {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-entry.ready:
+			return entry.graph, entry.err
+		}
 	}
-	g, err := buildPHPIncludeGraph(ctx, rootAbs)
-	if err != nil {
-		return nil, err
+	entry.graph, entry.err = buildPHPIncludeGraph(ctx, rootAbs)
+	if entry.err != nil {
+		phpGraphCache.CompareAndDelete(rootAbs, entry)
 	}
-	phpGraphCache.Store(rootAbs, g)
-	return g, nil
+	close(entry.ready)
+	return entry.graph, entry.err
 }
 
 func InvalidatePHPIncludeGraphCache(rootAbs string) {

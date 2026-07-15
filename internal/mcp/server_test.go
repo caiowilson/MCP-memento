@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"memento-mcp/internal/indexing"
 )
 
 func TestToolsListIncludesMetadata(t *testing.T) {
@@ -94,6 +96,19 @@ func TestNewServerWiresSemanticIndexerConfiguration(t *testing.T) {
 	debug := server.idx.DebugInfo()
 	if !debug.SemanticEnabled || debug.EmbeddingModel != "ollama/nomic-embed-text:v1.5" || debug.SemanticWeight != 0.7 {
 		t.Fatalf("unexpected semantic indexer config: %#v", debug)
+	}
+}
+
+func TestNewServerWiresRelationshipRankingConfiguration(t *testing.T) {
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "false")
+	server, err := NewServer(Config{Root: t.TempDir(), Child: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	debug := server.idx.DebugInfo()
+	wantVersion := indexing.TermSearchAdapterVersion(NewPHPRelationshipProvider(server.root))
+	if !debug.RelationshipRanking || debug.TermSearchVersion != wantVersion || debug.RelationshipProvider != PHPRelationshipProviderVersion {
+		t.Fatalf("unexpected relationship-ranking indexer config: %#v", debug)
 	}
 }
 

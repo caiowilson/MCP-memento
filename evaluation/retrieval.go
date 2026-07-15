@@ -58,11 +58,12 @@ type Report struct {
 }
 
 type ExecuteConfig struct {
-	Embedder           embedding.Embedder
-	SemanticWeight     float64
-	EmbeddingBatchSize int
-	TermAware          bool
-	DistinctPaths      bool
+	Embedder             embedding.Embedder
+	SemanticWeight       float64
+	EmbeddingBatchSize   int
+	TermAware            bool
+	DistinctPaths        bool
+	RelationshipProvider indexing.RelationshipProvider
 }
 
 func LoadFixtures(r io.Reader) (FixtureSet, error) {
@@ -152,13 +153,14 @@ func ExecuteFixturesWithConfig(ctx context.Context, root, storeDir string, fixtu
 		return Report{}, errors.New("distinct-path evaluation requires term-aware retrieval")
 	}
 	idx, err := indexing.New(indexing.Config{
-		RootAbs:            root,
-		StoreDir:           storeDir,
-		PollInterval:       0,
-		ExtraIgnoreDirs:    []string{"evaluation"},
-		Embedder:           cfg.Embedder,
-		SemanticWeight:     cfg.SemanticWeight,
-		EmbeddingBatchSize: cfg.EmbeddingBatchSize,
+		RootAbs:              root,
+		StoreDir:             storeDir,
+		PollInterval:         0,
+		ExtraIgnoreDirs:      []string{"evaluation"},
+		Embedder:             cfg.Embedder,
+		SemanticWeight:       cfg.SemanticWeight,
+		EmbeddingBatchSize:   cfg.EmbeddingBatchSize,
+		RelationshipProvider: cfg.RelationshipProvider,
 	})
 	if err != nil {
 		return Report{}, err

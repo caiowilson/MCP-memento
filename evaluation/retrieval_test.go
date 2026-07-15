@@ -41,6 +41,21 @@ func (unavailableEvaluationEmbedder) Embed(context.Context, embedding.Task, []st
 func (unavailableEvaluationEmbedder) Fingerprint() string { return "evaluation-unavailable-v1" }
 func (unavailableEvaluationEmbedder) Name() string        { return "test/evaluation-unavailable" }
 
+type failingEvaluationRelationshipProvider struct {
+	calls          int
+	candidatePaths []string
+}
+
+func (*failingEvaluationRelationshipProvider) Fingerprint() string {
+	return "failing-evaluation-relationships-v1"
+}
+
+func (provider *failingEvaluationRelationshipProvider) Relationships(_ context.Context, candidatePaths []string) ([]indexing.RelationshipEdge, error) {
+	provider.calls++
+	provider.candidatePaths = append([]string(nil), candidatePaths...)
+	return nil, errors.New("relationship graph unavailable")
+}
+
 func TestEvaluateMetrics(t *testing.T) {
 	fixture := QueryFixture{
 		ID:    "metrics",
@@ -173,6 +188,40 @@ func TestExecuteWithConfigMeasuresTermAwareRetrieval(t *testing.T) {
 	}
 }
 
+func TestExecuteWithConfigPropagatesRelationshipProviderAndFallsBack(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "ParcelVerdict.php"), "<?php enum ParcelVerdict: string { case Cleared = 'cleared'; }\n")
+	mustWrite(t, filepath.Join(root, "VerdictPresenter.php"), "<?php final class VerdictPresenter { public function caption(ParcelVerdict $verdict): string { return $verdict->value; } }\n")
+	fixtures := FixtureSet{Version: 1, K: 2, Queries: []QueryFixture{{
+		ID:       "parcel-verdict-definition",
+		Query:    "Where are the canonical string codes for every parcel review outcome declared?",
+		Relevant: []RelevantChunk{{Path: "ParcelVerdict.php"}},
+	}}}
+
+	baseline, err := ExecuteFixturesWithConfig(context.Background(), root, t.TempDir(), fixtures, ExecuteConfig{
+		TermAware:     true,
+		DistinctPaths: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &failingEvaluationRelationshipProvider{}
+	fallback, err := ExecuteFixturesWithConfig(context.Background(), root, t.TempDir(), fixtures, ExecuteConfig{
+		TermAware:            true,
+		DistinctPaths:        true,
+		RelationshipProvider: provider,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 1 || !containsString(provider.candidatePaths, "ParcelVerdict.php") {
+		t.Fatalf("relationship provider was not propagated to evaluation: calls=%d candidates=%v", provider.calls, provider.candidatePaths)
+	}
+	if !reflect.DeepEqual(fallback, baseline) {
+		t.Fatalf("provider failure changed fallback retrieval:\nbaseline: %#v\nfallback: %#v", baseline, fallback)
+	}
+}
+
 func TestExecuteFixturesRejectsDistinctPathsWithoutTermAwareRetrieval(t *testing.T) {
 	fixtures := FixtureSet{Version: 1, K: 1, Queries: []QueryFixture{{
 		ID:       "report-handler",
@@ -234,4 +283,13 @@ func assertNear(t *testing.T, name string, got, want float64) {
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("%s = %.12f, want %.12f", name, got, want)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

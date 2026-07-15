@@ -255,14 +255,15 @@ func (s *Server) indexerConfig(rootAbs string) indexing.Config {
 		pollSeconds = 0
 	}
 	return indexing.Config{
-		RootAbs:            rootAbs,
-		PollInterval:       time.Duration(pollSeconds) * time.Second,
-		MaxTotalBytes:      int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
-		MaxFileBytes:       int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
-		Redactor:           s.redactor,
-		Embedder:           s.semantic.Embedder,
-		SemanticWeight:     s.semantic.SemanticWeight,
-		EmbeddingBatchSize: s.semantic.BatchSize,
+		RootAbs:              rootAbs,
+		PollInterval:         time.Duration(pollSeconds) * time.Second,
+		MaxTotalBytes:        int64(envInt("MEMENTO_INDEX_MAX_TOTAL_BYTES", 20*1024*1024)),
+		MaxFileBytes:         int64(envInt("MEMENTO_INDEX_MAX_FILE_BYTES", 1*1024*1024)),
+		Redactor:             s.redactor,
+		Embedder:             s.semantic.Embedder,
+		SemanticWeight:       s.semantic.SemanticWeight,
+		EmbeddingBatchSize:   s.semantic.BatchSize,
+		RelationshipProvider: NewPHPRelationshipProvider(rootAbs),
 	}
 }
 
