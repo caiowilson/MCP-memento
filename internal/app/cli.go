@@ -38,6 +38,12 @@ func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
 			return true, 1
 		}
 		return true, 0
+	case "doctor":
+		if err := runDoctor(args[1:], stdout); err != nil {
+			fmt.Fprintf(stderr, "doctor: %v\n", err)
+			return true, 1
+		}
+		return true, 0
 	case "claude-md":
 		if err := runClaudeMD(args[1:], stdout, stderr); err != nil {
 			fmt.Fprintf(stderr, "claude-md: %v\n", err)
@@ -118,10 +124,16 @@ Usage:
   memento-mcp               Start the MCP stdio server and auto-detect the workspace root
   memento-mcp --root DIR    Start the server using DIR as workspace root
   memento-mcp setup         Detect MCP clients and write config (interactive)
+  memento-mcp setup --clients=codex,claude
+                            Configure Codex and Claude Code (non-interactive)
   memento-mcp setup --client=vscode --client=cursor
                             Configure specific clients (non-interactive)
   memento-mcp setup --print-only
                             Print config to stdout without writing files
+  memento-mcp setup --force  Replace a conflicting CLI registration after preflight
+  memento-mcp doctor         Validate the binary and configured clients
+  memento-mcp doctor --clients=codex,claude
+                            Validate specific client registrations
   memento-mcp claude-md     Write or update Memento guidance in ./CLAUDE.local.md
   memento-mcp claude-md --print-only
                             Print the guidance block without writing

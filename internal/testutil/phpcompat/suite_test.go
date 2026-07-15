@@ -12,11 +12,12 @@ import (
 
 func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 	suite := loadCheckedInSuite(t)
-	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v3" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
+	if suite.Version != 2 || suite.RetrievalPolicy.Adapter != "terms-v8" || suite.RetrievalPolicy.K != 5 || !reflect.DeepEqual(suite.RetrievalPolicy.BlockingSplits, []string{RetrievalSplitTrain, RetrievalSplitValidate}) {
 		t.Fatalf("unexpected retrieval policy: version=%d policy=%#v", suite.Version, suite.RetrievalPolicy)
 	}
 	wantIDs := []string{
 		"composer-autoload",
+		"composer-holdouts",
 		"drupal-module",
 		"laravel-app",
 		"php-7.4",
@@ -68,7 +69,7 @@ func TestCheckedInSuiteIsStrictAndComplete(t *testing.T) {
 			t.Errorf("missing framework corpus %s", framework)
 		}
 	}
-	if retrievalQueries != 52 || retrievalJudgments != 57 || retrievalSplits[RetrievalSplitTrain] != 30 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 11 {
+	if retrievalQueries != 85 || retrievalJudgments != 90 || retrievalSplits[RetrievalSplitTrain] != 39 || retrievalSplits[RetrievalSplitValidate] != 11 || retrievalSplits[RetrievalSplitHoldout] != 35 {
 		t.Fatalf("unexpected retrieval corpus: queries=%d judgments=%d splits=%v", retrievalQueries, retrievalJudgments, retrievalSplits)
 	}
 }

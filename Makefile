@@ -80,7 +80,7 @@ plugin-test:
 	claude plugin validate --strict ./plugins/memento-workflows
 
 release-test:
-	node --test test/release-workflows.test.mjs
+	node --test test/install-script.test.mjs test/release-workflows.test.mjs
 
 retrieval-eval:
 	go run $(GO_TAG_FLAGS) ./cmd/retrieval-eval $(RETRIEVAL_ARGS)

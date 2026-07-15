@@ -331,7 +331,9 @@ func (a retrievalAccumulator) metrics(policy phpcompat.RetrievalPolicy, threshol
 	}
 	out.Passed = true
 	for _, split := range policy.BlockingSplits {
-		out.Passed = out.Passed && out.Splits[split].Passed
+		if score := out.Splits[split]; score.Queries > 0 {
+			out.Passed = out.Passed && score.Passed
+		}
 	}
 	return out
 }

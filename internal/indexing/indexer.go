@@ -460,8 +460,10 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 	}
 	qLower := strings.ToLower(q)
 	queryTerms := []string(nil)
+	queryIntent := termSearchIntent{}
 	if termAware {
-		queryTerms = meaningfulSearchTerms(q)
+		queryIntent = classifyTermSearchIntent(q)
+		queryTerms = meaningfulSearchTermsForIntent(q, queryIntent)
 		if len(queryTerms) == 0 {
 			return nil, errors.New("query has no searchable terms")
 		}
@@ -577,7 +579,7 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 		for _, ch := range chunks {
 			lexical := lexicalChunkScore(ch, qLower)
 			if termAware {
-				lexical = termAwareChunkScore(ch, queryTerms)
+				lexical = termAwareChunkScoreWithIntent(ch, queryTerms, queryIntent)
 			}
 			if lexical > maxLexical {
 				maxLexical = lexical

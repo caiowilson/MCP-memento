@@ -203,6 +203,7 @@ func (s Suite) Validate() error {
 		return errors.New("PHP compatibility suite has no corpora")
 	}
 	seen := map[string]bool{}
+	splitCounts := map[string]int{}
 	for index := range s.Corpora {
 		corpus := &s.Corpora[index]
 		if strings.TrimSpace(corpus.ID) == "" || seen[corpus.ID] {
@@ -211,6 +212,14 @@ func (s Suite) Validate() error {
 		seen[corpus.ID] = true
 		if err := s.validateCorpus(*corpus); err != nil {
 			return fmt.Errorf("corpus %q: %w", corpus.ID, err)
+		}
+		for _, query := range corpus.Retrieval {
+			splitCounts[query.Split]++
+		}
+	}
+	for _, split := range s.RetrievalPolicy.RequiredSplits {
+		if splitCounts[split] == 0 {
+			return fmt.Errorf("suite retrieval requires at least one %s query", split)
 		}
 	}
 	return nil
@@ -332,7 +341,6 @@ func (s Suite) validateCorpus(corpus Corpus) error {
 		requiredSplits[split] = true
 	}
 	queries := map[string]bool{}
-	splitCounts := map[string]int{}
 	for index, query := range corpus.Retrieval {
 		if strings.TrimSpace(query.ID) == "" || queries[query.ID] || strings.TrimSpace(query.Query) == "" || len(query.Relevant) == 0 {
 			return fmt.Errorf("retrieval[%d] has invalid or duplicate id, query, or judgments", index)
@@ -344,7 +352,6 @@ func (s Suite) validateCorpus(corpus Corpus) error {
 			return fmt.Errorf("retrieval[%d] %s query requires a hard negative", index, query.Split)
 		}
 		queries[query.ID] = true
-		splitCounts[query.Split]++
 		relevantPaths := map[string]bool{}
 		for relevantIndex, judgment := range query.Relevant {
 			if err := validateRetrievalChunk(root, judgment); err != nil {
@@ -369,11 +376,6 @@ func (s Suite) validateCorpus(corpus Corpus) error {
 					return fmt.Errorf("retrieval[%d].hardNegatives[%d] overlaps relevant[%d]", index, negativeIndex, relevantIndex)
 				}
 			}
-		}
-	}
-	for _, split := range s.RetrievalPolicy.RequiredSplits {
-		if splitCounts[split] == 0 {
-			return fmt.Errorf("retrieval requires at least one %s query", split)
 		}
 	}
 	return nil

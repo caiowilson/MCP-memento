@@ -6,7 +6,9 @@ on:
       - ".github/workflows/release-contracts.yml"
       - ".github/workflows/release-server.yml"
       - ".github/workflows/move-server-latest.yml"
+      - "install.sh"
       - "scripts/macos-sign-and-notarize.sh"
+      - "test/install-script.test.mjs"
       - "test/release-workflows.test.mjs"
   push:
     branches:
@@ -15,7 +17,9 @@ on:
       - ".github/workflows/release-contracts.yml"
       - ".github/workflows/release-server.yml"
       - ".github/workflows/move-server-latest.yml"
+      - "install.sh"
       - "scripts/macos-sign-and-notarize.sh"
+      - "test/install-script.test.mjs"
       - "test/release-workflows.test.mjs"
 
 permissions:
@@ -35,4 +39,4 @@ jobs:
           node-version: "22"
 
       - name: Test release workflow contracts
-        run: node --test test/release-workflows.test.mjs
+        run: node --test test/install-script.test.mjs test/release-workflows.test.mjs

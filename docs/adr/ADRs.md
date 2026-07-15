@@ -23,6 +23,8 @@ This document consolidates all ADRs for this repository.
 - ADR 0011: Pure-Go tree-sitter as the shared structural parser (Accepted, 2026-07-13)
 - ADR 0012: First-class PHP parsing and Composer resolution (Accepted, 2026-07-13)
 - ADR 0013: Deterministic term-aware focus retrieval (Accepted, 2026-07-13)
+- ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
+- ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8) (Accepted, 2026-07-13)
 
 ---
 
@@ -800,6 +802,120 @@ did not measure distractors explicitly.
 - Copy public framework applications into the repository: broader surface area,
   but adds licensing, size, update, and answer-leakage risks compared with
   original minimized reproductions.
+
+---
+
+## ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8)
+
+- Status: Accepted
+- Date: 2026-07-13
+
+### Context
+
+The first post-freeze terms-v3 holdout preserved perfect validation but exposed
+four role-sensitive ranking gaps: declaration metadata versus a reference,
+first-class callable construction versus the referenced method, configuration
+definition versus its consumer, and entity-to-repository mapping versus service
+injection. Directly fitting those query strings would invalidate the holdout,
+while requiring embeddings would weaken the deterministic offline default.
+
+### Decision
+
+- Version the deterministic scorer as `terms-v4` and derive structural evidence
+  at query time without changing persisted chunks or the exact `SearchContext`
+  contract.
+- Classify only bounded programming-role cues for attributes, callable
+  construction, configuration definitions, and relationship declarations.
+  Require independent lexical evidence before any structural adjustment.
+- Isolate a definition clause from trailing consumer context for explicit
+  definition requests, while continuing to ignore `instead of` and `rather
+  than` contrast clauses.
+- Treat PHP `#[...]` lines as declaration metadata rather than comments. Reward
+  syntax and conventional definition paths, downrank explicit consumers, and
+  cap the total adjustment between minus one and plus three existing exact-term
+  score units.
+- Develop against new synthetic and production-shaped training identifiers.
+  Freeze the scorer at `cffc091` before opening the existing holdout, then use an
+  isolated author with no scorer, suite, query, history, or evaluator access for
+  the next holdout generation.
+- When those new files exposed a path-order tie in the existing PHP 8.1
+  `never`/throw training query, promote the measured training miss and version
+  the fix as `terms-v5`. Activate the additional signal only when the query asks
+  for never-returning termination and the candidate contains both a `: never`
+  declaration and a throw expression.
+- The independently authored post-terms-v5 generation paraphrased callable
+  construction as a value packaged for passing around and later execution. Its
+  one hard-negative win was promoted to training, and `terms-v6` recognizes a
+  bounded set of deferred-execution phrases before applying the existing
+  first-class-callable syntax bonus.
+- The independently authored post-terms-v6 generation described an ORM
+  association without framework terms. Promote only that miss and version the
+  fix as `terms-v7`: paired parent and dependent-collection roles activate the
+  intent, while only concrete `hasMany` or equivalent ORM syntax receives the
+  model-path bonus. Model class shells therefore cannot win on path alone.
+- The post-terms-v7 generation exposed three unrelated definition-versus-
+  consumer gaps. Promote only those misses under `terms-v8`, using separate
+  intents whose candidate rewards require a string- or integer-backed `enum`,
+  `register_shutdown_function`, or `register_uninstall_hook` syntax. Penalize
+  an early-exit consumer and a deactivation registration only within their
+  corresponding intents.
+- Keep independently authored Composer mini-projects in a retrieval-only
+  advisory corpus. Required splits are enforced suite-wide, while a corpus with
+  no blocking queries is not failed for missing train or validation data. This
+  prevents equally valid package mappings from corrupting base-package labels.
+
+### Consequences
+
+- Neutral queries preserve terms-v3 term extraction and chunk scores exactly;
+  structural requests gain deterministic role-aware ordering without a chunk
+  migration or network dependency.
+- Training scores recall@5 `1.000`, MRR `1.000`, nDCG@5 `0.998`, and zero
+  hard-negative wins; validation scores `1.000` on all three metrics with zero
+  hard-negative wins. The earlier 11-query advisory generation improves from
+  recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win to
+  recall@5 `1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins.
+- The untouched terms-v4 scorer ranks all eight independently authored
+  post-freeze cases first in isolation, producing recall@5, MRR, and nDCG@5
+  `1.000` with zero hard-negative wins. Indexing the new files alongside the
+  earlier corpus also creates a training distractor that terms-v5 resolves
+  without changing the terms-v4 evidence.
+- The six-query post-terms-v5 generation records recall@5 `1.000`, MRR `0.917`,
+  nDCG@5 `0.938`, and one hard-negative win. Terms-v6 treats that measured miss
+  as training.
+- The four-query post-terms-v6 generation records recall@5 `0.750`, MRR `0.625`,
+  nDCG@5 `0.658`, and one hard-negative win. Deferred behavior and Composer
+  mapping rank first, a never-returning routine ranks second, and
+  framework-neutral parent-to-collection wording misses the Eloquent
+  relationship method. This remains immutable terms-v6 evidence; the one miss
+  is promoted under terms-v7, whose 36-query training gate ranks every relevant
+  answer first with zero hard-negative wins.
+- The five-query post-terms-v7 generation records recall@5 `0.800`, MRR `0.567`,
+  nDCG@5 `0.626`, and two hard-negative wins. The independently phrased
+  Doctrine association ranks first, confirming the collection relationship
+  intent generalizes. Shutdown registration, backed-enum definition, and
+  WordPress uninstall registration remain immutable terms-v7 misses. Terms-v8
+  promotes those three judgments, and all 39 training queries rank relevant
+  answers first with zero hard-negative wins.
+- The final six-query post-terms-v8 generation records recall@5 `1.000`, MRR
+  `0.722`, nDCG@5 `0.794`, and three hard-negative wins. Full advisory holdout
+  recall is `1.000`, MRR is `0.924`, and nDCG@5 is `0.944`, with three
+  hard-negative wins. The remaining problem is ordering, not candidate recall.
+- Cue vocabulary remains intentionally narrow. Further accuracy work should use
+  an injected intent or relationship provider rather than adding a terms-v9
+  synonym list; deterministic terms-v8 remains the offline fallback.
+
+### Alternatives considered
+
+- Tune directly against the first holdout: likely improves the visible metric,
+  but destroys its value as unseen evidence.
+- Add an indexing-package dependency on MCP relationship graphs: supplies richer
+  evidence, but creates layering and evaluator-parity problems. A future batch
+  provider may add bounded direct-edge reranking through an injected interface.
+- Require semantic retrieval: may cover broader paraphrases, but adds a local
+  runtime dependency and cannot replace the deterministic offline baseline.
+- Persist symbol and relationship roles in chunk files: avoids query-time source
+  inspection, but requires a format migration and reindex for evidence that can
+  be derived cheaply from existing chunks.
 
 ---
 

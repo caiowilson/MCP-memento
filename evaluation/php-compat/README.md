@@ -53,15 +53,25 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 52 natural-language retrieval queries with
-57 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v3` scorer against each corpus independently. The 30-query
-training split contains the original benchmark plus the first measured miss
-generation, the 11-query validation split covers every corpus, and a fresh
-11-query holdout was authored only after the scorer was frozen. Validation and
-holdout queries declare precise hard-negative ranges. Training and validation
-are blocking; the fresh holdout remains advisory so its first unseen result is
-preserved instead of tuned away.
+forbidden body-symbol leakage, and 85 natural-language retrieval queries with
+90 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v8` scorer against each corpus independently. The 39-query
+training split contains the original benchmark, promoted measured misses, and
+independent structural-role cases. The 11-query validation split covers every
+corpus. The 35 advisory holdout queries retain the original post-terms-v3 and
+post-terms-v4 generations, the five unpromoted post-terms-v5 cases, and the
+three unpromoted post-terms-v6 cases, plus the five-case post-terms-v7
+generation's two unpromoted successes and the final six-case post-terms-v8
+generation. Independently authored Composer packages live in a retrieval-only
+holdout corpus so their equally valid `composer.json` mappings do not make the
+base package's training judgments ambiguous. Adding
+the post-terms-v4 generation exposed a training-corpus tie for explicit `never`
+termination, which was fixed under terms-v5. The next isolated generation found
+a deferred-callable paraphrase miss; that one judgment was promoted before the
+terms-v6 fingerprint. Validation and holdout queries declare precise
+hard-negative ranges. Training and validation are blocking; holdout generations
+remain advisory so their first unseen results are preserved instead of tuned
+away.
 
 JSON contains aggregate overall, per-corpus, and train/validation/holdout
 metrics only.
@@ -87,9 +97,36 @@ they are structural microprojects and are not booted as applications.
 Parser, symbol, signature, declaration-boundary, anchor, and Composer judgments
 are deterministic and target 100%. Framework relationship recall starts at 95%
 with 98% precision, while blocking retrieval targets recall@5 of 95%, MRR of
-90%, nDCG@5 of 90%, and zero hard-negative wins. The frozen holdout is reported
-against the same targets but remains advisory; its initial `terms-v3` baseline
-is recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one hard-negative win.
+90%, nDCG@5 of 90%, and zero hard-negative wins. Holdouts are reported against
+the same targets but remain advisory. The original 11-query generation recorded
+a `terms-v3` baseline of recall@5 `0.909`, MRR `0.773`, nDCG@5 `0.808`, and one
+hard-negative win; frozen terms-v4 improves the same generation to recall@5
+`1.000`, MRR `0.955`, nDCG@5 `0.966`, and zero hard-negative wins. The isolated
+eight-query post-terms-v4 generation scores recall@5, MRR, and nDCG@5 `1.000`
+with zero hard-negative wins in isolation. The six-query post-terms-v5
+generation recorded recall@5 `1.000`, MRR `0.917`, nDCG@5 `0.938`, and one
+hard-negative win; its deferred-callable miss is now a terms-v6 training case.
+The first blind terms-v6 generation recorded recall@5 `0.750`, MRR `0.625`,
+nDCG@5 `0.658`, and one hard-negative win. Its framework-neutral
+parent-to-collection miss is now a terms-v7 training case; terms-v7 recognizes
+the paired semantic roles but only rewards chunks with actual ORM relationship
+syntax.
+The first blind terms-v7 generation recorded recall@5 `0.800`, MRR `0.567`,
+nDCG@5 `0.626`, and two hard-negative wins. Its Doctrine association and
+Composer mapping ranked first, while shutdown-callback installation,
+backed-enum value definition, and WordPress uninstall registration exposed
+separate definition-versus-consumer gaps. Those three judgments are terms-v8
+training cases, activated only by their matching backed-enum, PHP shutdown, or
+WordPress uninstall syntax.
+The final blind terms-v8 generation recorded recall@5 `1.000`, MRR `0.722`,
+nDCG@5 `0.794`, and three hard-negative wins. Composer mapping, configuration
+defaults, and Doctrine association ranked first; backed-enum, shutdown, and
+uninstall answers remained in the top five but ranked behind consumers under
+paraphrases that omitted the trained cues. Across the full suite, training is
+recall@5 `1.000`, MRR `1.000`, nDCG@5 `0.998`, and zero hard-negative wins;
+validation is `1.000` on all three metrics with zero hard-negative wins; and
+advisory holdout is recall@5 `1.000`, MRR `0.924`, nDCG@5 `0.944`, with three
+hard-negative wins.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

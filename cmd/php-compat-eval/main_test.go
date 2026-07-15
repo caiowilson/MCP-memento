@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,300 @@ import (
 	"memento-mcp/internal/indexing"
 	"memento-mcp/internal/testutil/phpcompat"
 )
+
+func TestTermSearchTrainingCasesRankFirst(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"php80-audit-attribute-declaration":       true,
+		"php81-never-throw":                       true,
+		"php81-normalize-first-class-callable":    true,
+		"postv5-php81-format-label-callable":      true,
+		"postv6-laravel-model-association":        true,
+		"postv7-php80-final-pulse-shutdown":       true,
+		"postv7-php81-glint-phase-values":         true,
+		"postv7-wordpress-ember-uninstall":        true,
+		"laravel-reporting-config-definition":     true,
+		"symfony-audit-entity-repository-mapping": true,
+	}
+	seen := map[string]bool{}
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			if result.Metrics.MRR != 1 {
+				t.Errorf("%s: expected rank-one relevance, metrics=%#v retrieved=%#v", result.ID, result.Metrics, result.Retrieved)
+			}
+			if wins := hardNegativeWins(queries[result.ID], result.Retrieved); wins != 0 {
+				t.Errorf("%s: hard negative outranked relevance: %#v", result.ID, result.Retrieved)
+			}
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("training case %s was not evaluated", id)
+		}
+	}
+}
+
+func TestTermsV4PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv4-php74-voucher-deprecation":        true,
+		"postv4-php80-compiler-closure":           true,
+		"postv4-php81-beacon-hint-attachment":     true,
+		"postv4-php82-courier-retry-default":      true,
+		"postv4-php83-wire-revision":              true,
+		"postv4-php84-dock-ticket-hook":           true,
+		"postv4-laravel-skiff-harbor":             true,
+		"postv4-symfony-cloudberry-batch-default": true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+			if wins != 0 {
+				t.Errorf("%s: hard negative outranked relevance: %#v", result.ID, result.Retrieved)
+			}
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-freeze holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-freeze holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
+	if !actual.Passed {
+		t.Fatalf("post-freeze holdout missed thresholds: %#v", actual)
+	}
+}
+
+func TestTermsV6PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv6-php74-deferred-behavior":   true,
+		"postv6-php81-terminal-contract":   true,
+		"postv6-composer-package-mapping":  true,
+		"postv6-laravel-model-association": true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-terms-v6 holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-terms-v6 holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
+}
+
+func TestTermsV7PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv7-php80-final-pulse-shutdown":      true,
+		"postv7-php81-glint-phase-values":        true,
+		"postv7-composer-aurora-namespace":       true,
+		"postv7-symfony-prism-vault-association": true,
+		"postv7-wordpress-ember-uninstall":       true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-terms-v7 holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-terms-v7 holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
+}
+
+func TestTermsV8PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]bool{
+		"postv8-php81-parcel-verdict-codes":   true,
+		"postv8-php81-finalization-hook":      true,
+		"postv8-php81-archive-defaults":       true,
+		"postv8-composer-beacon-mapping":      true,
+		"postv8-symfony-lighthouse-notes":     true,
+		"postv8-wordpress-orchard-purge-hook": true,
+	}
+	seen := map[string]bool{}
+	var scores scoreAccumulator
+	for _, corpus := range suite.Corpora {
+		selected := corpus
+		selected.Retrieval = nil
+		for _, query := range corpus.Retrieval {
+			if wanted[query.ID] {
+				selected.Retrieval = append(selected.Retrieval, query)
+			}
+		}
+		if len(selected.Retrieval) == 0 {
+			continue
+		}
+		root, err := suite.CorpusRoot(corpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := evaluation.ExecuteFixturesWithConfig(
+			context.Background(),
+			root,
+			filepath.Join(t.TempDir(), corpus.ID),
+			phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+			evaluation.ExecuteConfig{TermAware: true, DistinctPaths: true},
+		)
+		if err != nil {
+			t.Fatalf("%s: %v", corpus.ID, err)
+		}
+		queries := retrievalQueriesByID(selected)
+		for _, result := range report.Queries {
+			seen[result.ID] = true
+			wins := hardNegativeWins(queries[result.ID], result.Retrieved)
+			scores.add(result.Metrics, wins)
+			t.Logf("%s recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.ID, result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+		}
+	}
+	for id := range wanted {
+		if !seen[id] {
+			t.Errorf("post-terms-v8 holdout case %s was not evaluated", id)
+		}
+	}
+	actual := scores.score(suite.Thresholds)
+	t.Logf("post-terms-v8 holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
+}
 
 func TestRetrievalThresholdsPass(t *testing.T) {
 	thresholds := phpcompat.Thresholds{
@@ -67,6 +363,28 @@ func TestRetrievalMetricsKeepHoldoutAdvisory(t *testing.T) {
 	got := accumulator.metrics(policy, thresholds)
 	if !got.Passed || got.Splits[phpcompat.RetrievalSplitHoldout].Passed {
 		t.Fatalf("unexpected blocking/advisory split result: %#v", got)
+	}
+}
+
+func TestRetrievalMetricsAllowAdvisoryOnlyCorpus(t *testing.T) {
+	thresholds := phpcompat.Thresholds{RetrievalRecallAt5: 0.95, RetrievalMRR: 0.9, RetrievalNDCGAt5: 0.9}
+	failing := &scoreAccumulator{}
+	failing.add(evaluation.Metrics{Precision: 0.2, Recall: 1, MRR: 0.5, NDCG: 0.63}, 1)
+	accumulator := retrievalAccumulator{
+		overall: *failing,
+		splits: map[string]*scoreAccumulator{
+			phpcompat.RetrievalSplitHoldout: failing,
+		},
+	}
+	policy := phpcompat.RetrievalPolicy{
+		Adapter:        indexing.TermSearchVersion,
+		K:              5,
+		RequiredSplits: []string{phpcompat.RetrievalSplitTrain, phpcompat.RetrievalSplitValidate, phpcompat.RetrievalSplitHoldout},
+		BlockingSplits: []string{phpcompat.RetrievalSplitTrain, phpcompat.RetrievalSplitValidate},
+	}
+	got := accumulator.metrics(policy, thresholds)
+	if !got.Passed || got.Splits[phpcompat.RetrievalSplitHoldout].Passed {
+		t.Fatalf("unexpected advisory-only corpus result: %#v", got)
 	}
 }
 

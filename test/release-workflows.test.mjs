@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const releaseWorkflowPath = join(root, ".github/workflows/release-server.yml");
 const latestWorkflowPath = join(root, ".github/workflows/move-server-latest.yml");
 const signingScriptPath = join(root, "scripts/macos-sign-and-notarize.sh");
+const installerPath = join(root, "install.sh");
 
 test("release workflow always builds raw macOS binaries and optionally notarizes packages", async () => {
   const workflow = await readFile(releaseWorkflowPath, "utf8");
@@ -34,6 +35,11 @@ test("release workflow always builds raw macOS binaries and optionally notarizes
   assert.doesNotMatch(packageBuild, /RAW_BINARY|dist\/memento-mcp_darwin_\*/);
   assert.match(workflow, /needs\.package-macos-pkg\.result == 'skipped'/);
   assert.match(publish, /Validate exact release asset manifest/);
+  assert.match(publish, /Checkout tagged installer/);
+  assert.match(publish, /install -m 0755 install\.sh dist\/install\.sh/);
+  assert.match(publish, /sha256sum install\.sh > install\.sh\.sha256/);
+  assert.match(publish, /install\.sh \\/);
+  assert.match(publish, /install\.sh\.sha256 \\/);
   assert.match(publish, /MACOS_PACKAGE_RESULT: \$\{\{ needs\.package-macos-pkg\.result \}\}/);
   assert.match(publish, /actual=\$\(find dist/);
   assert.match(publish, /sha256sum -c "\$checksum"/);
@@ -44,8 +50,14 @@ test("release workflow always builds raw macOS binaries and optionally notarizes
 
   const manifestBlock = publish.match(/expected_assets\(\) \{([\s\S]*?)^\s{10}\}/m)?.[1] ?? "";
   const manifestAssets = manifestBlock.match(/^\s+(?:"?)memento-mcp_[^\n]+/gm) ?? [];
+  const installerAssets = manifestBlock.match(/^\s+install\.sh(?:\.sha256)? \\/gm) ?? [];
   assert.equal(manifestAssets.filter((line) => !line.includes(".pkg")).length, 14);
   assert.equal(manifestAssets.filter((line) => line.includes(".pkg")).length, 2);
+  assert.equal(installerAssets.length, 2);
+  assert.ok(
+    publish.indexOf("Stage installer assets") < publish.indexOf("Validate exact release asset manifest"),
+    "installer assets must be staged before manifest validation",
+  );
 });
 
 test("server/latest mirrors verified versioned assets without rebuilding", async () => {
@@ -57,13 +69,24 @@ test("server/latest mirrors verified versioned assets without rebuilding", async
   assert.match(workflow, /gh release delete server\/latest --yes/);
   assert.match(workflow, /gh release create server\/latest dist\/\*/);
   assert.match(workflow, /Exact verified asset mirror/);
+  assert.match(workflow, /install\.sh \\/);
+  assert.match(workflow, /install\.sh\.sha256 \\/);
 
   const expectedBlock = workflow.match(/expected_assets\(\) \{([\s\S]*?)^\s{10}\}/m)?.[1] ?? "";
   const expectedAssets = expectedBlock.match(/^\s+(?:"?)memento-mcp_[^\n]+/gm) ?? [];
+  const installerAssets = expectedBlock.match(/^\s+install\.sh(?:\.sha256)? \\/gm) ?? [];
   assert.equal(expectedAssets.filter((line) => !line.includes(".pkg")).length, 14);
   assert.equal(expectedAssets.filter((line) => line.includes(".pkg")).length, 2);
+  assert.equal(installerAssets.length, 2);
   assert.match(workflow, /if \[ "\$MACOS_NOTARIZATION_ENABLED" = "true" \]/);
   assert.match(workflow, /expected_count=/);
+});
+
+test("bootstrap installer is executable and passes POSIX shell syntax validation", async () => {
+  await access(installerPath);
+  execFileSync("sh", ["-n", installerPath]);
+  const info = await stat(installerPath);
+  assert.ok((info.mode & 0o111) !== 0, "install.sh must remain executable");
 });
 
 test("macOS packaging script executes the hardened signing pipeline", async (t) => {
