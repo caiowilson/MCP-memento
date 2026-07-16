@@ -52,6 +52,9 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"serialized domain specification", "Which source specifies the canonical persisted values for every shipment disposition?", func(intent termSearchIntent) bool {
 			return intent.backedEnumDefinition && intent.preferRelationshipTarget
 		}},
+		{"durable catalog spellings", "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.catalogDomainDefinition && intent.preferRelationshipTarget
+		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
 		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
 			return intent.shutdownRegistration && intent.preferRelationshipTarget
@@ -77,11 +80,21 @@ func TestTermSearchIntentDoesNotPromoteSerializedConsumers(t *testing.T) {
 		"Where does DispositionSerializer render the wire label for one transit disposition?",
 		"Which presenter maps every transit disposition to its serialized label?",
 		"Which function serializes every status into a specific wire label?",
+		"Which function fixes the durable catalog spelling for each status before rendering?",
+		"Which source fixes one catalog spelling for a status?",
+		"Which source fixes each durable catalog spelling for a status before rendering it?",
 	}
 	for _, query := range queries {
 		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition || intent.preferRelationshipTarget {
 			t.Fatalf("consumer query activated serialized-domain definition intent: query=%q intent=%#v", query, intent)
 		}
+	}
+}
+
+func TestTermSearchIntentDoesNotPromoteUnrelatedFixRequests(t *testing.T) {
+	intent := classifyTermSearchIntent("Which source fixes the config parser bug?")
+	if intent.definition || intent.configDefinition || intent.preferRelationshipTarget {
+		t.Fatalf("unrelated fix request activated definition ranking: %#v", intent)
 	}
 }
 
@@ -293,6 +306,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Which source establishes the stable wire labels for every transit disposition?",
 			target:     Chunk{Path: "src/Domain/TransitDisposition.php", Language: "php", Content: "enum TransitDisposition: string\n{\n    case AwaitingTransfer = 'awaiting_transfer';\n}\n"},
 			distractor: Chunk{Path: "src/Api/DispositionSerializer.php", Language: "php", Content: "return match ($disposition) { TransitDisposition::AwaitingTransfer => 'Awaiting transfer' };\n"},
+		},
+		{
+			name:       "durable catalog spelling paraphrase",
+			query:      "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?",
+			target:     Chunk{Path: "src/Domain/FumigationStage.php", Language: "php", Content: "enum FumigationStage: string\n{\n"},
+			distractor: Chunk{Path: "src/Presentation/FumigationBrief.php", Language: "php", Content: "public function caption(FumigationStage $stage): string\n{\n    return match ($stage) {\n        FumigationStage::SealedForTreatment => 'Treatment chamber sealed',\n        FumigationStage::ExposureUnderway => 'Pest exposure underway',\n        FumigationStage::ClearedForStorage => 'Cleared for collection storage',\n    };\n}\n"},
 		},
 		{
 			name:       "shutdown callback registration",

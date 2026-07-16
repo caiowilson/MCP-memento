@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v10+php-relationships-v1",
+    "adapter": "terms-v11+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -315,10 +315,17 @@
         },
         {
           "id": "postv10-php81-fumigation-catalog-tokens",
-          "split": "holdout",
+          "split": "train",
           "query": "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?",
           "relevant": [{"path": "holdout_20260716_v10/museum_fumigation/src/Domain/FumigationStage.php", "startLine": 7, "endLine": 12}],
           "hardNegatives": [{"path": "holdout_20260716_v10/museum_fumigation/src/Presentation/FumigationBrief.php", "startLine": 11, "endLine": 18}]
+        },
+        {
+          "id": "postv11-php81-seed-viability-catalog-values",
+          "split": "holdout",
+          "query": "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?",
+          "relevant": [{"path": "holdout_20260716_v11/seed_bank_viability/src/Domain/SeedLotViability.php", "startLine": 7, "endLine": 13}],
+          "hardNegatives": [{"path": "holdout_20260716_v11/seed_bank_viability/src/Api/ViabilityCatalogSerializer.php", "startLine": 14, "endLine": 20}]
         }
       ]
     },

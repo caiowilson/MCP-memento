@@ -27,6 +27,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8) (Accepted, 2026-07-13)
 - ADR 0016: Candidate-bounded relationship ranking (terms-v9) (Accepted, 2026-07-15)
 - ADR 0017: Compositional serialized-domain ranking (terms-v10) (Accepted, 2026-07-16)
+- ADR 0018: Synonym-gated enum-header ranking (terms-v11) (Accepted, 2026-07-16)
 
 ---
 
@@ -1067,6 +1068,80 @@ without modeling the underlying request.
 - Tune against the post-terms-v10 fixture: would erase the blind measurement
   and make reported generalization circular; its vocabulary is reserved for a
   separately fingerprinted scorer.
+
+---
+
+## ADR 0018: Synonym-gated enum-header ranking (terms-v11)
+
+- Status: Accepted
+- Date: 2026-07-16
+
+### Context
+
+Terms-v10 fixed the measured backed-enum miss by recognizing serialized
+closed-domain definitions compositionally. Its independently authored
+post-freeze query kept the correct enum in the top five but ranked a presenter
+first when the query used unseen "durable catalog spellings for each" language.
+The PHP chunker also separates a backed enum's header from its cases, so the
+provider chunk can carry less lexical evidence than a consumer even when the
+query clearly asks for the defining declaration.
+
+The measured miss must become training evidence before the scorer changes. A
+new independently authored holdout must then be opened only after the new
+fingerprint is frozen, and its first result must remain advisory rather than be
+tuned away.
+
+### Decision
+
+- Fingerprint the scorer as `terms-v11+php-relationships-v1` and promote the
+  post-terms-v10 durable-catalog-spelling judgment to training.
+- Recognize fix actions and definition loci with exact tokens. Treat `each` as
+  closed-domain vocabulary, the conjunction of `durable` and `catalog` as
+  representation vocabulary, and spelling/spellings as value vocabulary.
+- Require the complete fix-definition, each-domain, durable-catalog, and
+  spelling conjunction before granting one additional backed-enum-header
+  structural unit. Raise the structural cap from three to four units only for
+  that conjunction.
+- Reject function, method, serializer, presenter, renderer, formatter,
+  encoder, decoder, mapper, render, serialize, and present consumer loci before
+  activating the fix-definition role.
+- Leave the relationship graph, relationship bonus, lexical candidate window,
+  and literal search behavior unchanged.
+- Freeze the scorer before adding the post-terms-v11 fixture. Preserve its
+  first result and use it only as evidence for a later fingerprint.
+- A post-holdout release review may correct an unrelated negative-control bug.
+  The review kept fix actions out of the global definition intent so a query
+  such as "which source fixes the config parser bug" cannot activate config
+  definition ranking. The blind query's classification and result are
+  unchanged.
+
+### Consequences
+
+- The promoted museum-fumigation query moves from rank two to rank one. On the
+  92-query pre-holdout suite, overall recall@5 is `1.000`, MRR is `0.989`,
+  nDCG@5 is `0.991`, and hard-negative wins are zero. The 44-query training
+  split has recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero wins;
+  validation remains perfect; the 37-query holdout has recall@5 `1.000`, MRR
+  `0.973`, nDCG@5 `0.980`, and zero wins.
+- The independently authored seed-bank query uses an unseen every-domain,
+  singular-spelling variant. Its enum remains in the top five but ranks second
+  behind the serializer: recall@5 `1.000`, MRR `0.500`, nDCG@5 `0.631`, and
+  one hard-negative win. Terms-v11 remains frozen; the miss becomes advisory
+  evidence for terms-v12.
+- The expanded 93-query suite records overall recall@5 `1.000`, MRR `0.984`,
+  nDCG@5 `0.987`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+
+### Alternatives considered
+
+- Reward every serialized-domain request with another enum-header unit: too
+  broad, because consumer queries can contain the same serialization and value
+  vocabulary.
+- Add only the observed domain nouns or fixture symbol names: would memorize
+  examples instead of representing a reusable intent.
+- Tune against the post-terms-v11 seed-bank fixture: would invalidate the blind
+  measurement. Its every-versus-each and singular-versus-plural boundary is
+  reserved for a separately fingerprinted scorer.
 
 ---
 

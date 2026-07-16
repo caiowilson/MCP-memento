@@ -43,7 +43,7 @@ func TestRelationshipProviderFingerprintAndIndexInvalidation(t *testing.T) {
 	if provider.invalidations != 1 {
 		t.Fatalf("full index invalidations = %d, want 1", provider.invalidations)
 	}
-	if got, want := idx.DebugInfo().TermSearchVersion, "terms-v10+test-relationships-v1"; got != want {
+	if got, want := idx.DebugInfo().TermSearchVersion, "terms-v11+test-relationships-v1"; got != want {
 		t.Fatalf("term search adapter = %q, want %q", got, want)
 	}
 	if err := idx.Clear(); err != nil {

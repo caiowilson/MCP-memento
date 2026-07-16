@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v10"
+const TermSearchVersion = "terms-v11"
 
 type termSearchIntent struct {
 	definition               bool
@@ -20,6 +20,7 @@ type termSearchIntent struct {
 	collectionRelation       bool
 	neverTermination         bool
 	backedEnumDefinition     bool
+	catalogDomainDefinition  bool
 	shutdownRegistration     bool
 	uninstallRegistration    bool
 	preferRelationshipTarget bool
@@ -65,6 +66,13 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 func classifyTermSearchIntent(query string) termSearchIntent {
 	lower := strings.ToLower(positiveSearchClause(query))
 	specificationAction := containsAnySearchToken(lower, "specify", "specifies", "specified", "specifying")
+	fixAction := containsAnySearchToken(lower, "fix", "fixes", "fixed", "fixing")
+	definitionLocus := containsAnySearchToken(lower, "source", "declaration", "definition", "enum", "type")
+	consumerLocus := containsAnySearchToken(lower,
+		"function", "method", "serializer", "presenter", "renderer", "formatter", "encoder", "decoder", "mapper",
+		"render", "renders", "rendered", "rendering", "serialize", "serializes", "serialized", "serializing", "present", "presents", "presented", "presenting",
+	)
+	fixDefinitionAction := fixAction && definitionLocus && !consumerLocus
 	callableIntent := containsAny(lower,
 		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
 	)
@@ -84,11 +92,15 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	)
 	enumConcept := containsAny(lower, "phase", "state", "status", "outcome", "verdict", "option", "choice")
 	serializedValueConcept := containsAny(lower, "persist", "string", "integer", "int code", "code", "value")
-	closedDomainConcept := containsAny(lower, "allowed", "canonical", "every", "all ", " enum", "case", "set of")
-	serializedRepresentationConcept := containsAny(lower, "wire", "serializ", "persist", "stored", "storage", "database")
-	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer")
-	serializedDomainDefinitionAction := containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction
+	eachDomainMember := containsAnySearchToken(lower, "each")
+	closedDomainConcept := containsAny(lower, "allowed", "canonical", "every", "all ", " enum", "case", "set of") || eachDomainMember
+	durableCatalogRepresentation := containsAnySearchToken(lower, "durable") && containsAnySearchToken(lower, "catalog")
+	serializedRepresentationConcept := containsAny(lower, "wire", "serializ", "persist", "stored", "storage", "database") || durableCatalogRepresentation
+	catalogSpelling := containsAnySearchToken(lower, "spelling", "spellings")
+	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer") || catalogSpelling
+	serializedDomainDefinitionAction := containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction || fixDefinitionAction
 	serializedDomainValueDefinition := serializedDomainDefinitionAction && closedDomainConcept && serializedRepresentationConcept && domainValueConcept
+	catalogDomainDefinition := fixDefinitionAction && eachDomainMember && durableCatalogRepresentation && catalogSpelling
 	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") || serializedDomainValueDefinition
 	terminationConcept := containsAny(lower,
 		"script termination", "process termination", "process terminates", "process exits", "shutdown", "after termination", "early exit", "last-chance", "finalization",
@@ -100,16 +112,17 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	)
 	uninstallRegistration := pluginDeletion && bindingConcept
 	intent := termSearchIntent{
-		definition:            definition,
-		attribute:             containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
-		callable:              callableIntent,
-		configDefinition:      configDefinition,
-		relationDeclaration:   relationConcept && definition || collectionRelation,
-		collectionRelation:    collectionRelation,
-		neverTermination:      strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
-		backedEnumDefinition:  backedEnumDefinition,
-		shutdownRegistration:  shutdownRegistration,
-		uninstallRegistration: uninstallRegistration,
+		definition:              definition,
+		attribute:               containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
+		callable:                callableIntent,
+		configDefinition:        configDefinition,
+		relationDeclaration:     relationConcept && definition || collectionRelation,
+		collectionRelation:      collectionRelation,
+		neverTermination:        strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
+		backedEnumDefinition:    backedEnumDefinition,
+		catalogDomainDefinition: catalogDomainDefinition,
+		shutdownRegistration:    shutdownRegistration,
+		uninstallRegistration:   uninstallRegistration,
 	}
 	intent.preferRelationshipTarget = backedEnumDefinition || shutdownRegistration || configDefinition
 	intent.preferRelationshipSource = relationConcept && definition || collectionRelation || uninstallRegistration
@@ -283,6 +296,11 @@ func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
 			score -= exactTermUnit
 		}
 	}
+	if intent.catalogDomainDefinition && strings.Contains(content, "enum ") && containsAny(content, ": string", ": int") {
+		// High-confidence synonym intent needs one additional unit because PHP
+		// declaration chunks keep enum cases separate from the enum header.
+		score += exactTermUnit
+	}
 	if intent.shutdownRegistration {
 		if strings.Contains(content, "register_shutdown_function(") {
 			score += 3 * exactTermUnit
@@ -297,8 +315,12 @@ func termSearchStructuralScore(chunk Chunk, intent termSearchIntent) int {
 			score -= exactTermUnit
 		}
 	}
-	if score > 3*exactTermUnit {
-		return 3 * exactTermUnit
+	maxStructuralScore := 3 * exactTermUnit
+	if intent.catalogDomainDefinition {
+		maxStructuralScore = 4 * exactTermUnit
+	}
+	if score > maxStructuralScore {
+		return maxStructuralScore
 	}
 	if score < -exactTermUnit {
 		return -exactTermUnit
