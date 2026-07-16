@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v11"
+const TermSearchVersion = "terms-v12"
 
 type termSearchIntent struct {
 	definition               bool
@@ -60,7 +60,23 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 	if intent.definition && (intent.configDefinition || intent.relationDeclaration) {
 		query = definitionSearchClause(query)
 	}
-	return meaningfulSearchTerms(query)
+	terms := meaningfulSearchTerms(query)
+	if !intent.catalogDomainDefinition {
+		return terms
+	}
+	out := terms[:0]
+	for _, term := range terms {
+		switch term {
+		case "source", "declaration", "definition", "enum", "type",
+			"fix", "fixes", "fixed", "fixing", "durable",
+			"serialize", "serializes", "serialized", "serializing",
+			"catalog", "spelling", "spellings", "each", "every":
+			continue
+		default:
+			out = append(out, term)
+		}
+	}
+	return out
 }
 
 func classifyTermSearchIntent(query string) termSearchIntent {
@@ -70,8 +86,8 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	definitionLocus := containsAnySearchToken(lower, "source", "declaration", "definition", "enum", "type")
 	consumerLocus := containsAnySearchToken(lower,
 		"function", "method", "serializer", "presenter", "renderer", "formatter", "encoder", "decoder", "mapper",
-		"render", "renders", "rendered", "rendering", "serialize", "serializes", "serialized", "serializing", "present", "presents", "presented", "presenting",
-	)
+		"render", "renders", "rendered", "rendering", "serialize", "serializes", "serializing", "present", "presents", "presented", "presenting",
+	) || containsAny(lower, " is serialized", " was serialized", " be serialized", " gets serialized", " got serialized", " serialized by ")
 	fixDefinitionAction := fixAction && definitionLocus && !consumerLocus
 	callableIntent := containsAny(lower,
 		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
@@ -92,15 +108,15 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	)
 	enumConcept := containsAny(lower, "phase", "state", "status", "outcome", "verdict", "option", "choice")
 	serializedValueConcept := containsAny(lower, "persist", "string", "integer", "int code", "code", "value")
-	eachDomainMember := containsAnySearchToken(lower, "each")
-	closedDomainConcept := containsAny(lower, "allowed", "canonical", "every", "all ", " enum", "case", "set of") || eachDomainMember
+	quantifiedDomainMembers := containsAnySearchToken(lower, "each", "every", "all")
+	closedDomainConcept := containsAny(lower, "allowed", "canonical", " enum", "case", "set of") || quantifiedDomainMembers
 	durableCatalogRepresentation := containsAnySearchToken(lower, "durable") && containsAnySearchToken(lower, "catalog")
 	serializedRepresentationConcept := containsAny(lower, "wire", "serializ", "persist", "stored", "storage", "database") || durableCatalogRepresentation
 	catalogSpelling := containsAnySearchToken(lower, "spelling", "spellings")
 	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer") || catalogSpelling
 	serializedDomainDefinitionAction := containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction || fixDefinitionAction
 	serializedDomainValueDefinition := serializedDomainDefinitionAction && closedDomainConcept && serializedRepresentationConcept && domainValueConcept
-	catalogDomainDefinition := fixDefinitionAction && eachDomainMember && durableCatalogRepresentation && catalogSpelling
+	catalogDomainDefinition := fixDefinitionAction && quantifiedDomainMembers && durableCatalogRepresentation && catalogSpelling
 	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") || serializedDomainValueDefinition
 	terminationConcept := containsAny(lower,
 		"script termination", "process termination", "process terminates", "process exits", "shutdown", "after termination", "early exit", "last-chance", "finalization",

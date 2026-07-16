@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v11+php-relationships-v1",
+    "adapter": "terms-v12+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -322,10 +322,17 @@
         },
         {
           "id": "postv11-php81-seed-viability-catalog-values",
-          "split": "holdout",
+          "split": "train",
           "query": "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?",
           "relevant": [{"path": "holdout_20260716_v11/seed_bank_viability/src/Domain/SeedLotViability.php", "startLine": 7, "endLine": 13}],
           "hardNegatives": [{"path": "holdout_20260716_v11/seed_bank_viability/src/Api/ViabilityCatalogSerializer.php", "startLine": 14, "endLine": 20}]
+        },
+        {
+          "id": "postv12-php81-invoice-delivery-state-tokens",
+          "split": "holdout",
+          "query": "Where is the authoritative closed set of stored tokens for every invoice delivery state established?",
+          "relevant": [{"path": "holdout_20260716_v12/invoice_delivery/src/Domain/InvoiceDeliveryState.php", "startLine": 7, "endLine": 13}],
+          "hardNegatives": [{"path": "holdout_20260716_v12/invoice_delivery/src/Api/InvoiceDeliverySerializer.php", "startLine": 12, "endLine": 24}]
         }
       ]
     },

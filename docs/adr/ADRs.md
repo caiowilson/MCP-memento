@@ -28,6 +28,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0016: Candidate-bounded relationship ranking (terms-v9) (Accepted, 2026-07-15)
 - ADR 0017: Compositional serialized-domain ranking (terms-v10) (Accepted, 2026-07-16)
 - ADR 0018: Synonym-gated enum-header ranking (terms-v11) (Accepted, 2026-07-16)
+- ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12) (Accepted, 2026-07-16)
 
 ---
 
@@ -1142,6 +1143,77 @@ tuned away.
 - Tune against the post-terms-v11 seed-bank fixture: would invalidate the blind
   measurement. Its every-versus-each and singular-versus-plural boundary is
   reserved for a separately fingerprinted scorer.
+
+---
+
+## ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12)
+
+- Status: Accepted
+- Date: 2026-07-16
+
+### Context
+
+Terms-v11 fixed its promoted durable-catalog query, but the independently
+authored post-freeze seed-bank query ranked the enum second behind a serializer.
+The query clearly named a defining declaration and a complete durable catalog,
+yet its serializer repeated more of the classification vocabulary in a method
+signature, return shape, and field names. Coverage-weighted lexical scoring
+therefore overwhelmed the bounded enum structure and relationship evidence.
+
+The measured miss must be promoted before changing the scorer. Any solution
+must preserve consumer requests, unrelated fix requests, and the first result
+of a new independently authored holdout.
+
+### Decision
+
+- Fingerprint the scorer as `terms-v12+php-relationships-v1` and promote the
+  post-terms-v11 seed-bank judgment to training.
+- Expand exact closed-domain quantifiers from `each` to `each`, `every`, and
+  `all`. Treat standalone adjectival `serialized` as representation vocabulary,
+  while consumer actors, active serialization verbs, and common passive
+  serialization phrases continue to block fix-definition intent.
+- When—and only when—the complete fix-definition, quantified-domain,
+  durable-catalog, and spelling conjunction is present, remove its role and
+  representation cues from lexical scoring. Retain domain-specific terms so
+  enum structure and the existing candidate-bounded relationship target bonus
+  can distinguish the provider from consumers that repeat those cues.
+- Keep the three-unit backed-enum score, one-unit catalog header score,
+  four-unit structural cap, relationship graph, candidate windows, and bonus
+  magnitudes unchanged.
+- Add controls for explicit serialization operations, serializer actors,
+  unrelated config-fix requests, filtered term output, and realistic
+  enum-versus-serializer ranking.
+- Freeze the scorer before adding the post-terms-v12 fixture and preserve its
+  first result for a later fingerprint.
+
+### Consequences
+
+- The promoted seed-bank query moves from rank two to rank one. On the 93-query
+  pre-holdout suite, overall recall@5 is `1.000`, MRR is `0.989`, nDCG@5 is
+  `0.991`, and hard-negative wins are zero. The 45-query training split has
+  recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero wins; validation remains
+  perfect; the 37-query holdout has recall@5 `1.000`, MRR `0.973`, nDCG@5
+  `0.980`, and zero wins.
+- The independently authored invoice-delivery query uses unseen
+  authoritative-closed-set and stored-token language. Its enum remains in the
+  top five but ranks second behind the serializer: recall@5 `1.000`, MRR
+  `0.500`, nDCG@5 `0.631`, and one hard-negative win. Terms-v12 remains frozen;
+  the miss becomes advisory evidence for terms-v13.
+- The expanded 94-query suite records overall recall@5 `1.000`, MRR `0.984`,
+  nDCG@5 `0.987`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+
+### Alternatives considered
+
+- Increase the enum structural bonus again: would widen a query-global cap and
+  avoid the lexical cause of the measured miss.
+- Remove serialization vocabulary for every definition query: too broad and
+  likely to erase useful evidence outside the exact catalog-domain role.
+- Penalize classes or methods named Serializer globally: would damage genuine
+  consumer queries and encode a naming convention as semantics.
+- Tune against the post-terms-v12 invoice fixture: would invalidate the blind
+  measurement. Its authoritative/stored/token vocabulary is reserved for a
+  separately fingerprinted scorer.
 
 ---
 

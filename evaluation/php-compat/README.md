@@ -55,15 +55,15 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 93 natural-language retrieval queries with
-99 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v11+php-relationships-v1` adapter against each corpus
+forbidden body-symbol leakage, and 94 natural-language retrieval queries with
+100 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v12+php-relationships-v1` adapter against each corpus
 independently. Its relationship provider can only rerank direct edges among a
-bounded window of already lexically matched candidates. The 44-query training
+bounded window of already lexically matched candidates. The 45-query training
 split contains the original benchmark, promoted measured misses, and
 independent structural-role cases. The 11-query validation split covers every
 primary corpus. The 38 advisory holdout queries retain the unpromoted earlier
-generations and independently authored post-freeze cases through terms-v11.
+generations and independently authored post-freeze cases through terms-v12.
 Independently authored Composer packages and WordPress plugins live in
 retrieval-only holdout corpora so equally valid mappings or lifecycle hooks do
 not make the base package's training judgments ambiguous. Adding
@@ -151,12 +151,23 @@ suite, overall recall@5 is `1.000`, MRR is `0.989`, nDCG@5 is `0.991`, and
 hard-negative wins are zero. Its 44-query training split has recall@5 and MRR
 `1.000`, nDCG@5 `0.998`, and zero wins; validation remains perfect; the
 37-query holdout has recall@5 `1.000`, MRR `0.973`, nDCG@5 `0.980`, and zero
-wins. The independently authored post-terms-v11 query preserves recall@5
-`1.000` but ranks its enum second behind a serializer under an unseen
+wins. The independently authored post-terms-v11 query preserved recall@5
+`1.000` but ranked its enum second behind a serializer under an unseen
 every-domain singular-spelling variant, recording MRR `0.500`, nDCG@5 `0.631`,
-and one advisory win. The full 93-query suite records recall@5 `1.000`, MRR
-`0.984`, nDCG@5 `0.987`, and one advisory win; the 38-query holdout records
-recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+and one advisory win. Terms-v12 promotes that miss, expands exact domain
+quantifiers, distinguishes adjectival serialized vocabulary from consumer
+operations, and removes classifier-only catalog vocabulary from lexical
+competition. On the 93-query pre-holdout suite, overall recall@5 is `1.000`,
+MRR is `0.989`, nDCG@5 is `0.991`, and hard-negative wins are zero. Its
+45-query training split has recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero
+wins; validation remains perfect; the 37-query holdout has recall@5 `1.000`,
+MRR `0.973`, nDCG@5 `0.980`, and zero wins. The independently authored
+post-terms-v12 query preserves recall@5 `1.000` but ranks its enum second behind
+a serializer under unseen authoritative-closed-set/stored-token language,
+recording MRR `0.500`, nDCG@5 `0.631`, and one advisory win. The full 94-query
+suite records recall@5 `1.000`, MRR `0.984`, nDCG@5 `0.987`, and one advisory
+win; the 38-query holdout records recall@5 `1.000`, MRR `0.961`, and nDCG@5
+`0.971`.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

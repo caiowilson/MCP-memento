@@ -55,6 +55,9 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"durable catalog spellings", "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?", func(intent termSearchIntent) bool {
 			return intent.backedEnumDefinition && intent.catalogDomainDefinition && intent.preferRelationshipTarget
 		}},
+		{"serialized catalog spelling", "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.catalogDomainDefinition && intent.preferRelationshipTarget
+		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
 		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
 			return intent.shutdownRegistration && intent.preferRelationshipTarget
@@ -83,6 +86,8 @@ func TestTermSearchIntentDoesNotPromoteSerializedConsumers(t *testing.T) {
 		"Which function fixes the durable catalog spelling for each status before rendering?",
 		"Which source fixes one catalog spelling for a status?",
 		"Which source fixes each durable catalog spelling for a status before rendering it?",
+		"Which source fixes each durable catalog spelling after the status is serialized?",
+		"Which serializer fixes every durable catalog spelling for a status?",
 	}
 	for _, query := range queries {
 		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition || intent.preferRelationshipTarget {
@@ -121,6 +126,16 @@ func TestMeaningfulSearchTermsForDefinitionDropsConsumerContext(t *testing.T) {
 	intent := classifyTermSearchIntent(query)
 	got := meaningfulSearchTermsForIntent(query, intent)
 	want := []string{"configuration", "entry", "defines", "reporting", "endpoint"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("meaningfulSearchTermsForIntent() = %#v; want %#v", got, want)
+	}
+}
+
+func TestMeaningfulSearchTermsForCatalogDefinitionDropsIntentVocabulary(t *testing.T) {
+	query := "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?"
+	intent := classifyTermSearchIntent(query)
+	got := meaningfulSearchTermsForIntent(query, intent)
+	want := []string{"seed", "lot", "viability", "category"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("meaningfulSearchTermsForIntent() = %#v; want %#v", got, want)
 	}
@@ -312,6 +327,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?",
 			target:     Chunk{Path: "src/Domain/FumigationStage.php", Language: "php", Content: "enum FumigationStage: string\n{\n"},
 			distractor: Chunk{Path: "src/Presentation/FumigationBrief.php", Language: "php", Content: "public function caption(FumigationStage $stage): string\n{\n    return match ($stage) {\n        FumigationStage::SealedForTreatment => 'Treatment chamber sealed',\n        FumigationStage::ExposureUnderway => 'Pest exposure underway',\n        FumigationStage::ClearedForStorage => 'Cleared for collection storage',\n    };\n}\n"},
+		},
+		{
+			name:       "serialized catalog spelling every-domain paraphrase",
+			query:      "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?",
+			target:     Chunk{Path: "src/Domain/SeedLotViability.php", Language: "php", Content: "enum SeedLotViability: string\n{\n"},
+			distractor: Chunk{Path: "src/Api/ViabilityCatalogSerializer.php", Language: "php", Content: "final class ViabilityCatalogSerializer\n{\n    /** @return array{category: string, catalog_spelling: string} */\n    public function serialize(SeedLotViability $category): array\n    {\n        return ['category' => strtolower($category->name), 'catalog_spelling' => $category->value];\n    }\n}\n"},
 		},
 		{
 			name:       "shutdown callback registration",
