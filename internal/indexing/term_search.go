@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v9"
+const TermSearchVersion = "terms-v10"
 
 type termSearchIntent struct {
 	definition               bool
@@ -64,12 +64,14 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 
 func classifyTermSearchIntent(query string) termSearchIntent {
 	lower := strings.ToLower(positiveSearchClause(query))
+	specificationAction := containsAnySearchToken(lower, "specify", "specifies", "specified", "specifying")
 	callableIntent := containsAny(lower,
 		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
 	)
-	definition := containsAny(lower,
-		" defin", " declar", " assign", " map", " wire", " register", " restrict", " annotat", " marked with ", " attach", " bind",
-	)
+	explicitDefinition := containsAny(lower,
+		" defin", " declar", " assign", " map", " register", " restrict", " annotat", " marked with ", " attach", " bind", " establish", " enumerat",
+	) || specificationAction
+	definition := explicitDefinition || strings.Contains(lower, " wire")
 	configConcept := containsAny(lower, "config", "setting", "service container")
 	configDefinition := configConcept && (definition || containsAny(lower,
 		"configuration line", "configuration entry", "configuration value", "config line", "config entry", "config key",
@@ -82,7 +84,12 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	)
 	enumConcept := containsAny(lower, "phase", "state", "status", "outcome", "verdict", "option", "choice")
 	serializedValueConcept := containsAny(lower, "persist", "string", "integer", "int code", "code", "value")
-	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every")
+	closedDomainConcept := containsAny(lower, "allowed", "canonical", "every", "all ", " enum", "case", "set of")
+	serializedRepresentationConcept := containsAny(lower, "wire", "serializ", "persist", "stored", "storage", "database")
+	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer")
+	serializedDomainDefinitionAction := containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction
+	serializedDomainValueDefinition := serializedDomainDefinitionAction && closedDomainConcept && serializedRepresentationConcept && domainValueConcept
+	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") || serializedDomainValueDefinition
 	terminationConcept := containsAny(lower,
 		"script termination", "process termination", "process terminates", "process exits", "shutdown", "after termination", "early exit", "last-chance", "finalization",
 	)
@@ -309,6 +316,17 @@ func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(value, needle) {
 			return true
+		}
+	}
+	return false
+}
+
+func containsAnySearchToken(value string, needles ...string) bool {
+	for _, token := range identifierSearchTokens(value) {
+		for _, needle := range needles {
+			if token == needle {
+				return true
+			}
 		}
 	}
 	return false

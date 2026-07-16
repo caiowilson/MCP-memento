@@ -370,6 +370,47 @@ func TestTermsV9PostFreezeHoldout(t *testing.T) {
 	t.Logf("post-terms-v9 holdout queries=%d recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d", actual.Queries, actual.Recall, actual.MRR, actual.NDCG, actual.HardNegativeWins)
 }
 
+func TestTermsV10PostFreezeHoldout(t *testing.T) {
+	suite, err := phpcompat.Load(filepath.Join("..", "..", "evaluation", "php-compat", "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wanted = "postv10-php81-fumigation-catalog-tokens"
+	var selected phpcompat.Corpus
+	for _, corpus := range suite.Corpora {
+		for _, query := range corpus.Retrieval {
+			if query.ID == wanted {
+				selected = corpus
+				selected.Retrieval = []phpcompat.RetrievalExpectation{query}
+				break
+			}
+		}
+	}
+	if len(selected.Retrieval) != 1 {
+		t.Fatalf("post-terms-v10 holdout %q was not found", wanted)
+	}
+	root, err := suite.CorpusRoot(selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := evaluation.ExecuteFixturesWithConfig(
+		context.Background(),
+		root,
+		filepath.Join(t.TempDir(), selected.ID),
+		phpRetrievalFixtures(selected, suite.RetrievalPolicy.K),
+		phpTermExecuteConfig(root),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Queries) != 1 {
+		t.Fatalf("post-terms-v10 results = %d, want 1", len(report.Queries))
+	}
+	result := report.Queries[0]
+	wins := hardNegativeWins(retrievalQueriesByID(selected)[wanted], result.Retrieved)
+	t.Logf("post-terms-v10 holdout recall@5=%.3f MRR=%.3f nDCG@5=%.3f hard-negative-wins=%d retrieved=%#v", result.Metrics.Recall, result.Metrics.MRR, result.Metrics.NDCG, wins, result.Retrieved)
+}
+
 func phpTermExecuteConfig(root string) evaluation.ExecuteConfig {
 	return evaluation.ExecuteConfig{
 		TermAware:            true,

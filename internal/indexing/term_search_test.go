@@ -46,6 +46,12 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"backed enum paraphrase", "Where are the canonical string codes for every parcel review outcome declared?", func(intent termSearchIntent) bool {
 			return intent.backedEnumDefinition && intent.preferRelationshipTarget
 		}},
+		{"serialized domain labels", "Which source establishes the stable wire labels for every transit disposition?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
+		{"serialized domain specification", "Which source specifies the canonical persisted values for every shipment disposition?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
 		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
 			return intent.shutdownRegistration && intent.preferRelationshipTarget
@@ -62,6 +68,20 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 				t.Fatalf("classifyTermSearchIntent(%q) = %#v", test.query, intent)
 			}
 		})
+	}
+}
+
+func TestTermSearchIntentDoesNotPromoteSerializedConsumers(t *testing.T) {
+	queries := []string{
+		"Which function serializes every transit disposition into a stable wire label?",
+		"Where does DispositionSerializer render the wire label for one transit disposition?",
+		"Which presenter maps every transit disposition to its serialized label?",
+		"Which function serializes every status into a specific wire label?",
+	}
+	for _, query := range queries {
+		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition || intent.preferRelationshipTarget {
+			t.Fatalf("consumer query activated serialized-domain definition intent: query=%q intent=%#v", query, intent)
+		}
 	}
 }
 
@@ -267,6 +287,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			query:      "Where are the canonical string codes for every parcel review outcome declared?",
 			target:     Chunk{Path: "src/Domain/ParcelVerdict.php", Language: "php", Content: "enum ParcelVerdict: string\n{\n    case Cleared = 'cleared';\n}\n"},
 			distractor: Chunk{Path: "src/Presentation/VerdictPresenter.php", Language: "php", Content: "return match ($verdict) { ParcelVerdict::Cleared => 'Cleared' };\n"},
+		},
+		{
+			name:       "serialized domain label paraphrase",
+			query:      "Which source establishes the stable wire labels for every transit disposition?",
+			target:     Chunk{Path: "src/Domain/TransitDisposition.php", Language: "php", Content: "enum TransitDisposition: string\n{\n    case AwaitingTransfer = 'awaiting_transfer';\n}\n"},
+			distractor: Chunk{Path: "src/Api/DispositionSerializer.php", Language: "php", Content: "return match ($disposition) { TransitDisposition::AwaitingTransfer => 'Awaiting transfer' };\n"},
 		},
 		{
 			name:       "shutdown callback registration",

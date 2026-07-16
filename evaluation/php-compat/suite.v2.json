@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v9+php-relationships-v1",
+    "adapter": "terms-v10+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -301,7 +301,7 @@
         },
         {
           "id": "postv9-php81-transit-disposition-labels",
-          "split": "holdout",
+          "split": "train",
           "query": "Which source establishes the stable wire labels for every transit disposition?",
           "relevant": [{"path": "holdout_20260715_v9/backed_enum/src/Domain/TransitDisposition.php", "startLine": 7, "endLine": 11}],
           "hardNegatives": [{"path": "holdout_20260715_v9/backed_enum/src/Api/DispositionSerializer.php", "startLine": 11, "endLine": 18}]
@@ -312,6 +312,13 @@
           "query": "Where is the final process-exit handler connected so queued cargo telemetry is committed?",
           "relevant": [{"path": "holdout_20260715_v9/shutdown_registration/src/Runtime/ExitFlush.php", "startLine": 11, "endLine": 15}],
           "hardNegatives": [{"path": "holdout_20260715_v9/shutdown_registration/bin/reconcile-cargo.php", "startLine": 10, "endLine": 15}]
+        },
+        {
+          "id": "postv10-php81-fumigation-catalog-tokens",
+          "split": "holdout",
+          "query": "Which source fixes the durable catalog spellings for each museum object's pest-treatment stage?",
+          "relevant": [{"path": "holdout_20260716_v10/museum_fumigation/src/Domain/FumigationStage.php", "startLine": 7, "endLine": 12}],
+          "hardNegatives": [{"path": "holdout_20260716_v10/museum_fumigation/src/Presentation/FumigationBrief.php", "startLine": 11, "endLine": 18}]
         }
       ]
     },

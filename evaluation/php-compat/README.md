@@ -55,15 +55,15 @@ go run -tags="grammar_subset,grammar_subset_php" ./cmd/php-compat-eval \
 
 The standalone evaluator measures parse success, required symbol recall,
 signature-fragment recall, declaration-boundary recall, exact anchor extents,
-forbidden body-symbol leakage, and 91 natural-language retrieval queries with
-97 answer-line relevance judgments. Retrieval uses the deterministic,
-versioned `terms-v9+php-relationships-v1` adapter against each corpus
+forbidden body-symbol leakage, and 92 natural-language retrieval queries with
+98 answer-line relevance judgments. Retrieval uses the deterministic,
+versioned `terms-v10+php-relationships-v1` adapter against each corpus
 independently. Its relationship provider can only rerank direct edges among a
-bounded window of already lexically matched candidates. The 42-query training
+bounded window of already lexically matched candidates. The 43-query training
 split contains the original benchmark, promoted measured misses, and
 independent structural-role cases. The 11-query validation split covers every
 primary corpus. The 38 advisory holdout queries retain the unpromoted earlier
-generations and the independently authored six-case post-terms-v9 generation.
+generations and independently authored post-freeze cases through terms-v10.
 Independently authored Composer packages and WordPress plugins live in
 retrieval-only holdout corpora so equally valid mappings or lifecycle hooks do
 not make the base package's training judgments ambiguous. Adding
@@ -130,15 +130,24 @@ validation is `1.000` on all three metrics with zero hard-negative wins; and
 advisory holdout was recall@5 `1.000`, MRR `0.924`, nDCG@5 `0.944`, with three
 hard-negative wins. Under terms-v9, those three misses are training cases and
 the full 42-query training split retains recall@5 and MRR `1.000`, nDCG@5
-`0.998`, and zero hard-negative wins. Validation remains perfect. The expanded
-38-query advisory holdout records recall@5 `1.000`, MRR `0.961`, nDCG@5
-`0.971`, and one hard-negative win from the preserved post-terms-v9 enum miss.
+`0.998`, and zero hard-negative wins. Validation remains perfect.
 The independent six-query post-terms-v9 generation was authored only after the
 scorer was frozen and evaluated once without tuning. It recorded recall@5
 `1.000`, MRR `0.917`, nDCG@5 `0.938`, and one hard-negative win. Shutdown
 registration, WordPress uninstall binding, Composer namespace mapping, Laravel
 configuration defaults, and Doctrine collection ownership ranked first; the
 backed-enum value definition ranked second behind its presentation consumer.
+Terms-v10 promotes that enum miss and replaces the fixed domain-noun check with
+a compositional serialized-domain definition role. On the 91-query pre-holdout
+suite, the 43-query training split retains recall@5 and MRR `1.000`, nDCG@5
+`0.998`, and zero hard-negative wins; validation remains perfect; the 37-query
+holdout records recall@5 `1.000`, MRR `0.973`, nDCG@5 `0.980`, and zero wins.
+The independent post-terms-v10 query was likewise authored after scorer freeze.
+It records recall@5 `1.000`, MRR `0.500`, nDCG@5 `0.631`, and one hard-negative
+win: the durable-catalog-spelling paraphrase ranks its enum second behind the
+presenter. The full 92-query suite therefore records recall@5 `1.000`, MRR
+`0.984`, nDCG@5 `0.987`, and one advisory win; the 38-query holdout records
+recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
 Evaluate framework and language corpora independently before macro-averaging so
 a large corpus cannot hide a Drupal- or WordPress-specific regression.
 

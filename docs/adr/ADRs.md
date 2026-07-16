@@ -26,6 +26,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0014: Declaration-level PHP retrieval evaluation (Accepted, 2026-07-13)
 - ADR 0015: Structural query-intent retrieval (terms-v4 through terms-v8) (Accepted, 2026-07-13)
 - ADR 0016: Candidate-bounded relationship ranking (terms-v9) (Accepted, 2026-07-15)
+- ADR 0017: Compositional serialized-domain ranking (terms-v10) (Accepted, 2026-07-16)
 
 ---
 
@@ -1000,6 +1001,72 @@ content, paths, and declaration headers.
 - Penalize consumers: creates larger ranking swings and can harm queries asking
   for use sites. A capped positive adjustment is easier to reason about and
   preserves unrelated scores.
+
+---
+
+## ADR 0017: Compositional serialized-domain ranking (terms-v10)
+
+- Status: Accepted
+- Date: 2026-07-16
+
+### Context
+
+The independently authored post-terms-v9 generation left one advisory miss:
+the query asking which source established stable wire labels for every transit
+disposition ranked the presentation consumer ahead of the string-backed enum.
+Terms-v9 recognized only a fixed list of domain nouns such as status, outcome,
+and verdict. Adding disposition to that list would close one benchmark example
+without modeling the underlying request.
+
+### Decision
+
+- Promote the measured transit-disposition miss to training before changing the
+  scorer and fingerprint the result as `terms-v10+php-relationships-v1`.
+- Recognize serialized closed-domain definitions compositionally. Activation
+  requires all four signals: a definition-specific action, closed-set language,
+  serialized or persisted representation language, and value vocabulary.
+- Limit definition-specific actions to define, declare, establish, specify, or
+  enumerate. Generic map, assign, register, wire, attach, and bind language may
+  activate other structural roles but cannot make a serializer consumer look
+  like the serialized-domain provider.
+- Reuse the existing backed-enum syntax score and candidate-bounded relationship
+  target preference. Do not change the relationship provider, candidate window,
+  bonus magnitude, or literal search behavior.
+- Add negative controls for serialization, rendering, and presenter mapping
+  requests. Freeze the scorer before an independently authored post-terms-v10
+  fixture is revealed, and preserve its first result without tuning.
+- A post-holdout release review may still correct a negative-control bug when
+  it is unrelated to the revealed vocabulary. The review replaced a broad
+  `specif` substring with exact specify-action inflections so the adjective
+  "specific" cannot activate definition ranking; the blind query's result and
+  classification remain unchanged.
+
+### Consequences
+
+- The promoted transit-disposition definition moves from rank two to rank one.
+  On the 91-query pre-holdout corpus, recall@5 remains `1.000`, MRR rises to
+  `0.989`, nDCG@5 rises to `0.991`, and hard-negative wins fall to zero.
+  Training has 43 queries with recall@5 and MRR `1.000`, nDCG@5 `0.998`, and
+  zero wins; validation remains perfect; the 37 remaining holdouts record
+  recall@5 `1.000`, MRR `0.973`, nDCG@5 `0.980`, and zero wins.
+- The independent post-terms-v10 query uses unseen language—durable catalog
+  spellings for each pest-treatment stage. The correct enum remains in the top
+  five but ranks second behind its presenter: recall@5 `1.000`, MRR `0.500`,
+  nDCG@5 `0.631`, and one hard-negative win. Terms-v10 remains unchanged; this
+  synonym gap is advisory evidence for terms-v11.
+- The expanded 92-query suite records overall recall@5 `1.000`, MRR `0.984`,
+  nDCG@5 `0.987`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+
+### Alternatives considered
+
+- Add disposition to the enum noun list: fixes the observed example but does
+  not generalize to another domain.
+- Treat all wire, serialization, or mapping language as a provider request:
+  improves apparent definition recall but reverses genuine consumer queries.
+- Tune against the post-terms-v10 fixture: would erase the blind measurement
+  and make reported generalization circular; its vocabulary is reserved for a
+  separately fingerprinted scorer.
 
 ---
 
