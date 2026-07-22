@@ -37,6 +37,9 @@ func TestBuildMCPServersConfigJSON(t *testing.T) {
 	if entry.Env["MEMENTO_GIT_POLL_SECONDS"] != "2" {
 		t.Fatalf("expected default env, got %#v", entry.Env)
 	}
+	if entry.Env["MEMENTO_GIT_MAX_POLL_SECONDS"] != "30" || entry.Env["MEMENTO_GIT_ERROR_MAX_POLL_SECONDS"] != "60" {
+		t.Fatalf("expected adaptive Git polling caps, got %#v", entry.Env)
+	}
 	if entry.Env["MEMENTO_CHANGE_DETECTOR"] != "auto" {
 		t.Fatalf("expected MEMENTO_CHANGE_DETECTOR=auto, got %#v", entry.Env)
 	}

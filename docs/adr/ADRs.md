@@ -227,7 +227,8 @@ Adopt a tiered index + controller architecture:
 
 1. If inside a git worktree:
    - Poll `git status --porcelain -z --untracked-files=all` and derive changed paths without holding recursive filesystem-watch handles.
-   - Retain the previous dirty-path set so repeated active edits and transitions back to clean content are reindexed.
+   - Retain fingerprints for dirty paths so repeated active edits and transitions back to clean content are reindexed without rescanning unchanged dirty files.
+   - Back off the nominal interval from 2 to 4, 8, 16, then 30 seconds while unchanged; reset to 2 seconds after changes or MCP tool activity, cap repeated-error backoff at 60 seconds, and apply ±20% per-process jitter to avoid synchronized sessions.
 2. Otherwise:
    - Use a filesystem watcher on the workspace root with debounce/batching.
 

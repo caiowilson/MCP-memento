@@ -10,14 +10,16 @@ import (
 )
 
 var defaultMCPEnv = map[string]string{
-	"MEMENTO_CHANGE_DETECTOR":    "auto",
-	"MEMENTO_INDEX_POLL_SECONDS": "10",
-	"MEMENTO_GIT_POLL_SECONDS":   "2",
-	"MEMENTO_GIT_DEBOUNCE_MS":    "500",
-	"MEMENTO_FS_DEBOUNCE_MS":     "500",
-	"MEMENTO_CONTEXT_MAX_TOKENS": "7000",
-	"MEMENTO_REDACTION_ENABLED":  "true",
-	"MEMENTO_FEEDBACK_ENABLED":   "false",
+	"MEMENTO_CHANGE_DETECTOR":            "auto",
+	"MEMENTO_INDEX_POLL_SECONDS":         "10",
+	"MEMENTO_GIT_POLL_SECONDS":           "2",
+	"MEMENTO_GIT_MAX_POLL_SECONDS":       "30",
+	"MEMENTO_GIT_ERROR_MAX_POLL_SECONDS": "60",
+	"MEMENTO_GIT_DEBOUNCE_MS":            "500",
+	"MEMENTO_FS_DEBOUNCE_MS":             "500",
+	"MEMENTO_CONTEXT_MAX_TOKENS":         "7000",
+	"MEMENTO_REDACTION_ENABLED":          "true",
+	"MEMENTO_FEEDBACK_ENABLED":           "false",
 }
 
 func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {

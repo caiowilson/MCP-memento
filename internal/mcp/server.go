@@ -78,9 +78,11 @@ type Server struct {
 	devLogFilePath    string
 	devLogFileErrOnce bool
 
-	backgroundParentCtx context.Context
-	backgroundCancel    context.CancelFunc
-	backgroundStartOnce sync.Once
+	backgroundParentCtx  context.Context
+	backgroundCancel     context.CancelFunc
+	backgroundStartOnce  sync.Once
+	backgroundActivityMu sync.RWMutex
+	backgroundActivity   func()
 
 	executable        string
 	childIdleTimeout  time.Duration
@@ -351,6 +353,7 @@ func (s *Server) brokerToolsetFrom(defs []Tool) []Tool {
 }
 
 func (s *Server) restartBackgroundIndexing() {
+	s.setBackgroundActivity(nil)
 	if s.backgroundCancel != nil {
 		s.backgroundCancel()
 		s.backgroundCancel = nil
@@ -408,14 +411,17 @@ func (s *Server) restartBackgroundIndexing() {
 		if !indexing.IsGitRepo(s.root) {
 			return false
 		}
-		monitor := indexing.NewGitChangeMonitor(
-			root,
-			idx,
-			time.Duration(envInt("MEMENTO_GIT_POLL_SECONDS", 2))*time.Second,
-			time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500))*time.Millisecond,
-			notifySemantic,
-		)
+		monitor := indexing.NewGitChangeMonitor(indexing.GitChangeMonitorConfig{
+			RootAbs:              root,
+			Indexer:              idx,
+			HotPollInterval:      time.Duration(envInt("MEMENTO_GIT_POLL_SECONDS", 2)) * time.Second,
+			MaxPollInterval:      time.Duration(envInt("MEMENTO_GIT_MAX_POLL_SECONDS", 30)) * time.Second,
+			MaxErrorPollInterval: time.Duration(envInt("MEMENTO_GIT_ERROR_MAX_POLL_SECONDS", 60)) * time.Second,
+			Debounce:             time.Duration(envInt("MEMENTO_GIT_DEBOUNCE_MS", 500)) * time.Millisecond,
+			OnChange:             notifySemantic,
+		})
 		monitor.Start(runCtx)
+		s.setBackgroundActivity(monitor.Wake)
 		return true
 	}
 
@@ -434,6 +440,21 @@ func (s *Server) restartBackgroundIndexing() {
 		if index == 0 && s.devLog {
 			s.logf("%s change detection not available, falling back to %s", detector, detectors[1])
 		}
+	}
+}
+
+func (s *Server) setBackgroundActivity(activity func()) {
+	s.backgroundActivityMu.Lock()
+	s.backgroundActivity = activity
+	s.backgroundActivityMu.Unlock()
+}
+
+func (s *Server) signalBackgroundActivity() {
+	s.backgroundActivityMu.RLock()
+	activity := s.backgroundActivity
+	s.backgroundActivityMu.RUnlock()
+	if activity != nil {
+		activity()
 	}
 }
 
@@ -521,6 +542,7 @@ func (s *Server) closeChild(root string) {
 
 func (s *Server) shutdown() {
 	s.shutdownOnce.Do(func() {
+		s.setBackgroundActivity(nil)
 		if s.backgroundCancel != nil {
 			s.backgroundCancel()
 		}
@@ -1168,6 +1190,9 @@ func (s *Server) callTool(ctx context.Context, params toolCallParams) (result to
 	}
 	if tool == nil || tool.Handler == nil {
 		return toolCallResult{}, fmt.Errorf("unknown tool: %s", params.Name)
+	}
+	if s.mode == serverModeLeaf {
+		s.signalBackgroundActivity()
 	}
 
 	args := params.Arguments

@@ -214,6 +214,34 @@ func TestCallToolReturnsStructuredContent(t *testing.T) {
 	}
 }
 
+func TestLeafToolCallWakesAdaptiveGitMonitor(t *testing.T) {
+	wake := make(chan struct{}, 1)
+	s := &Server{
+		mode: serverModeLeaf,
+		tools: []Tool{{
+			Name: "test_tool",
+			Handler: func(context.Context, json.RawMessage) (any, error) {
+				return "ok", nil
+			},
+		}},
+	}
+	s.setBackgroundActivity(func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	})
+
+	if _, err := s.callTool(context.Background(), toolCallParams{Name: "test_tool"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-wake:
+	default:
+		t.Fatal("leaf tool call did not wake adaptive Git polling")
+	}
+}
+
 func TestSwitchWorkspaceToolRebindsRootAndIsolation(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()

@@ -7,6 +7,14 @@ import {
   upsertIntoKnownSchema,
 } from "../.test-dist/mcpConfig.mjs";
 
+test("buildConfigEntry includes adaptive Git polling defaults", () => {
+  const entry = buildConfigEntry("/tmp/memento-mcp");
+
+  assert.equal(entry.env.MEMENTO_GIT_POLL_SECONDS, "2");
+  assert.equal(entry.env.MEMENTO_GIT_MAX_POLL_SECONDS, "30");
+  assert.equal(entry.env.MEMENTO_GIT_ERROR_MAX_POLL_SECONDS, "60");
+});
+
 test("buildSnippetMarkdown includes intent guidance and migration note", () => {
   const markdown = buildSnippetMarkdown("/tmp/memento-mcp");
 

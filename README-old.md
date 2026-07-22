@@ -187,7 +187,9 @@ You can configure `memento-mcp` using environment variables.
 | :----------------------------- | :------ | :---------------------------------------------------------------- |
 | `MEMENTO_CHANGE_DETECTOR`      | `auto`  | Change detection strategy: `auto` (Git-first), `fs`, or `git`.   |
 | `MEMENTO_INDEX_POLL_SECONDS`   | `10`    | Full index scan interval (disabled for Git repos).                |
-| `MEMENTO_GIT_POLL_SECONDS`     | `2`     | How often to check `git status` for changes.                      |
+| `MEMENTO_GIT_POLL_SECONDS`     | `2`     | Hot Git poll interval after changes or tool activity.             |
+| `MEMENTO_GIT_MAX_POLL_SECONDS` | `30`    | Maximum quiet-repository Git poll interval.                       |
+| `MEMENTO_GIT_ERROR_MAX_POLL_SECONDS` | `60` | Maximum Git poll interval after repeated errors.                |
 | `MEMENTO_GIT_DEBOUNCE_MS`      | `500`   | Wait time (ms) before processing Git changes.                     |
 | `MEMENTO_FS_DEBOUNCE_MS`       | `500`   | Wait time (ms) for filesystem events.                             |
 | `MEMENTO_MCP_DEV_LOG`          | `0`     | Log tool calls to stderr when set to `1`.                         |
