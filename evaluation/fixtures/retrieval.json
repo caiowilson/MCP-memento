@@ -6,8 +6,8 @@
       "id": "ignore-rule-reload",
       "query": "ReloadIgnoreRules",
       "relevant": [
-        { "path": "internal/indexing/indexer.go", "startLine": 157, "endLine": 158 },
-        { "path": "internal/indexing/indexer.go", "startLine": 854, "endLine": 854 },
+        { "path": "internal/indexing/indexer.go", "startLine": 170, "endLine": 171 },
+        { "path": "internal/indexing/indexer.go", "startLine": 959, "endLine": 959 },
         { "path": "internal/indexing/fs_change.go", "startLine": 142, "endLine": 142 }
       ]
     },
@@ -25,15 +25,15 @@
       "query": "defaultAnthropicMaxResultSizeChars",
       "relevant": [
         { "path": "internal/mcp/output_limits.go", "startLine": 4, "endLine": 4 },
-        { "path": "internal/mcp/server_test.go", "startLine": 65, "endLine": 65 }
+        { "path": "internal/mcp/server_test.go", "startLine": 67, "endLine": 67 }
       ]
     },
     {
       "id": "client-output-budget",
       "query": "MAX_MCP_OUTPUT_TOKENS",
       "relevant": [
-        { "path": "docs/README.md", "startLine": 171, "endLine": 171 },
-        { "path": "docs/clients.md", "startLine": 252, "endLine": 252 }
+        { "path": "docs/README.md", "startLine": 174, "endLine": 174 },
+        { "path": "docs/clients.md", "startLine": 269, "endLine": 271 }
       ]
     }
   ]
