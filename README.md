@@ -128,7 +128,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
 1. The server starts over stdio JSON-RPC and registers MCP tools.
 2. It auto-detects the workspace root (`--root`, `CLAUDE_PROJECT_DIR`, MCP `roots/list`, then cwd) and builds a local chunk index under `~/.memento-mcp/`.
 3. Change detection is incremental:
-   - Default (`auto`): filesystem watcher first, fallback to `git status` polling for git repos if watcher fails
+   - Default (`auto`): Git polling first for Git worktrees (including linked/isolated worktrees), with a recursive filesystem watcher only as fallback
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
 4. Context tools combine:
    - Indexed chunks with deterministic term-aware focus scoring and optional local semantic vectors

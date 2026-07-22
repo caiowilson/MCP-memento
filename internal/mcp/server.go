@@ -419,34 +419,36 @@ func (s *Server) restartBackgroundIndexing() {
 		return true
 	}
 
-	detector := strings.ToLower(strings.TrimSpace(os.Getenv("MEMENTO_CHANGE_DETECTOR")))
-	switch detector {
-	case "git":
-		if startGit() {
+	detectors := changeDetectorOrder(os.Getenv("MEMENTO_CHANGE_DETECTOR"))
+	for index, detector := range detectors {
+		var started bool
+		switch detector {
+		case changeDetectorGit:
+			started = startGit()
+		case changeDetectorFS:
+			started = startFS()
+		}
+		if started {
 			return
 		}
-		if s.devLog {
-			s.logf("git polling not available, falling back to fs watcher")
+		if index == 0 && s.devLog {
+			s.logf("%s change detection not available, falling back to %s", detector, detectors[1])
 		}
-		startFS()
-	case "fs":
-		if startFS() {
-			return
-		}
-		if s.devLog {
-			s.logf("fs watcher failed, falling back to git polling")
-		}
-		startGit()
-	default:
-		// "auto" or unknown: fs-first, fallback to git polling
-		if startFS() {
-			return
-		}
-		if s.devLog {
-			s.logf("fs watcher failed, falling back to git polling")
-		}
-		startGit()
 	}
+}
+
+type changeDetector string
+
+const (
+	changeDetectorGit changeDetector = "git polling"
+	changeDetectorFS  changeDetector = "fs watcher"
+)
+
+func changeDetectorOrder(configured string) [2]changeDetector {
+	if strings.EqualFold(strings.TrimSpace(configured), "fs") {
+		return [2]changeDetector{changeDetectorFS, changeDetectorGit}
+	}
+	return [2]changeDetector{changeDetectorGit, changeDetectorFS}
 }
 
 func (s *Server) ensureChildToolDefinitions(ctx context.Context, root string) ([]Tool, error) {

@@ -555,6 +555,27 @@ func TestNewServerFallsBackToCwd(t *testing.T) {
 	}
 }
 
+func TestChangeDetectorOrder(t *testing.T) {
+	tests := []struct {
+		configured string
+		want       [2]changeDetector
+	}{
+		{configured: "", want: [2]changeDetector{changeDetectorGit, changeDetectorFS}},
+		{configured: "auto", want: [2]changeDetector{changeDetectorGit, changeDetectorFS}},
+		{configured: "git", want: [2]changeDetector{changeDetectorGit, changeDetectorFS}},
+		{configured: " GIT ", want: [2]changeDetector{changeDetectorGit, changeDetectorFS}},
+		{configured: "fs", want: [2]changeDetector{changeDetectorFS, changeDetectorGit}},
+		{configured: "unknown", want: [2]changeDetector{changeDetectorGit, changeDetectorFS}},
+	}
+	for _, test := range tests {
+		t.Run(test.configured, func(t *testing.T) {
+			if got := changeDetectorOrder(test.configured); got != test.want {
+				t.Fatalf("changeDetectorOrder(%q) = %#v, want %#v", test.configured, got, test.want)
+			}
+		})
+	}
+}
+
 func TestNewServerClaudeProjectDirNonExistent(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", "/nonexistent/path/that/cannot/exist")
 	_, err := NewServer(Config{childFactory: newLocalChildFactory(t)})

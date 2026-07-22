@@ -13,15 +13,16 @@ import (
 )
 
 type GitChangeMonitor struct {
-	root       string
-	idx        *Indexer
-	interval   time.Duration
-	debounce   time.Duration
-	onChange   ChangeHandler
-	pendingAdd map[string]struct{}
-	pendingDel map[string]struct{}
-	mu         sync.Mutex
-	timer      *time.Timer
+	root        string
+	idx         *Indexer
+	interval    time.Duration
+	debounce    time.Duration
+	onChange    ChangeHandler
+	statusPaths map[string]struct{}
+	pendingAdd  map[string]struct{}
+	pendingDel  map[string]struct{}
+	mu          sync.Mutex
+	timer       *time.Timer
 }
 
 type ChangeHandler func(add, del []string)
@@ -34,13 +35,14 @@ func NewGitChangeMonitor(rootAbs string, idx *Indexer, interval, debounce time.D
 		debounce = 500 * time.Millisecond
 	}
 	return &GitChangeMonitor{
-		root:       rootAbs,
-		idx:        idx,
-		interval:   interval,
-		debounce:   debounce,
-		onChange:   onChange,
-		pendingAdd: map[string]struct{}{},
-		pendingDel: map[string]struct{}{},
+		root:        rootAbs,
+		idx:         idx,
+		interval:    interval,
+		debounce:    debounce,
+		onChange:    onChange,
+		statusPaths: map[string]struct{}{},
+		pendingAdd:  map[string]struct{}{},
+		pendingDel:  map[string]struct{}{},
 	}
 }
 
@@ -70,8 +72,15 @@ func IsGitRepo(rootAbs string) bool {
 
 func (m *GitChangeMonitor) pollOnce(ctx context.Context) {
 	add, del, err := gitStatusChanges(ctx, m.root)
-	if err != nil || (len(add) == 0 && len(del) == 0) {
+	if err != nil {
 		return
+	}
+	current := make(map[string]struct{}, len(add)+len(del))
+	for _, path := range add {
+		current[path] = struct{}{}
+	}
+	for _, path := range del {
+		current[path] = struct{}{}
 	}
 
 	m.mu.Lock()
@@ -80,6 +89,22 @@ func (m *GitChangeMonitor) pollOnce(ctx context.Context) {
 	}
 	for _, p := range del {
 		m.pendingDel[p] = struct{}{}
+	}
+	for path := range m.statusPaths {
+		if _, stillDirty := current[path]; stillDirty {
+			continue
+		}
+		abs := filepath.Join(m.root, filepath.FromSlash(path))
+		if info, statErr := os.Stat(abs); statErr == nil && info.Mode().IsRegular() {
+			m.pendingAdd[path] = struct{}{}
+		} else {
+			m.pendingDel[path] = struct{}{}
+		}
+	}
+	m.statusPaths = current
+	if len(m.pendingAdd) == 0 && len(m.pendingDel) == 0 {
+		m.mu.Unlock()
+		return
 	}
 	if m.timer == nil {
 		m.timer = time.AfterFunc(m.debounce, m.flush)

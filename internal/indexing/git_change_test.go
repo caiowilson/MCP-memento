@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"memento-mcp/internal/gitstate"
 )
@@ -80,6 +81,93 @@ func TestGitChangeMonitorReindexesWhenIgnoreFileChanges(t *testing.T) {
 	}
 }
 
+func TestGitChangeMonitorReindexesActiveEditsAndCleanTransition(t *testing.T) {
+	root := t.TempDir()
+	gitChangeTest(t, root, "init", "-q")
+	gitChangeTest(t, root, "config", "user.email", "test@example.com")
+	gitChangeTest(t, root, "config", "user.name", "Test")
+	path := filepath.Join(root, "active.go")
+	if err := os.WriteFile(path, []byte("package active\n\nconst OriginalNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitChangeTest(t, root, "add", "active.go")
+	gitChangeTest(t, root, "commit", "-qm", "initial")
+
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	monitor := NewGitChangeMonitor(root, idx, time.Second, time.Hour, nil)
+
+	if err := os.WriteFile(path, []byte("package active\n\nconst FirstEditNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	monitor.pollOnce(ctx)
+	monitor.flush()
+	assertGitChangeSearch(t, idx, "FirstEditNeedle", true)
+
+	if err := os.WriteFile(path, []byte("package active\n\nconst SecondEditNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	monitor.pollOnce(ctx)
+	monitor.flush()
+	assertGitChangeSearch(t, idx, "SecondEditNeedle", true)
+	assertGitChangeSearch(t, idx, "FirstEditNeedle", false)
+
+	gitChangeTest(t, root, "restore", "active.go")
+	monitor.pollOnce(ctx)
+	monitor.flush()
+	assertGitChangeSearch(t, idx, "OriginalNeedle", true)
+	assertGitChangeSearch(t, idx, "SecondEditNeedle", false)
+}
+
+func TestGitChangeDetectionRecognizesLinkedWorktree(t *testing.T) {
+	root := t.TempDir()
+	gitChangeTest(t, root, "init", "-q")
+	gitChangeTest(t, root, "config", "user.email", "test@example.com")
+	gitChangeTest(t, root, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(root, "tracked.go"), []byte("package tracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitChangeTest(t, root, "add", "tracked.go")
+	gitChangeTest(t, root, "commit", "-qm", "initial")
+
+	linked := filepath.Join(t.TempDir(), "isolated")
+	gitChangeTest(t, root, "worktree", "add", "--detach", "--quiet", linked)
+	t.Cleanup(func() {
+		gitChangeTest(t, root, "worktree", "remove", "--force", linked)
+	})
+	gitMarker, err := os.Stat(filepath.Join(linked, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gitMarker.Mode().IsRegular() {
+		t.Fatalf("linked worktree .git marker mode = %s, want regular file", gitMarker.Mode())
+	}
+	if !IsGitRepo(linked) {
+		t.Fatal("linked worktree was not recognized as a Git repository")
+	}
+	if err := os.WriteFile(filepath.Join(linked, "tracked.go"), []byte("package tracked\n\nconst LinkedNeedle = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	add, del, err := gitStatusChanges(context.Background(), linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"tracked.go"}; !reflect.DeepEqual(add, want) {
+		t.Fatalf("linked worktree add paths = %#v, want %#v", add, want)
+	}
+	if len(del) != 0 {
+		t.Fatalf("linked worktree delete paths = %#v, want none", del)
+	}
+}
+
 func TestClassifyGitStatusChangesKeepsLiveUnmergedFileIndexable(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "conflict.go"), []byte("package conflict\n<<<<<<< ours\n=======\n>>>>>>> theirs\n"), 0o644); err != nil {
@@ -102,5 +190,16 @@ func gitChangeTest(t *testing.T, root string, args ...string) {
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+filepath.Join(root, "global.gitconfig"))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+}
+
+func assertGitChangeSearch(t *testing.T, idx *Indexer, query string, want bool) {
+	t.Helper()
+	results, err := idx.Search(query, 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(results) > 0; got != want {
+		t.Fatalf("search %q found=%t, want %t", query, got, want)
 	}
 }
