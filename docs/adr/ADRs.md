@@ -30,6 +30,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0018: Synonym-gated enum-header ranking (terms-v11) (Accepted, 2026-07-16)
 - ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12) (Accepted, 2026-07-16)
 - ADR 0020: Guarded stored-token domain ranking (terms-v13) (Accepted, 2026-07-24)
+- ADR 0021: Provider-scoped authoritative-domain ranking (terms-v14) (Accepted, 2026-07-24)
 
 ---
 
@@ -1290,6 +1291,70 @@ that merely mention a downstream consumer must retain their definition role.
   memorization.
 - Tune against the post-terms-v13 fixture: would invalidate the blind
   measurement. Its authoritative-domain-declaration/allowed-code boundary is
+  reserved for a separately fingerprinted scorer.
+
+---
+
+## ADR 0021: Provider-scoped authoritative-domain ranking (terms-v14)
+
+- Status: Accepted
+- Date: 2026-07-24
+
+### Context
+
+Terms-v13 fixed its promoted stored-token query, but the independently authored
+post-freeze membership-freeze query ranked the string-backed enum second behind
+its presenter. The query named an authoritative domain declaration, an allowed
+set, and stored codes without using the enum-concept nouns required by the
+stored-token guard.
+
+The measured miss must be promoted before changing the scorer. A broader
+definition classifier could easily promote configuration declarations,
+security-token sets, or consumer methods, so the new role requires independent
+provider, action, closed-set, and value evidence.
+
+### Decision
+
+- Fingerprint the scorer as `terms-v14+php-relationships-v1` and promote the
+  post-terms-v13 membership-freeze judgment to training.
+- Recognize an authoritative-domain definition only when the provider clause
+  contains an exact declaration locus, both `authoritative` and `domain`, a
+  definition action, a closed-set cue, and value vocabulary.
+- Scope the role to the provider clause. Reject configuration concepts,
+  security-token compounds, and explicit function, method, consumer,
+  controller, handler, serializer, presenter, renderer, formatter, encoder,
+  decoder, or mapper loci.
+- Remove only the role's classifier vocabulary from lexical competition and
+  retain domain-specific terms. Keep relationship direction, bonus magnitude,
+  candidate windows, and literal search unchanged.
+- Freeze the scorer before adding a new independent PHP 8.1 enum-versus-
+  presenter holdout. Preserve its first result as advisory evidence.
+
+### Consequences
+
+- The promoted membership-freeze enum moves from rank two to rank one. On the
+  95-query pre-holdout suite, overall recall@5 is `1.000`, MRR is `0.989`,
+  nDCG@5 is `0.991`, and hard-negative wins are zero. The 47-query training
+  split has recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero wins;
+  validation remains perfect.
+- The independently authored cold-chain query uses unseen `permitted`
+  closed-set and excursion-disposition language. Its enum remains in the top
+  five but ranks second behind the presenter: recall@5 `1.000`, MRR `0.500`,
+  nDCG@5 `0.631`, and one hard-negative win. Terms-v14 remains frozen; the
+  miss becomes advisory evidence for terms-v15.
+- The expanded 96-query suite records overall recall@5 `1.000`, MRR `0.984`,
+  nDCG@5 `0.988`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+
+### Alternatives considered
+
+- Add membership, freeze, cause, excursion, or disposition as fixed domain
+  nouns: rejected as fixture memorization.
+- Treat every authoritative declaration request as an enum target: rejected
+  because configuration, token, and consumer requests would receive unrelated
+  structural and relationship bonuses.
+- Tune against the post-terms-v14 cold-chain fixture: rejected because it would
+  invalidate the blind measurement. Its permitted/disposition boundary is
   reserved for a separately fingerprinted scorer.
 
 ---

@@ -9,22 +9,23 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v13"
+const TermSearchVersion = "terms-v14"
 
 type termSearchIntent struct {
-	definition               bool
-	attribute                bool
-	callable                 bool
-	configDefinition         bool
-	relationDeclaration      bool
-	collectionRelation       bool
-	neverTermination         bool
-	backedEnumDefinition     bool
-	catalogDomainDefinition  bool
-	shutdownRegistration     bool
-	uninstallRegistration    bool
-	preferRelationshipTarget bool
-	preferRelationshipSource bool
+	definition                    bool
+	attribute                     bool
+	callable                      bool
+	configDefinition              bool
+	relationDeclaration           bool
+	collectionRelation            bool
+	neverTermination              bool
+	backedEnumDefinition          bool
+	catalogDomainDefinition       bool
+	authoritativeDomainDefinition bool
+	shutdownRegistration          bool
+	uninstallRegistration         bool
+	preferRelationshipTarget      bool
+	preferRelationshipSource      bool
 }
 
 var searchStopWords = map[string]struct{}{
@@ -57,24 +58,41 @@ func meaningfulSearchTerms(query string) []string {
 }
 
 func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []string {
-	if intent.definition && (intent.configDefinition || intent.relationDeclaration) {
+	if intent.authoritativeDomainDefinition || intent.definition && (intent.configDefinition || intent.relationDeclaration) {
 		query = definitionSearchClause(query)
 	}
 	terms := meaningfulSearchTerms(query)
-	if !intent.catalogDomainDefinition {
+	if !intent.catalogDomainDefinition && !intent.authoritativeDomainDefinition {
 		return terms
 	}
 	out := terms[:0]
 	for _, term := range terms {
-		switch term {
-		case "source", "declaration", "definition", "enum", "type",
-			"fix", "fixes", "fixed", "fixing", "durable",
-			"serialize", "serializes", "serialized", "serializing",
-			"catalog", "spelling", "spellings", "each", "every":
-			continue
-		default:
-			out = append(out, term)
+		if intent.catalogDomainDefinition {
+			switch term {
+			case "source", "declaration", "definition", "enum", "type",
+				"fix", "fixes", "fixed", "fixing", "durable",
+				"serialize", "serializes", "serialized", "serializing",
+				"catalog", "spelling", "spellings", "each", "every":
+				continue
+			}
 		}
+		if intent.authoritativeDomainDefinition {
+			switch term {
+			case "source", "declaration", "definition", "enum", "type",
+				"define", "defines", "defined", "defining",
+				"declare", "declares", "declared", "declaring",
+				"establish", "establishes", "established", "establishing",
+				"enumerate", "enumerates", "enumerated", "enumerating",
+				"specify", "specifies", "specified", "specifying",
+				"fix", "fixes", "fixed", "fixing",
+				"authoritative", "domain", "allowed", "canonical", "set",
+				"label", "labels", "code", "codes", "value", "values",
+				"identifier", "identifiers", "literal", "literals",
+				"string", "strings", "integer", "integers", "each", "every":
+				continue
+			}
+		}
+		out = append(out, term)
 	}
 	return out
 }
@@ -87,7 +105,7 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	fixAction := containsAnySearchToken(lower, "fix", "fixes", "fixed", "fixing")
 	definitionLocus := containsAnySearchToken(lower, "source", "declaration", "definition", "enum", "type")
 	consumerLocus := containsAnySearchToken(definitionLower,
-		"function", "method", "serializer", "presenter", "renderer", "formatter", "encoder", "decoder", "mapper",
+		"function", "method", "consumer", "controller", "handler", "serializer", "presenter", "renderer", "formatter", "encoder", "decoder", "mapper",
 		"render", "renders", "rendered", "rendering", "serialize", "serializes", "serializing", "present", "presents", "presented", "presenting",
 	) || containsAny(definitionLower, " is serialized", " was serialized", " be serialized", " gets serialized", " got serialized", " serialized by ")
 	fixDefinitionAction := fixAction && definitionLocus && !consumerLocus
@@ -128,7 +146,27 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 		(containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction || fixDefinitionAction)
 	serializedDomainValueDefinition := serializedDomainDefinitionAction && closedDomainConcept && serializedRepresentationConcept && domainValueConcept
 	catalogDomainDefinition := fixDefinitionAction && quantifiedDomainMembers && durableCatalogRepresentation && catalogSpelling
-	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") || serializedDomainValueDefinition
+	authoritativeDomainLocus := containsAnySearchToken(definitionLower, "source", "declaration", "definition", "enum", "type") &&
+		containsAnySearchToken(definitionLower, "authoritative") &&
+		containsAnySearchToken(definitionLower, "domain")
+	authoritativeDomainAction := containsAny(definitionLower, " defin", " declar", " establish", " enumerat") ||
+		containsAnySearchToken(definitionLower, "specify", "specifies", "specified", "specifying", "fix", "fixes", "fixed", "fixing")
+	authoritativeDomainClosedConcept := containsAnySearchToken(definitionLower, "allowed", "canonical", "each", "every", "all") ||
+		containsAny(definitionLower, "set of")
+	authoritativeDomainValueConcept := containsAnySearchToken(definitionLower,
+		"label", "labels", "code", "codes", "value", "values", "identifier", "identifiers",
+		"literal", "literals", "string", "strings", "integer", "integers",
+	)
+	authoritativeDomainConfigConcept := containsAny(definitionLower, "config", "setting", "service container")
+	authoritativeDomainDefinition := !consumerLocus &&
+		!authoritativeDomainConfigConcept &&
+		authoritativeDomainLocus &&
+		authoritativeDomainAction &&
+		authoritativeDomainClosedConcept &&
+		authoritativeDomainValueConcept &&
+		!containsSecurityTokenCompound(definitionLower)
+	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") ||
+		serializedDomainValueDefinition || authoritativeDomainDefinition
 	terminationConcept := containsAny(lower,
 		"script termination", "process termination", "process terminates", "process exits", "shutdown", "after termination", "early exit", "last-chance", "finalization",
 	)
@@ -139,17 +177,18 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	)
 	uninstallRegistration := pluginDeletion && bindingConcept
 	intent := termSearchIntent{
-		definition:              definition,
-		attribute:               containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
-		callable:                callableIntent,
-		configDefinition:        configDefinition,
-		relationDeclaration:     relationConcept && definition || collectionRelation,
-		collectionRelation:      collectionRelation,
-		neverTermination:        strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
-		backedEnumDefinition:    backedEnumDefinition,
-		catalogDomainDefinition: catalogDomainDefinition,
-		shutdownRegistration:    shutdownRegistration,
-		uninstallRegistration:   uninstallRegistration,
+		definition:                    definition,
+		attribute:                     containsAny(lower, "attribute", "annotation", "annotated", "metadata", "marked with "),
+		callable:                      callableIntent,
+		configDefinition:              configDefinition,
+		relationDeclaration:           relationConcept && definition || collectionRelation,
+		collectionRelation:            collectionRelation,
+		neverTermination:              strings.Contains(lower, "never") && containsAny(lower, "throw", "terminat", "does not return", "never return"),
+		backedEnumDefinition:          backedEnumDefinition,
+		catalogDomainDefinition:       catalogDomainDefinition,
+		authoritativeDomainDefinition: authoritativeDomainDefinition,
+		shutdownRegistration:          shutdownRegistration,
+		uninstallRegistration:         uninstallRegistration,
 	}
 	intent.preferRelationshipTarget = backedEnumDefinition || shutdownRegistration || configDefinition
 	intent.preferRelationshipSource = relationConcept && definition || collectionRelation || uninstallRegistration
@@ -385,7 +424,8 @@ func containsSecurityTokenCompound(value string) bool {
 	tokens := identifierSearchTokens(value)
 	for index := 0; index+1 < len(tokens); index++ {
 		switch tokens[index] {
-		case "access", "api", "authentication", "bearer", "oauth", "request", "session":
+		case "access", "api", "authentication", "bearer", "csrf", "jwt", "oauth",
+			"refresh", "request", "reset", "security", "session":
 			if tokens[index+1] == "token" || tokens[index+1] == "tokens" {
 				return true
 			}

@@ -14,12 +14,123 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v13+php-relationships-v1",
+    "adapter": "terms-v14+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
   },
   "corpora": [
+    {
+      "id": "postv14-php81-cold-chain-disposition",
+      "kind": "language",
+      "phpVersion": "8.1",
+      "root": "corpora/php81",
+      "files": [
+        {
+          "path": "holdout_20260724_v14/ExcursionDisposition.php",
+          "language": "php",
+          "declarationStarts": [
+            7
+          ],
+          "symbols": [
+            {
+              "name": "ExcursionDisposition",
+              "kind": "enum",
+              "signatureContains": [
+                "enum ExcursionDisposition: string"
+              ]
+            },
+            {
+              "name": "Quarantine",
+              "kind": "case",
+              "container": "ExcursionDisposition",
+              "signatureContains": [
+                "'quarantine'"
+              ]
+            },
+            {
+              "name": "Release",
+              "kind": "case",
+              "container": "ExcursionDisposition",
+              "signatureContains": [
+                "'release'"
+              ]
+            },
+            {
+              "name": "Destroy",
+              "kind": "case",
+              "container": "ExcursionDisposition",
+              "signatureContains": [
+                "'destroy'"
+              ]
+            },
+            {
+              "name": "ReturnToSupplier",
+              "kind": "case",
+              "container": "ExcursionDisposition",
+              "signatureContains": [
+                "'return_to_supplier'"
+              ]
+            },
+            {
+              "name": "requiresSupervisorApproval",
+              "kind": "method",
+              "container": "ExcursionDisposition",
+              "signatureContains": [
+                "bool"
+              ]
+            }
+          ]
+        },
+        {
+          "path": "holdout_20260724_v14/ExcursionDispositionPresenter.php",
+          "language": "php",
+          "declarationStarts": [
+            7,
+            9
+          ],
+          "symbols": [
+            {
+              "name": "ExcursionDispositionPresenter",
+              "kind": "class",
+              "signatureContains": [
+                "final class ExcursionDispositionPresenter"
+              ]
+            },
+            {
+              "name": "present",
+              "kind": "method",
+              "container": "ExcursionDispositionPresenter",
+              "signatureContains": [
+                "ExcursionDisposition",
+                "array"
+              ]
+            }
+          ]
+        }
+      ],
+      "retrieval": [
+        {
+          "id": "postv14-php81-cold-chain-disposition-authority",
+          "split": "holdout",
+          "query": "Where is the authoritative cold-chain domain declaration that defines the permitted excursion dispositions and their stored string values, rather than the presenter that formats those dispositions for display?",
+          "relevant": [
+            {
+              "path": "holdout_20260724_v14/ExcursionDisposition.php",
+              "startLine": 7,
+              "endLine": 23
+            }
+          ],
+          "hardNegatives": [
+            {
+              "path": "holdout_20260724_v14/ExcursionDispositionPresenter.php",
+              "startLine": 9,
+              "endLine": 27
+            }
+          ]
+        }
+      ]
+    },
     {
       "id": "php-7.4",
       "kind": "language",
@@ -210,7 +321,7 @@
       "retrieval": [
         {
           "id": "postv13-php81-membership-freeze-cause",
-          "split": "holdout",
+          "split": "train",
           "query": "Where is the authoritative domain declaration that defines the allowed membership freeze cause codes?",
           "relevant": [
             {
