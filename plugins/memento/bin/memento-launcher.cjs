@@ -9,7 +9,7 @@ const https = require("node:https");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const RELEASE_VERSION = "1.0.1";
+const RELEASE_VERSION = "1.0.2";
 const RELEASE_TAG = `server/v${RELEASE_VERSION}`;
 const RELEASE_BASE_URL = `https://github.com/caiowilson/MCP-memento/releases/download/${encodeURIComponent(RELEASE_TAG)}`;
 const MAX_BINARY_BYTES = 128 * 1024 * 1024;
