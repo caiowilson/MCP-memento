@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v14"
+const TermSearchVersion = "terms-v15"
 
 type termSearchIntent struct {
 	definition                    bool
@@ -85,7 +85,7 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 				"enumerate", "enumerates", "enumerated", "enumerating",
 				"specify", "specifies", "specified", "specifying",
 				"fix", "fixes", "fixed", "fixing",
-				"authoritative", "domain", "allowed", "canonical", "set",
+				"authoritative", "domain", "allowed", "canonical", "permitted", "set", "stored",
 				"label", "labels", "code", "codes", "value", "values",
 				"identifier", "identifiers", "literal", "literals",
 				"string", "strings", "integer", "integers", "each", "every":
@@ -151,7 +151,7 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 		containsAnySearchToken(definitionLower, "domain")
 	authoritativeDomainAction := containsAny(definitionLower, " defin", " declar", " establish", " enumerat") ||
 		containsAnySearchToken(definitionLower, "specify", "specifies", "specified", "specifying", "fix", "fixes", "fixed", "fixing")
-	authoritativeDomainClosedConcept := containsAnySearchToken(definitionLower, "allowed", "canonical", "each", "every", "all") ||
+	authoritativeDomainClosedConcept := containsAnySearchToken(definitionLower, "allowed", "canonical", "permitted", "each", "every", "all") ||
 		containsAny(definitionLower, "set of")
 	authoritativeDomainValueConcept := containsAnySearchToken(definitionLower,
 		"label", "labels", "code", "codes", "value", "values", "identifier", "identifiers",

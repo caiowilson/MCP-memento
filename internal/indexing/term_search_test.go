@@ -32,6 +32,29 @@ func TestMeaningfulSearchTermsForAuthoritativeDomainDefinitionDropsIntentVocabul
 	}
 }
 
+func TestMeaningfulSearchTermsForPermittedAuthoritativeDomainDropsRoleVocabulary(t *testing.T) {
+	query := "Where is the authoritative cold-chain domain declaration that defines the permitted excursion dispositions and their stored string values?"
+	intent := classifyTermSearchIntent(query)
+	got := meaningfulSearchTermsForIntent(query, intent)
+	want := []string{"cold", "chain", "excursion", "dispositions", "their"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("meaningfulSearchTermsForIntent() = %#v; want %#v", got, want)
+	}
+}
+
+func TestMeaningfulSearchTermsKeepPermittedAndStoredOutsideAuthoritativeIntent(t *testing.T) {
+	query := "Where are permitted stored values cached?"
+	intent := classifyTermSearchIntent(query)
+	if intent.authoritativeDomainDefinition {
+		t.Fatalf("ordinary storage query activated authoritative-domain intent: %#v", intent)
+	}
+	got := meaningfulSearchTermsForIntent(query, intent)
+	want := []string{"permitted", "stored", "values", "cached"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("meaningfulSearchTermsForIntent() = %#v; want %#v", got, want)
+	}
+}
+
 func TestMeaningfulSearchTermsExcludeContrastClause(t *testing.T) {
 	got := meaningfulSearchTerms("where does a method never return and throw instead of serializing a value")
 	want := []string{"method", "never", "return", "throw"}
@@ -89,6 +112,9 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		}},
 		{"authoritative domain codes with config-named consumer", "Which declaration defines the authoritative domain's allowed membership freeze cause codes consumed by ConfigurationPresenter?", func(intent termSearchIntent) bool {
 			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
+		{"permitted authoritative domain values", "Where is the authoritative cold-chain domain declaration that defines the permitted excursion dispositions and their stored string values?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.authoritativeDomainDefinition && intent.preferRelationshipTarget
 		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
 		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
@@ -158,6 +184,11 @@ func TestTermSearchIntentDoesNotPromoteUnrelatedAuthoritativeDomainRequests(t *t
 		"Which declaration documents codes from an authoritative domain?",
 		"Which authoritative domain declaration defines all allowed security token values?",
 		"Which authoritative domain declaration defines all allowed refresh token values?",
+		"Which method defines the authoritative domain's permitted excursion disposition string values?",
+		"Which consumer declaration defines the authoritative domain's permitted excursion disposition string values?",
+		"Which configuration declaration defines the authoritative domain's permitted excursion disposition string values?",
+		"Which authoritative domain declaration defines all permitted security token string values?",
+		"Which authoritative domain declaration defines all permitted refresh token string values?",
 	}
 	for _, query := range queries {
 		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition {
@@ -478,7 +509,7 @@ func TestTermsV14PromotesPostTermsV13Evidence(t *testing.T) {
 	}
 }
 
-func TestTermsV14PostFreezeHoldoutRemainsAdvisory(t *testing.T) {
+func TestTermsV15PromotesPostTermsV14Evidence(t *testing.T) {
 	compatRoot := filepath.Join("..", "..", "evaluation", "php-compat")
 	manifestData, err := os.ReadFile(filepath.Join(compatRoot, "suite.v2.json"))
 	if err != nil {
@@ -522,8 +553,8 @@ func TestTermsV14PostFreezeHoldoutRemainsAdvisory(t *testing.T) {
 		t.Fatal("post-freeze judgment is missing from suite.v2.json")
 	}
 	intent := classifyTermSearchIntent(query)
-	if intent.backedEnumDefinition || intent.preferRelationshipTarget {
-		t.Fatalf("post-freeze holdout unexpectedly activated backed-enum intent: %#v", intent)
+	if !intent.backedEnumDefinition || !intent.authoritativeDomainDefinition || !intent.preferRelationshipTarget {
+		t.Fatalf("promoted terms-v14 evidence did not activate authoritative-domain intent: %#v", intent)
 	}
 	root := t.TempDir()
 	for _, path := range []string{enumPath, presenterPath} {
@@ -550,8 +581,84 @@ func TestTermsV14PostFreezeHoldoutRemainsAdvisory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chunks) < 2 || chunks[0].Path != presenterPath || chunks[1].Path != enumPath {
-		t.Fatalf("post-freeze ranking = %#v; want presenter first and enum second until a new scorer fingerprint", chunks)
+	if len(chunks) < 2 || chunks[0].Path != enumPath || chunks[1].Path != presenterPath {
+		t.Fatalf("promoted ranking = %#v; want enum first and presenter second", chunks)
+	}
+}
+
+func TestTermsV15PostFreezeHoldoutRemainsAdvisory(t *testing.T) {
+	compatRoot := filepath.Join("..", "..", "evaluation", "php-compat")
+	manifestData, err := os.ReadFile(filepath.Join(compatRoot, "suite.v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Corpora []struct {
+			Root      string `json:"root"`
+			Retrieval []struct {
+				ID       string `json:"id"`
+				Query    string `json:"query"`
+				Relevant []struct {
+					Path string `json:"path"`
+				} `json:"relevant"`
+				HardNegatives []struct {
+					Path string `json:"path"`
+				} `json:"hardNegatives"`
+			} `json:"retrieval"`
+		} `json:"corpora"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	var corpusRoot, query, enumPath, runbookPath string
+	for _, corpus := range manifest.Corpora {
+		for _, retrieval := range corpus.Retrieval {
+			if retrieval.ID != "postv15-php81-orchard-frost-response-authority" {
+				continue
+			}
+			if len(retrieval.Relevant) != 1 || len(retrieval.HardNegatives) != 1 {
+				t.Fatalf("post-freeze judgment has relevant=%d hardNegatives=%d; want 1 each", len(retrieval.Relevant), len(retrieval.HardNegatives))
+			}
+			corpusRoot = corpus.Root
+			query = retrieval.Query
+			enumPath = retrieval.Relevant[0].Path
+			runbookPath = retrieval.HardNegatives[0].Path
+		}
+	}
+	if corpusRoot == "" || query == "" || enumPath == "" || runbookPath == "" {
+		t.Fatal("post-freeze judgment is missing from suite.v2.json")
+	}
+	intent := classifyTermSearchIntent(query)
+	if intent.backedEnumDefinition || intent.preferRelationshipTarget {
+		t.Fatalf("post-freeze holdout unexpectedly activated backed-enum intent: %#v", intent)
+	}
+	root, err := filepath.Abs(filepath.Join(compatRoot, filepath.FromSlash(corpusRoot)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := New(Config{RootAbs: root, StoreDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.indexAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := idx.SearchTermsByPathContext(context.Background(), query, 5, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		runbookPath,
+		"holdout_20260713/orchard/OrchardEndpoint.php",
+		enumPath,
+	}
+	if len(chunks) < len(want) {
+		t.Fatalf("post-freeze ranking returned %d chunks; want at least %d: %#v", len(chunks), len(want), chunks)
+	}
+	for rank, path := range want {
+		if chunks[rank].Path != path {
+			t.Fatalf("post-freeze rank %d = %q; want %q until a new scorer fingerprint", rank+1, chunks[rank].Path, path)
+		}
 	}
 }
 

@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v14+php-relationships-v1",
+    "adapter": "terms-v15+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -112,7 +112,7 @@
       "retrieval": [
         {
           "id": "postv14-php81-cold-chain-disposition-authority",
-          "split": "holdout",
+          "split": "train",
           "query": "Where is the authoritative cold-chain domain declaration that defines the permitted excursion dispositions and their stored string values, rather than the presenter that formats those dispositions for display?",
           "relevant": [
             {
@@ -1162,6 +1162,56 @@
           "query": "Which theme-hook definition maps the report summary to its template name?",
           "relevant": [{"path": "report.module", "startLine": 12, "endLine": 12}],
           "hardNegatives": [{"path": "src/Controller/ReportController.php", "startLine": 19, "endLine": 19}]
+        }
+      ]
+    },
+    {
+      "id": "postv15-php81-orchard-frost-response",
+      "kind": "language",
+      "phpVersion": "8.1",
+      "root": "corpora/php81",
+      "files": [
+        {
+          "path": "holdout_20260724_v15/FrostResponseMode.php",
+          "language": "php",
+          "declarationStarts": [7],
+          "symbols": [
+            {"name": "FrostResponseMode", "kind": "enum", "signatureContains": ["enum FrostResponseMode: string"]},
+            {"name": "DeployCovers", "kind": "case", "container": "FrostResponseMode", "signatureContains": ["'deploy_covers'"]},
+            {"name": "StartIrrigation", "kind": "case", "container": "FrostResponseMode", "signatureContains": ["'start_irrigation'"]},
+            {"name": "IgniteHeaters", "kind": "case", "container": "FrostResponseMode", "signatureContains": ["'ignite_heaters'"]},
+            {"name": "StandDown", "kind": "case", "container": "FrostResponseMode", "signatureContains": ["'stand_down'"]}
+          ]
+        },
+        {
+          "path": "holdout_20260724_v15/FrostResponseRunbook.php",
+          "language": "php",
+          "declarationStarts": [7],
+          "symbols": [
+            {"name": "FrostResponseRunbook", "kind": "class", "signatureContains": ["final class FrostResponseRunbook"]},
+            {"name": "instruction", "kind": "method", "container": "FrostResponseRunbook", "signatureContains": ["FrostResponseMode", "string"]}
+          ]
+        }
+      ],
+      "retrieval": [
+        {
+          "id": "postv15-php81-orchard-frost-response-authority",
+          "split": "holdout",
+          "query": "Where is the canonical list of actions available after an orchard frost alarm, together with the string codes persisted for each action?",
+          "relevant": [
+            {
+              "path": "holdout_20260724_v15/FrostResponseMode.php",
+              "startLine": 7,
+              "endLine": 13
+            }
+          ],
+          "hardNegatives": [
+            {
+              "path": "holdout_20260724_v15/FrostResponseRunbook.php",
+              "startLine": 9,
+              "endLine": 16
+            }
+          ]
         }
       ]
     }

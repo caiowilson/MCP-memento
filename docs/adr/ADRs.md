@@ -31,6 +31,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12) (Accepted, 2026-07-16)
 - ADR 0020: Guarded stored-token domain ranking (terms-v13) (Accepted, 2026-07-24)
 - ADR 0021: Provider-scoped authoritative-domain ranking (terms-v14) (Accepted, 2026-07-24)
+- ADR 0022: Exact permitted authoritative-domain ranking (terms-v15) (Accepted, 2026-07-24)
 
 ---
 
@@ -1356,6 +1357,66 @@ provider, action, closed-set, and value evidence.
 - Tune against the post-terms-v14 cold-chain fixture: rejected because it would
   invalidate the blind measurement. Its permitted/disposition boundary is
   reserved for a separately fingerprinted scorer.
+
+---
+
+## ADR 0022: Exact permitted authoritative-domain ranking (terms-v15)
+
+- Status: Accepted
+- Date: 2026-07-24
+
+### Context
+
+Terms-v14 fixed its promoted authoritative-domain query, but the independently
+authored post-freeze cold-chain query ranked the string-backed enum second
+behind its presenter. The query satisfied the provider, action, and value
+requirements but described the closed set as `permitted` rather than `allowed`
+or `canonical`.
+
+The measured miss must be promoted before changing the scorer. The synonym
+must remain exact and subordinate to the full authoritative-domain conjunction
+so ordinary storage searches, configuration declarations, security-token
+sets, and consumer methods keep their existing behavior.
+
+### Decision
+
+- Fingerprint the scorer as `terms-v15+php-relationships-v1` and promote the
+  post-terms-v14 cold-chain judgment to training.
+- Recognize exact `permitted` as a closed-set cue only inside the existing
+  authoritative-domain provider-locus, action, and value conjunction.
+- Remove exact `permitted` and `stored` from lexical competition only after
+  that complete role activates. Preserve both terms for ordinary queries.
+- Keep configuration, security-token, function, method, consumer, controller,
+  handler, serializer, presenter, renderer, formatter, encoder, decoder, and
+  mapper exclusions unchanged.
+- Freeze the scorer before adding a new independent PHP 8.1 enum-versus-
+  consumer holdout and preserve its first result as advisory evidence.
+
+### Consequences
+
+- The promoted cold-chain enum moves from rank two to rank one. On the
+  96-query pre-holdout suite, overall recall@5 is `1.000`, MRR is `0.990`,
+  nDCG@5 is `0.991`, and hard-negative wins are zero. The 48-query training
+  split has recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero wins;
+  validation remains perfect.
+- The independently authored orchard-frost query uses unseen canonical-list
+  and available-actions language without an explicit provider locus. Its enum
+  ranks third behind the runbook and an unrelated orchard endpoint: recall@5
+  `1.000`, MRR `0.333`, nDCG@5 `0.500`, and one hard-negative win. Terms-v15
+  remains frozen; the miss becomes advisory evidence for terms-v16.
+- The expanded 97-query suite records overall recall@5 `1.000`, MRR `0.983`,
+  nDCG@5 `0.986`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.956`, and nDCG@5 `0.967`.
+
+### Alternatives considered
+
+- Add orchard, frost, action, or response as fixed domain nouns: rejected as
+  fixture memorization.
+- Treat `permitted` as a global enum cue: rejected because ordinary storage
+  and consumer searches would receive structural ranking changes.
+- Tune against the post-terms-v15 orchard fixture: rejected because it would
+  invalidate the blind measurement. Its canonical-list/available-actions
+  boundary is reserved for a separately fingerprinted scorer.
 
 ---
 
