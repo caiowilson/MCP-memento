@@ -9,7 +9,7 @@ import (
 // TermSearchVersion fingerprints the deterministic tokenizer, stop words,
 // conservative inflection matching, coverage boost, content evidence,
 // structural query intent, and bounded relationship-role evidence.
-const TermSearchVersion = "terms-v12"
+const TermSearchVersion = "terms-v13"
 
 type termSearchIntent struct {
 	definition               bool
@@ -80,14 +80,16 @@ func meaningfulSearchTermsForIntent(query string, intent termSearchIntent) []str
 }
 
 func classifyTermSearchIntent(query string) termSearchIntent {
-	lower := strings.ToLower(positiveSearchClause(query))
+	positiveClause := positiveSearchClause(query)
+	lower := strings.ToLower(positiveClause)
+	definitionLower := strings.ToLower(definitionSearchClause(positiveClause))
 	specificationAction := containsAnySearchToken(lower, "specify", "specifies", "specified", "specifying")
 	fixAction := containsAnySearchToken(lower, "fix", "fixes", "fixed", "fixing")
 	definitionLocus := containsAnySearchToken(lower, "source", "declaration", "definition", "enum", "type")
-	consumerLocus := containsAnySearchToken(lower,
+	consumerLocus := containsAnySearchToken(definitionLower,
 		"function", "method", "serializer", "presenter", "renderer", "formatter", "encoder", "decoder", "mapper",
 		"render", "renders", "rendered", "rendering", "serialize", "serializes", "serializing", "present", "presents", "presented", "presenting",
-	) || containsAny(lower, " is serialized", " was serialized", " be serialized", " gets serialized", " got serialized", " serialized by ")
+	) || containsAny(definitionLower, " is serialized", " was serialized", " be serialized", " gets serialized", " got serialized", " serialized by ")
 	fixDefinitionAction := fixAction && definitionLocus && !consumerLocus
 	callableIntent := containsAny(lower,
 		"callable", "closure", "arrow function", "anonymous function", "passed around", "run later", "invoked later", "stored for later", "executed later",
@@ -113,8 +115,17 @@ func classifyTermSearchIntent(query string) termSearchIntent {
 	durableCatalogRepresentation := containsAnySearchToken(lower, "durable") && containsAnySearchToken(lower, "catalog")
 	serializedRepresentationConcept := containsAny(lower, "wire", "serializ", "persist", "stored", "storage", "database") || durableCatalogRepresentation
 	catalogSpelling := containsAnySearchToken(lower, "spelling", "spellings")
-	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer") || catalogSpelling
-	serializedDomainDefinitionAction := containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction || fixDefinitionAction
+	exactTokenDomainConcept := containsAnySearchToken(definitionLower,
+		"phase", "phases", "state", "states", "status", "statuses", "outcome", "outcomes",
+		"verdict", "verdicts", "option", "options", "choice", "choices",
+	)
+	tokenDomainValueConcept := exactTokenDomainConcept &&
+		containsAnySearchToken(definitionLower, "token", "tokens") &&
+		!containsSecurityTokenCompound(definitionLower)
+	domainValueConcept := containsAny(lower, "label", "code", "value", "identifier", "literal", "string", "integer") ||
+		catalogSpelling || tokenDomainValueConcept
+	serializedDomainDefinitionAction := !consumerLocus &&
+		(containsAny(lower, " defin", " declar", " establish", " enumerat") || specificationAction || fixDefinitionAction)
 	serializedDomainValueDefinition := serializedDomainDefinitionAction && closedDomainConcept && serializedRepresentationConcept && domainValueConcept
 	catalogDomainDefinition := fixDefinitionAction && quantifiedDomainMembers && durableCatalogRepresentation && catalogSpelling
 	backedEnumDefinition := definition && enumConcept && serializedValueConcept && containsAny(lower, "allowed", "canonical", "persist", "case", "every") || serializedDomainValueDefinition
@@ -363,6 +374,19 @@ func containsAnySearchToken(value string, needles ...string) bool {
 	for _, token := range identifierSearchTokens(value) {
 		for _, needle := range needles {
 			if token == needle {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsSecurityTokenCompound(value string) bool {
+	tokens := identifierSearchTokens(value)
+	for index := 0; index+1 < len(tokens); index++ {
+		switch tokens[index] {
+		case "access", "api", "authentication", "bearer", "oauth", "request", "session":
+			if tokens[index+1] == "token" || tokens[index+1] == "tokens" {
 				return true
 			}
 		}

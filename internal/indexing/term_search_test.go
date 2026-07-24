@@ -58,6 +58,18 @@ func TestTermSearchIntentClassifiesStructuralRoles(t *testing.T) {
 		{"serialized catalog spelling", "Which declaration fixes the durable serialized catalog spelling for every seed-lot viability category?", func(intent termSearchIntent) bool {
 			return intent.backedEnumDefinition && intent.catalogDomainDefinition && intent.preferRelationshipTarget
 		}},
+		{"stored token domain", "Where is the authoritative closed set of stored tokens for every invoice delivery state established?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
+		{"stored token domain with consumer context", "Which declaration establishes the authoritative closed set of stored tokens for every invoice delivery state consumed by InvoiceDeliverySerializer?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
+		{"stored token domain with security-named consumer", "Which declaration establishes the authoritative closed set of stored tokens for every invoice delivery state consumed by AccessTokenPresenter?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
+		{"stored token authentication state", "Where is the authoritative closed set of stored tokens for every authentication state established?", func(intent termSearchIntent) bool {
+			return intent.backedEnumDefinition && intent.preferRelationshipTarget
+		}},
 		{"shutdown registration", "Which implementation installs the callback after script termination, including an early exit?", func(intent termSearchIntent) bool { return intent.shutdownRegistration }},
 		{"shutdown attachment paraphrase", "Where is the last-chance drain callback attached when the PHP process terminates?", func(intent termSearchIntent) bool {
 			return intent.shutdownRegistration && intent.preferRelationshipTarget
@@ -88,10 +100,28 @@ func TestTermSearchIntentDoesNotPromoteSerializedConsumers(t *testing.T) {
 		"Which source fixes each durable catalog spelling for a status before rendering it?",
 		"Which source fixes each durable catalog spelling after the status is serialized?",
 		"Which serializer fixes every durable catalog spelling for a status?",
+		"Which serializer establishes the closed set of stored tokens for every invoice delivery state?",
+		"Which method establishes the authoritative stored tokens for every invoice delivery state?",
 	}
 	for _, query := range queries {
 		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition || intent.preferRelationshipTarget {
 			t.Fatalf("consumer query activated serialized-domain definition intent: query=%q intent=%#v", query, intent)
+		}
+	}
+}
+
+func TestTermSearchIntentDoesNotPromoteUnrelatedTokenRequests(t *testing.T) {
+	queries := []string{
+		"Where are authentication tokens stored for every API client?",
+		"Which declaration establishes the authoritative closed set of stored authentication tokens for every API client?",
+		"Which declaration establishes the authoritative closed set of stored authentication tokens for every stateful API client?",
+		"Which declaration establishes the authoritative closed set of stored authentication tokens for every session state?",
+		"Which tokenizer establishes every parser token?",
+		"Where is each request token stored in the database?",
+	}
+	for _, query := range queries {
+		if intent := classifyTermSearchIntent(query); intent.backedEnumDefinition || intent.preferRelationshipTarget {
+			t.Fatalf("unrelated token query activated serialized-domain definition intent: query=%q intent=%#v", query, intent)
 		}
 	}
 }
@@ -335,6 +365,12 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 			distractor: Chunk{Path: "src/Api/ViabilityCatalogSerializer.php", Language: "php", Content: "final class ViabilityCatalogSerializer\n{\n    /** @return array{category: string, catalog_spelling: string} */\n    public function serialize(SeedLotViability $category): array\n    {\n        return ['category' => strtolower($category->name), 'catalog_spelling' => $category->value];\n    }\n}\n"},
 		},
 		{
+			name:       "stored token domain paraphrase",
+			query:      "Where is the authoritative closed set of stored tokens for every invoice delivery state established?",
+			target:     Chunk{Path: "src/Domain/InvoiceDeliveryState.php", Language: "php", Content: "enum InvoiceDeliveryState: string\n{\n    case Queued = 'queued';\n}\n"},
+			distractor: Chunk{Path: "src/Api/InvoiceDeliverySerializer.php", Language: "php", Content: "final class InvoiceDeliverySerializer\n{\n    public function serialize(InvoiceDeliveryState $state): array\n    {\n        return ['status' => $state->value, 'label' => match ($state) {\n            InvoiceDeliveryState::Queued => 'Queued for delivery',\n        }];\n    }\n}\n"},
+		},
+		{
 			name:       "shutdown callback registration",
 			query:      "Which implementation installs the callback that appends the final marker after script termination, including an early exit?",
 			target:     Chunk{Path: "src/TerminalPulse.php", Language: "php", Content: "register_shutdown_function(static function (): void { appendFinalMarker(); });\n"},
@@ -369,6 +405,30 @@ func TestTermAwareChunkScoreUsesStructuralIntent(t *testing.T) {
 				t.Fatalf("target score %d must exceed distractor score %d", got, want)
 			}
 		})
+	}
+}
+
+func TestTermsV13PostFreezeHoldoutRemainsAdvisory(t *testing.T) {
+	query := "Where is the authoritative domain declaration that defines the allowed membership freeze cause codes?"
+	intent := classifyTermSearchIntent(query)
+	if intent.backedEnumDefinition || intent.preferRelationshipTarget {
+		t.Fatalf("post-freeze holdout unexpectedly activated backed-enum intent: %#v", intent)
+	}
+	terms := meaningfulSearchTermsForIntent(query, intent)
+	enum := Chunk{
+		Path:     "holdout_20260724_v13/Membership/MembershipFreezeCause.php",
+		Language: "php",
+		Content:  "enum MembershipFreezeCause: string\n{\n    case MemberRequest = 'member_request';\n}\n",
+	}
+	presenter := Chunk{
+		Path:     "holdout_20260724_v13/Membership/MembershipFreezeCausePresenter.php",
+		Language: "php",
+		Content:  "final class MembershipFreezeCausePresenter\n{\n    public function present(MembershipFreezeCause $cause): array\n    {\n        return ['code' => $cause->value];\n    }\n}\n",
+	}
+	enumScore := termAwareChunkScoreWithIntent(enum, terms, intent)
+	presenterScore := termAwareChunkScoreWithIntent(presenter, terms, intent)
+	if enumScore >= presenterScore {
+		t.Fatalf("post-freeze evidence changed: enum score %d must remain below presenter score %d until a new scorer fingerprint", enumScore, presenterScore)
 	}
 }
 

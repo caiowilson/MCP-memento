@@ -29,6 +29,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0017: Compositional serialized-domain ranking (terms-v10) (Accepted, 2026-07-16)
 - ADR 0018: Synonym-gated enum-header ranking (terms-v11) (Accepted, 2026-07-16)
 - ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12) (Accepted, 2026-07-16)
+- ADR 0020: Guarded stored-token domain ranking (terms-v13) (Accepted, 2026-07-24)
 
 ---
 
@@ -1215,6 +1216,81 @@ of a new independently authored holdout.
 - Tune against the post-terms-v12 invoice fixture: would invalidate the blind
   measurement. Its authoritative/stored/token vocabulary is reserved for a
   separately fingerprinted scorer.
+
+---
+
+## ADR 0020: Guarded stored-token domain ranking (terms-v13)
+
+- Status: Accepted
+- Date: 2026-07-24
+
+### Context
+
+Terms-v12 fixed its promoted durable-catalog query, but the independently
+authored post-freeze invoice-delivery query ranked the string-backed enum second
+behind its serializer. The query described an authoritative closed set of
+stored tokens for every state, while the classifier recognized labels, codes,
+values, identifiers, literals, strings, integers, and catalog spellings as
+domain values but not exact token vocabulary.
+
+The measured miss must be promoted before changing the scorer. The extension
+must not turn authentication-token storage, tokenizer code, serializer
+subjects, or methods into backed-enum definition requests. Provider queries
+that merely mention a downstream consumer must retain their definition role.
+
+### Decision
+
+- Fingerprint the scorer as `terms-v13+php-relationships-v1` and promote the
+  post-terms-v12 invoice-delivery judgment to training.
+- Recognize exact `token` and `tokens` as serialized domain values only when
+  the query also carries an exact singular or plural enum/domain concept such
+  as state or status. Do not use substring matching for either side of this
+  conjunction. Exclude adjacent security-token compounds such as
+  `authentication tokens` or `access token`; a domain phrase such as `tokens
+  for every authentication state` remains eligible.
+- Scope serializer, presenter, method, and serialization-operation guards to
+  the provider-definition clause. Existing `consumed by`, `used by`, `read by`,
+  `referenced by`, and `injected into` boundaries separate downstream context.
+- Keep structural units, caps, relationship direction and magnitude, candidate
+  windows, catalog intent filtering, and scoring outside the consumer-clause
+  and token guards unchanged.
+- Freeze the scorer before adding the post-terms-v13 fixture and preserve its
+  first result for a later fingerprint.
+- Preserve the timing and result of that first evaluation. A subsequent
+  independent review narrowed the new token guard from substring-based domain
+  concepts to exact singular/plural tokens; the holdout query contains neither
+  `token` nor `tokens`, so the correction cannot activate for or tune against
+  that evidence.
+
+### Consequences
+
+- The promoted invoice-delivery query moves from rank two to rank one. On the
+  94-query pre-holdout suite, overall recall@5 is `1.000`, MRR is `0.989`,
+  nDCG@5 is `0.991`, and hard-negative wins are zero. The 46-query training
+  split has recall@5 and MRR `1.000`, nDCG@5 `0.998`, and zero wins;
+  validation remains perfect; the 37-query holdout has recall@5 `1.000`, MRR
+  `0.973`, nDCG@5 `0.980`, and zero wins.
+- The independently authored membership-freeze-cause query uses unseen
+  authoritative-domain-declaration and allowed-code language. Its enum remains
+  in the top five but ranks second behind the presenter: recall@5 `1.000`, MRR
+  `0.500`, nDCG@5 `0.631`, and one hard-negative win. Terms-v13 remains frozen;
+  the miss becomes advisory evidence for terms-v14.
+- The expanded 95-query suite records overall recall@5 `1.000`, MRR `0.984`,
+  nDCG@5 `0.988`, and one advisory hard-negative win. The 38-query holdout
+  records recall@5 `1.000`, MRR `0.961`, and nDCG@5 `0.971`.
+
+### Alternatives considered
+
+- Treat every exact token as a domain value: rejected because authoritative
+  stored authentication-token sets would receive unrelated enum-target
+  bonuses.
+- Apply consumer guards to the whole query: rejected because a provider request
+  can legitimately mention the serializer or presenter that consumes it.
+- Add membership, freeze, or cause as enum concepts: rejected as fixture
+  memorization.
+- Tune against the post-terms-v13 fixture: would invalidate the blind
+  measurement. Its authoritative-domain-declaration/allowed-code boundary is
+  reserved for a separately fingerprinted scorer.
 
 ---
 

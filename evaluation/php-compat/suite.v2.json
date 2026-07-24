@@ -14,7 +14,7 @@
     "retrievalNDCGAt5": 0.9
   },
   "retrievalPolicy": {
-    "adapter": "terms-v12+php-relationships-v1",
+    "adapter": "terms-v13+php-relationships-v1",
     "k": 5,
     "requiredSplits": ["train", "validation", "holdout"],
     "blockingSplits": ["train", "validation"]
@@ -209,6 +209,25 @@
       ],
       "retrieval": [
         {
+          "id": "postv13-php81-membership-freeze-cause",
+          "split": "holdout",
+          "query": "Where is the authoritative domain declaration that defines the allowed membership freeze cause codes?",
+          "relevant": [
+            {
+              "path": "holdout_20260724_v13/Membership/MembershipFreezeCause.php",
+              "startLine": 7,
+              "endLine": 19
+            }
+          ],
+          "hardNegatives": [
+            {
+              "path": "holdout_20260724_v13/Membership/MembershipFreezeCausePresenter.php",
+              "startLine": 7,
+              "endLine": 25
+            }
+          ]
+        },
+        {
           "id": "php81-intersection",
           "split": "train",
           "query": "where is a renderable JSON value serialized",
@@ -329,7 +348,7 @@
         },
         {
           "id": "postv12-php81-invoice-delivery-state-tokens",
-          "split": "holdout",
+          "split": "train",
           "query": "Where is the authoritative closed set of stored tokens for every invoice delivery state established?",
           "relevant": [{"path": "holdout_20260716_v12/invoice_delivery/src/Domain/InvoiceDeliveryState.php", "startLine": 7, "endLine": 13}],
           "hardNegatives": [{"path": "holdout_20260716_v12/invoice_delivery/src/Api/InvoiceDeliverySerializer.php", "startLine": 12, "endLine": 24}]
