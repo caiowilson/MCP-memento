@@ -48,8 +48,11 @@ func sortNoteMatches(notes []Note, matches []int) {
 }
 
 func (s *NoteStore) ReconcileChanged(paths []string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return err
@@ -235,8 +238,11 @@ func (s *NoteStore) MarkStale(key, reason string, failedAdjudication, orphaned b
 	if key == "" || reason == "" {
 		return Note{}, fmt.Errorf("key and reason are required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return Note{}, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return Note{}, err
@@ -263,8 +269,11 @@ func (s *NoteStore) MarkStale(key, reason string, failedAdjudication, orphaned b
 
 func (s *NoteStore) Verify(key string) (Note, error) {
 	key = strings.TrimSpace(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return Note{}, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return Note{}, err
@@ -298,8 +307,11 @@ func (s *NoteStore) Tombstone(key, reason string) (Note, error) {
 	if key == "" || reason == "" {
 		return Note{}, fmt.Errorf("key and reason are required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return Note{}, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return Note{}, err
@@ -338,8 +350,11 @@ func (s *NoteStore) GarbageCollect(rules memoryGCRules) (memoryGCResult, error) 
 	if rules.MaximumRetrievalCount > defaultMemoryGCMaxRetrievals {
 		rules.MaximumRetrievalCount = defaultMemoryGCMaxRetrievals
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return memoryGCResult{}, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return memoryGCResult{}, err

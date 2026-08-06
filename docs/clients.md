@@ -213,6 +213,8 @@ Claude Code sessions therefore index the launched project without a manual `repo
 
 The current-working-directory fallback is not treated as verified active-workspace scope for `memory_search` or `memory_list`. Those reads fail closed until the caller passes `root` or the workspace is established by one of the first three sources above or by `repo_switch_workspace`. For clients with MCP Roots support, tool calls are also held while a `roots/list_changed` refresh is pending, preventing results from the previously active workspace.
 
+Durable notes are shared across linked Git worktrees. Memento maps a linked checkout to the corresponding path in the main worktree for locked, atomic note storage, while repository context, diffs, and memory-anchor reconciliation continue to use the active checkout. The public `root` argument always means the active checkout for both `memory_*` and `repo_*`; never pass the main worktree merely to reach shared memory. Structured tool results report the resolved checkout, and memory results also report the durable-memory scope. Older worktree-specific note files are merged into the shared store once and archived in place.
+
 ## Optional semantic retrieval
 
 `repo_context` focus queries use deterministic term-aware retrieval without configuration; `repo_search` remains literal unless regex mode is requested. Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to add local embeddings to focused context ranking:
@@ -244,7 +246,8 @@ Invalid values fail closed or fall back as documented by `memento-mcp help`; sec
 `print-guidance` is the source of truth. Its current output is:
 
 ```text
-When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+At the start of coding work, before substantial implementation or review, call memory_search for prior handoffs and decisions; use memory_list when no useful query is known. Linked Git worktrees share the main repository's durable notes automatically.
+When using memento-mcp, start repository context with repo_context and set intent to navigate, implement, or review.
 Use repo_diff_context without paths to auto-detect staged, unstaged, and untracked Git changes, or pass a non-empty ordered path list to override detection; it returns exact-file chunks and a bounded, redacted unified diff summary without related-file expansion.
 Use repo_outline when you need signatures and file structure without implementation bodies.
 Anchor durable notes to code when possible. Verify stale notes before refreshing or tombstoning them.

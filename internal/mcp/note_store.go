@@ -1,11 +1,13 @@
 package mcp
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,9 +15,12 @@ import (
 )
 
 type NoteStore struct {
-	mu   sync.Mutex
-	path string
-	repo string
+	mu         sync.Mutex
+	path       string
+	lockPath   string
+	legacyPath string
+	repo       string
+	scope      string
 }
 
 type Note struct {
@@ -67,28 +72,217 @@ func NewNoteStore(repoRoot string) (*NoteStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256([]byte(repoRoot))
-	repoID := hex.EncodeToString(sum[:16])
-	dir := filepath.Join(home, ".memento-mcp", "repos", repoID)
+	checkoutRoot, err := filepath.Abs(strings.TrimSpace(repoRoot))
+	if err != nil {
+		return nil, err
+	}
+	checkoutRoot = filepath.Clean(checkoutRoot)
+	scopeRoot, err := memoryScopeRoot(checkoutRoot)
+	if err != nil {
+		return nil, err
+	}
+	path := noteStorePath(home, scopeRoot)
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	return &NoteStore{
-		path: filepath.Join(dir, "notes.json"),
-		repo: repoRoot,
+	store := &NoteStore{
+		path:     path,
+		lockPath: filepath.Join(dir, "notes.lock"),
+		repo:     checkoutRoot,
+		scope:    scopeRoot,
+	}
+	legacyPath := noteStorePath(home, checkoutRoot)
+	if legacyPath != path {
+		store.legacyPath = legacyPath
+	}
+	if err := store.migrateLegacy(); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+// memoryScopeRoot maps linked Git worktrees to the corresponding path in the
+// main worktree. Durable notes are repository-scoped and should therefore be
+// shared across linked checkouts, while NoteStore.repo remains the active
+// checkout so anchor reconciliation still observes its branch and files.
+// Non-Git workspaces retain their literal root. Git worktrees fail closed if
+// Git identifies the checkout but cannot provide a canonical main worktree.
+func memoryScopeRoot(repoRoot string) (string, error) {
+	repoRoot = canonicalPath(repoRoot)
+	topOut, err := exec.Command("git", "-C", repoRoot, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return repoRoot, nil
+	}
+	worktreeTop := canonicalPath(strings.TrimSpace(string(topOut)))
+	if worktreeTop == "" {
+		return "", fmt.Errorf("resolve durable memory scope for %s: Git returned an empty worktree root", repoRoot)
+	}
+
+	listOut, err := exec.Command("git", "-C", repoRoot, "worktree", "list", "--porcelain", "-z").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve durable memory scope for %s: list Git worktrees: %w", repoRoot, err)
+	}
+	mainWorktreeTop := ""
+	for _, field := range bytes.Split(listOut, []byte{0}) {
+		value := strings.TrimSpace(string(field))
+		if strings.HasPrefix(value, "worktree ") {
+			mainWorktreeTop = canonicalPath(strings.TrimSpace(strings.TrimPrefix(value, "worktree ")))
+			break
+		}
+	}
+	if mainWorktreeTop == "" {
+		return "", fmt.Errorf("resolve durable memory scope for %s: Git returned no main worktree", repoRoot)
+	}
+
+	rel, err := filepath.Rel(worktreeTop, repoRoot)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("resolve durable memory scope for %s: checkout is outside Git worktree %s", repoRoot, worktreeTop)
+	}
+	return filepath.Clean(filepath.Join(mainWorktreeTop, rel)), nil
+}
+
+func canonicalPath(path string) string {
+	if abs, err := filepath.Abs(strings.TrimSpace(path)); err == nil {
+		path = abs
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(path)
+}
+
+func noteStorePath(home, root string) string {
+	sum := sha256.Sum256([]byte(root))
+	repoID := hex.EncodeToString(sum[:16])
+	return filepath.Join(home, ".memento-mcp", "repos", repoID, "notes.json")
+}
+
+func (s *NoteStore) lockStore() (func(), error) {
+	s.mu.Lock()
+	lockPath := s.lockPath
+	if lockPath == "" {
+		lockPath = s.path + ".lock"
+	}
+	releaseFileLock, err := acquireNoteFileLock(lockPath)
+	if err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+	return func() {
+		releaseFileLock()
+		s.mu.Unlock()
 	}, nil
 }
 
-func (s *NoteStore) Upsert(n Note) (Note, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *NoteStore) storageScope() string {
+	if s.scope != "" {
+		return s.scope
+	}
+	return s.repo
+}
 
+func (s *NoteStore) migrateLegacy() error {
+	if s.legacyPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(s.legacyPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	unlock, err := s.lockStore()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	legacyUnlock, err := acquireNoteFileLock(filepath.Join(filepath.Dir(s.legacyPath), "notes.lock"))
+	if err != nil {
+		return err
+	}
+	defer legacyUnlock()
+
+	legacy, exists, err := loadNoteFile(s.legacyPath, s.repo)
+	if err != nil || !exists {
+		return err
+	}
+	current, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	byKey := make(map[string]int, len(current.Notes))
+	for index := range current.Notes {
+		byKey[current.Notes[index].Key] = index
+	}
+	changed := false
+	for _, legacyNote := range legacy.Notes {
+		index, found := byKey[legacyNote.Key]
+		if !found {
+			current.Notes = append(current.Notes, legacyNote)
+			byKey[legacyNote.Key] = len(current.Notes) - 1
+			changed = true
+			continue
+		}
+		original := current.Notes[index]
+		merged := newerNote(original, legacyNote)
+		if merged.RetrievalCount < original.RetrievalCount {
+			merged.RetrievalCount = original.RetrievalCount
+		}
+		if merged.RetrievalCount < legacyNote.RetrievalCount {
+			merged.RetrievalCount = legacyNote.RetrievalCount
+		}
+		if legacyNote.LastRetrievedAt > merged.LastRetrievedAt {
+			merged.LastRetrievedAt = legacyNote.LastRetrievedAt
+		}
+		if noteRecency(legacyNote) > noteRecency(original) || merged.RetrievalCount != original.RetrievalCount || merged.LastRetrievedAt != original.LastRetrievedAt {
+			current.Notes[index] = merged
+			changed = true
+		}
+	}
+	if changed {
+		if err := s.saveLocked(current); err != nil {
+			return err
+		}
+	}
+	backup := fmt.Sprintf("%s.migrated-%d", s.legacyPath, time.Now().UTC().UnixNano())
+	if err := os.Rename(s.legacyPath, backup); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("archive migrated legacy notes: %w", err)
+	}
+	return nil
+}
+
+func newerNote(current, candidate Note) Note {
+	if noteRecency(candidate) > noteRecency(current) {
+		return candidate
+	}
+	return current
+}
+
+func noteRecency(note Note) string {
+	latest := note.UpdatedAt
+	for _, value := range []string{note.VerifiedAt, note.StaleAt, note.OrphanedAt, note.TombstonedAt, note.LastRetrievedAt} {
+		if value > latest {
+			latest = value
+		}
+	}
+	return latest
+}
+
+func (s *NoteStore) Upsert(n Note) (Note, error) {
 	if strings.TrimSpace(n.Key) == "" {
 		return Note{}, fmt.Errorf("missing note key")
 	}
 	if strings.TrimSpace(n.Text) == "" {
 		return Note{}, fmt.Errorf("missing note text")
 	}
+	unlock, err := s.lockStore()
+	if err != nil {
+		return Note{}, err
+	}
+	defer unlock()
 
 	f, err := s.loadLocked()
 	if err != nil {
@@ -138,12 +332,14 @@ func (s *NoteStore) Upsert(n Note) (Note, error) {
 }
 
 func (s *NoteStore) Search(query string, tags []string, limit int) ([]Note, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if limit <= 0 {
 		limit = 20
 	}
+	unlock, err := s.lockStore()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 
 	f, err := s.loadLocked()
 	if err != nil {
@@ -200,8 +396,11 @@ func (s *NoteStore) Read(key string) (Note, error) {
 	if key == "" {
 		return Note{}, fmt.Errorf("missing note key")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return Note{}, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return Note{}, err
@@ -228,17 +427,23 @@ func (s *NoteStore) Read(key string) (Note, error) {
 }
 
 func (s *NoteStore) Clear() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
-	f := noteFile{Repo: s.repo, Notes: nil}
+	f := noteFile{Repo: s.storageScope(), Notes: nil}
 	return s.saveLocked(f)
 }
 
 // List returns all notes for this repo scope, ordered by insertion.
 func (s *NoteStore) List() ([]Note, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return nil, err
@@ -256,8 +461,11 @@ func (s *NoteStore) List() ([]Note, error) {
 // Delete removes the note with the given key. Returns an error if not found.
 func (s *NoteStore) Delete(key string) error {
 	key = strings.TrimSpace(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lockStore()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	f, err := s.loadLocked()
 	if err != nil {
 		return err
@@ -272,19 +480,12 @@ func (s *NoteStore) Delete(key string) error {
 }
 
 func (s *NoteStore) loadLocked() (noteFile, error) {
-	b, err := os.ReadFile(s.path)
+	f, _, err := loadNoteFile(s.path, s.storageScope())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return noteFile{Repo: s.repo, Notes: nil}, nil
-		}
 		return noteFile{}, err
 	}
-	var f noteFile
-	if err := json.Unmarshal(b, &f); err != nil {
-		return noteFile{Repo: s.repo, Notes: nil}, nil
-	}
 	if f.Repo == "" {
-		f.Repo = s.repo
+		f.Repo = s.storageScope()
 	}
 	for index := range f.Notes {
 		if f.Notes[index].Status == "" {
@@ -294,17 +495,57 @@ func (s *NoteStore) loadLocked() (noteFile, error) {
 	return f, nil
 }
 
+func loadNoteFile(path, repo string) (noteFile, bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return noteFile{Repo: repo, Notes: nil}, false, nil
+		}
+		return noteFile{}, false, err
+	}
+	var f noteFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		return noteFile{Repo: repo, Notes: nil}, true, nil
+	}
+	if f.Repo == "" {
+		f.Repo = repo
+	}
+	for index := range f.Notes {
+		if f.Notes[index].Status == "" {
+			f.Notes[index].Status = NoteStatusFresh
+		}
+	}
+	return f, true, nil
+}
+
 func (s *NoteStore) saveLocked(f noteFile) error {
-	f.Repo = s.repo
+	f.Repo = s.storageScope()
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".notes-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.path)
 }
 
 func normalizeTags(tags []string) []string {

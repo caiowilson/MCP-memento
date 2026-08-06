@@ -93,7 +93,7 @@ func newMemorySearchTool(store *NoteStore) Tool {
 	return Tool{
 		Name:        "memory_search",
 		Title:       "Search Memory Notes",
-		Description: "Search active repo-scoped notes by substring and/or tags. Anchors are reconciled first; stale notes remain visible with status and reason, ranked after fresh notes. Tombstoned notes are omitted.",
+		Description: "Call at the start of coding work to recall prior handoffs and decisions. Search active repo-scoped notes by substring and/or tags; linked Git worktrees share the main repository's notes automatically. Anchors are reconciled first; stale notes remain visible with status and reason, ranked after fresh notes. Tombstoned notes are omitted.",
 		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{
 			"type": "object",
@@ -147,7 +147,7 @@ func newMemoryListTool(store *NoteStore) Tool {
 	return Tool{
 		Name:        "memory_list",
 		Title:       "List Memory Notes",
-		Description: `List all durable notes for the current repository scope, including stale and tombstoned notes with lifecycle metadata. Anchors are reconciled before return.`,
+		Description: `Call at the start of coding work when no useful search query is known. List all durable notes for the current repository scope, including stale and tombstoned notes with lifecycle metadata; linked Git worktrees share the main repository's notes automatically. Anchors are reconciled before return.`,
 		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{"type": "object"},
 		Handler: func(ctx context.Context, raw json.RawMessage) (any, error) {

@@ -124,7 +124,7 @@ func memorySearchToolDefinition() Tool {
 	return Tool{
 		Name:        "memory_search",
 		Title:       "Search Memory Notes",
-		Description: "Search active repo-scoped notes by substring and/or tags. Reconcile anchors first and return stale notes after fresh notes; omit tombstones.",
+		Description: "Call at the start of coding work to recall prior handoffs and decisions. Search active repo-scoped notes by substring and/or tags; linked Git worktrees share the main repository's notes automatically. Reconcile anchors first and return stale notes after fresh notes; omit tombstones.",
 		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{
 			"type": "object",
@@ -141,7 +141,7 @@ func memoryListToolDefinition() Tool {
 	return Tool{
 		Name:        "memory_list",
 		Title:       "List Memory Notes",
-		Description: `List all durable notes, including stale and tombstoned notes with lifecycle metadata. Reconcile anchors before return.`,
+		Description: `Call at the start of coding work when no useful search query is known. List all durable notes, including stale and tombstoned notes with lifecycle metadata; linked Git worktrees share the main repository's notes automatically. Reconcile anchors before return.`,
 		Annotations: mutatingAnnotations(),
 		InputSchema: map[string]any{"type": "object"},
 	}

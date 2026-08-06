@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -516,6 +517,89 @@ func TestBrokerMemoryIsolationAcrossRoots(t *testing.T) {
 	}
 }
 
+func TestBrokerLinkedWorktreeKeepsRepoContextLocalAndMemoryShared(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mainRoot := t.TempDir()
+	runNoteStoreGit(t, mainRoot, "init", "-q")
+	runNoteStoreGit(t, mainRoot, "config", "user.email", "memento@example.test")
+	runNoteStoreGit(t, mainRoot, "config", "user.name", "Memento Test")
+	if err := os.WriteFile(filepath.Join(mainRoot, "branch.txt"), []byte("linked-checkout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runNoteStoreGit(t, mainRoot, "add", "branch.txt")
+	runNoteStoreGit(t, mainRoot, "commit", "-qm", "initial")
+
+	linkedRoot := filepath.Join(t.TempDir(), "linked")
+	runNoteStoreGit(t, mainRoot, "worktree", "add", "--detach", "--quiet", linkedRoot, "HEAD")
+	t.Cleanup(func() {
+		_ = exec.Command("git", "-C", mainRoot, "worktree", "remove", "--force", linkedRoot).Run()
+	})
+	if err := os.WriteFile(filepath.Join(mainRoot, "branch.txt"), []byte("main-checkout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runNoteStoreGit(t, mainRoot, "add", "branch.txt")
+	runNoteStoreGit(t, mainRoot, "commit", "-qm", "advance main")
+
+	mainStore, err := NewNoteStore(mainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mainStore.Upsert(Note{Key: "shared-main-note", Text: "visible from linked checkout"}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := newBrokerServerForTest(t, linkedRoot)
+	read, err := s.callTool(context.Background(), toolCallParams{
+		Name: "repo_read_file", Arguments: json.RawMessage(`{"path":"branch.txt"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readMap, ok := read.StructuredContent.(map[string]any)
+	if !ok || !strings.Contains(readMap["content"].(string), "linked-checkout") {
+		t.Fatalf("repo_read_file used wrong checkout: %#v", read.StructuredContent)
+	}
+	readWorkspace, ok := readMap["workspace"].(map[string]any)
+	if !ok || readWorkspace["checkoutRoot"] != linkedRoot {
+		t.Fatalf("repo workspace context = %#v, want checkoutRoot %q", readMap["workspace"], linkedRoot)
+	}
+
+	search, err := s.callTool(context.Background(), toolCallParams{
+		Name: "memory_search", Arguments: json.RawMessage(`{"query":"visible from linked"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchMap, ok := search.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("memory_search result = %T", search.StructuredContent)
+	}
+	notes, ok := searchMap["notes"].([]any)
+	if !ok || len(notes) != 1 {
+		t.Fatalf("shared memory notes = %#v, want one", searchMap["notes"])
+	}
+	searchWorkspace, ok := searchMap["workspace"].(map[string]any)
+	if !ok || searchWorkspace["checkoutRoot"] != linkedRoot || searchWorkspace["memoryScopeRoot"] != canonicalPath(mainRoot) || searchWorkspace["linkedWorktree"] != true {
+		t.Fatalf("memory workspace context = %#v", searchMap["workspace"])
+	}
+
+	if _, err := s.callTool(context.Background(), toolCallParams{
+		Name: "memory_upsert", Arguments: json.RawMessage(`{"key":"linked-note","text":"written through linked checkout"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	shared, err := mainStore.Search("written through linked", nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shared) != 1 || shared[0].Key != "linked-note" {
+		t.Fatalf("main memory search = %#v, want linked-note", shared)
+	}
+	if got := s.currentRoot(); got != linkedRoot {
+		t.Fatalf("active checkout changed to %q, want %q", got, linkedRoot)
+	}
+}
+
 func TestBrokerMemoryReadsRejectUnverifiedCWD(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
@@ -591,6 +675,9 @@ func TestBrokerToolsListAddsRootOverrideSchema(t *testing.T) {
 			}
 			if got, _ := rootProp["type"].(string); got != "string" {
 				t.Fatalf("expected %s root override type=string, got %#v", name, rootProp["type"])
+			}
+			if description, _ := rootProp["description"].(string); !strings.Contains(description, "active checkout/worktree") {
+				t.Fatalf("expected %s root override to define checkout semantics, got %q", name, description)
 			}
 			return
 		}

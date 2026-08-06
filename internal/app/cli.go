@@ -108,7 +108,8 @@ func buildMCPServersConfigJSON(command string) (string, error) {
 }
 
 func clientGuidanceText() string {
-	return `When using memento-mcp, start with repo_context and set intent to navigate, implement, or review.
+	return `At the start of coding work, before substantial implementation or review, call memory_search for prior handoffs and decisions; use memory_list when no useful query is known. Linked Git worktrees share the main repository's durable notes automatically; pass the active checkout as root for both memory_* and repo_* calls.
+When using memento-mcp, start repository context with repo_context and set intent to navigate, implement, or review.
 Use repo_diff_context without paths to auto-detect staged, unstaged, and untracked Git changes, or pass a non-empty ordered path list to override detection; it returns exact-file chunks and a bounded, redacted unified diff summary without related-file expansion.
 Use repo_outline when you need signatures and file structure without implementation bodies.
 Anchor durable notes to code when possible. Verify stale notes before refreshing or tombstoning them.

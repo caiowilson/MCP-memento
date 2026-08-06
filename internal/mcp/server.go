@@ -295,7 +295,40 @@ func (s *Server) leafToolsetFor(root string, idx *indexing.Indexer, mem *NoteSto
 	if s.feedbackEnabled && s.feedbackRecorder != nil {
 		tools = append(tools, newFeedbackSubmitTool(s.feedbackRecorder))
 	}
+	for index := range tools {
+		if strings.HasPrefix(tools[index].Name, "repo_") || strings.HasPrefix(tools[index].Name, "memory_") {
+			tools[index] = withWorkspaceResultContext(tools[index], root, mem)
+		}
+	}
 	return tools
+}
+
+func withWorkspaceResultContext(tool Tool, checkoutRoot string, store *NoteStore) Tool {
+	handler := tool.Handler
+	tool.Handler = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		result, err := handler(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			return nil, err
+		}
+		structured := map[string]any{}
+		if len(encoded) > 0 && string(encoded) != "null" {
+			if err := json.Unmarshal(encoded, &structured); err != nil {
+				return nil, err
+			}
+		}
+		workspace := map[string]any{"checkoutRoot": checkoutRoot}
+		if strings.HasPrefix(tool.Name, "memory_") && store != nil {
+			workspace["memoryScopeRoot"] = store.scope
+			workspace["linkedWorktree"] = canonicalPath(checkoutRoot) != canonicalPath(store.scope)
+		}
+		structured["workspace"] = workspace
+		return structured, nil
+	}
+	return tool
 }
 
 func (s *Server) rebindWorkspace(rootAbs string) error {
@@ -631,7 +664,7 @@ func augmentInputSchemaWithRoot(schema map[string]any) map[string]any {
 	}
 	props["root"] = map[string]any{
 		"type":        "string",
-		"description": "Optional workspace root override. When provided, routes this tool call to that workspace without changing the active session root.",
+		"description": "Optional active checkout/worktree root override. Both repo and memory calls use this checkout; linked worktrees share durable memory automatically. The active session root is unchanged.",
 	}
 	return out
 }
@@ -1100,18 +1133,19 @@ func workspacePathFromFileURI(raw string) (string, bool) {
 
 const toolSearchDescriptionLimitBytes = 2 * 1024
 
-const serverInstructions = `Use when a coding task needs repository-specific context or when durable repo knowledge should carry across sessions.
+const serverInstructions = `Use when repository context or durable repo knowledge is needed.
 
 Repository context:
 - Start with repo_context for an active file; set intent to navigate, implement, or review.
-- Use repo_diff_context without paths for dirty Git changes, or pass paths to constrain review; it returns bounded redacted diffs and exact-file chunks only.
+- Use repo_diff_context without paths for dirty changes, or pass paths to constrain review.
 - Use repo_outline to inspect signatures and file structure without function bodies before requesting full source.
-- Use repo_search to find text or symbols across workspace files, repo_read_file for an exact path, repo_list_files to map structure, and repo_related_files for imports, importers, same-directory files, and semantic references.
+- repo_search finds text/symbols; repo_read_file reads exact paths; repo_list_files maps structure; repo_related_files finds dependencies.
 - If context looks stale or incomplete, use repo_index_status, repo_reindex, or repo_index_debug. repo_clear_index is destructive.
-- repo_switch_workspace retargets the session only when you intentionally move to another repository. Most clients select the workspace automatically.
+- repo_switch_workspace intentionally retargets the session; clients usually select the workspace.
 
 Durable repo-scoped memory:
-- Use memory_search when prior decisions or handoffs may matter; use memory_list to enumerate notes.
+- At the start of coding work, before substantial implementation or review, call memory_search for prior handoffs and decisions; use memory_list when no useful query is known.
+- Linked Git worktrees share durable notes; pass the active checkout as root for both tool families. Code context and anchor reconciliation stay checkout-local.
 - Use memory_upsert with anchors to preserve durable decisions and detect code drift. Stale notes remain visible and should be verified against current code.
 - Use memory_mark_stale after finding a contradiction, memory_verify after reconciliation, and memory_tombstone for recoverable soft eviction. memory_gc is conservative and destructive.
 - Use memory_delete for one confirmed key. memory_clear is destructive and erases all notes for the repository.

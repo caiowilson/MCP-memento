@@ -121,7 +121,7 @@ func TestRunClaudeMDPrintOnly(t *testing.T) {
 	if stdout.String() != recommendedWorkflowBlock {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), recommendedWorkflowBlock)
 	}
-	for _, want := range []string{"without `paths`", "staged, unstaged, and untracked", "bounded, redacted unified diff summary", "never chunk-loaded"} {
+	for _, want := range []string{"Always recall Memento memory at session start", "memory_search", "memory_list", "Linked Git worktrees share", "active checkout as `root`", "without `paths`", "staged, unstaged, and untracked", "bounded, redacted unified diff summary", "never chunk-loaded"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("expected generated guidance to contain %q, got %q", want, stdout.String())
 		}
