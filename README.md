@@ -65,7 +65,7 @@ Install the latest prebuilt server to `~/.local/bin`, then automatically registe
 curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
 ```
 
-The installer downloads the platform binary and its SHA-256 sidecar, validates the sidecar filename and digest, executes a staged version preflight, atomically replaces the target, retains the prior binary as `.previous`, runs idempotent client setup, and finishes with `doctor`. Set `MEMENTO_INSTALL_DIR` or pass `--install-dir`; use `--clients codex,claude`, `--no-setup`, or `--version 1.0.2` for deterministic control. It supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
+The installer downloads the platform binary and its SHA-256 sidecar, validates the sidecar filename and digest, executes a staged version preflight, atomically replaces the target, retains the prior binary as `.previous`, runs idempotent client setup, and finishes with `doctor`. Set `MEMENTO_INSTALL_DIR` or pass `--install-dir`; use `--clients codex,claude`, `--no-setup`, or `--version 1.0.3` for deterministic control. It supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
 
 ```bash
 memento-mcp help
