@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../assets/memento-mcp-banner.jpg)
+
 # Memento MCP — VS Code Extension (WIP)
 
 This is a companion extension for `memento-mcp` (the Go MCP server).

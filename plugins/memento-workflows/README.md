@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../../assets/memento-mcp-banner.jpg)
+
 # Memento Workflows for Claude Code
 
 This companion plugin provides three credential-free Claude Code skills using only built-in tools. It has no MCP configuration, hooks, native executable, install script, or runtime download.

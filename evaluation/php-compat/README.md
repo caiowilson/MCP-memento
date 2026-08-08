@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../../assets/memento-mcp-banner.jpg)
+
 # PHP compatibility corpus
 
 This directory contains deterministic, dependency-free fixtures for measuring

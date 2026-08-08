@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../assets/memento-mcp-banner.jpg)
+
 # Documentation
 
 Memento is a local-first MCP server that gives AI agents durable, high-signal memory for your repository: indexed code context, semantic relationships, fast search, and explicit notes that persist across sessions.

@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../../assets/memento-mcp-banner.jpg)
+
 # Architecture Decision Records (ADRs)
 
 We use ADRs to capture decisions that affect architecture, interfaces, persistence, and operational behavior.

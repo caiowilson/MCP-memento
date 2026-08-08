@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](assets/memento-mcp-banner.jpg)
+
 # memento-mcp
 
 > [!WARNING]

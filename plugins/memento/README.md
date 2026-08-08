@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](../../assets/memento-mcp-banner.jpg)
+
 # Memento MCP for Claude Code
 
 This plugin starts Memento automatically for every Claude Code project where the plugin is enabled. It downloads the version-pinned prebuilt server for macOS, Linux, or Windows on first start, verifies its SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory.

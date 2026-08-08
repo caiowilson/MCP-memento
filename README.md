@@ -1,3 +1,5 @@
+![Memento MCP by Caio Wilson](assets/memento-mcp-banner.jpg)
+
 # memento-mcp
 
 [![Server Release](https://img.shields.io/github/v/tag/caiowilson/MCP-memento?filter=server%2Fv*&label=server)](https://github.com/caiowilson/MCP-memento/releases)
