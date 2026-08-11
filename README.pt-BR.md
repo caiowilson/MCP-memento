@@ -38,7 +38,7 @@ Adicione este repositório como marketplace do Claude Code, instale o Memento e 
 /mcp
 ```
 
-O plugin habilitado inicia o Memento automaticamente em cada projeto. Na primeira inicialização, ele baixa o binário pré-compilado e versionado para macOS, Linux ou Windows em x64 ou arm64, verifica o checksum SHA-256 da release e o armazena no diretório persistente de dados do plugin. O primeiro uso requer acesso ao GitHub; os próximos verificam o cache e funcionam offline.
+O plugin habilitado inicia o Memento automaticamente em cada projeto. Na primeira inicialização, ele baixa o binário pré-compilado e versionado para macOS, Linux ou Windows em x64 ou arm64, verifica o checksum SHA-256 da release e o armazena no diretório persistente de dados do plugin. O primeiro uso requer acesso ao GitHub; os próximos verificam o cache e funcionam offline. Novas instalações pelo marketplace verificam atualizações em segundo plano uma vez a cada 24 horas após o MCP iniciar e deixam a atualização agendada do plugin pronta para uso. A tarefa atual mantém seu binário; recarregue os plugins ou inicie uma nova tarefa para ativar a atualização. Instalações antigas do marketplace permanecem desativadas até que `$HOME/.memento-mcp/marketplace-update.json` contenha `{ "autoUpdate": true }`.
 
 ### Plugin de workflows do Claude Code (sem binário nativo)
 
@@ -73,7 +73,7 @@ Atualize uma instalação independente no próprio local:
 memento-mcp update
 ```
 
-Use `memento-mcp update --check` para apenas verificar, sem instalar. Builds de release também fazem uma verificação silenciosa e limitada a uma vez por dia ao iniciar o servidor, escrevendo um aviso somente no stderr quando houver atualização; mensagens de atualização nunca são escritas no stdout do MCP. Defina `MEMENTO_UPDATE_CHECK=false` para desativar essa verificação. Instalações pelo plugin do Claude Code continuam fixadas por versão e devem ser atualizadas pelos comandos `/plugin`.
+Use `memento-mcp update --check` para apenas verificar, sem instalar. Builds de release também fazem uma verificação silenciosa e limitada a uma vez por dia ao iniciar o servidor, escrevendo um aviso somente no stderr quando houver atualização; mensagens de atualização nunca são escritas no stdout do MCP. Defina `MEMENTO_UPDATE_CHECK=false` para desativar essa verificação. Instalações pelo marketplace do Claude Code deixam atualizações do plugin agendadas em segundo plano; use os comandos `/plugin` para atualizar imediatamente e depois recarregue os plugins ou inicie uma nova tarefa.
 
 ### Compilação a partir do código-fonte
 

@@ -76,17 +76,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=0.8.0" -o dist/memento-mcp ./cmd/server
+          VERSION="$(node -p 'require("./plugins/memento/.claude-plugin/plugin.json").version')"
+          go build -tags="$TREE_SITTER_TAGS" -ldflags "-X memento-mcp/internal/mcp.serverVersion=$VERSION" -o dist/memento-mcp ./cmd/server
           request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"plugin-ci","version":"1"}}}'
           printf '%s\n' "$request" | \
             MEMENTO_PLUGIN_BINARY="$PWD/dist/memento-mcp" \
             MEMENTO_PLUGIN_DATA="$RUNNER_TEMP/memento-plugin-data" \
             node plugins/memento/bin/memento-launcher.cjs > "$RUNNER_TEMP/initialize.json"
-          node -e '
+          MEMENTO_EXPECTED_VERSION="$VERSION" node -e '
             const fs = require("node:fs");
             const messages = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map(JSON.parse);
             const reply = messages.find((message) => message.id === 1);
-            if (!reply?.result?.capabilities?.tools || !reply.result.capabilities.resources || !reply.result.capabilities.prompts || reply.result.serverInfo?.version !== "0.8.0") {
+            if (!reply?.result?.capabilities?.tools || !reply.result.capabilities.resources || !reply.result.capabilities.prompts || reply.result.serverInfo?.version !== process.env.MEMENTO_EXPECTED_VERSION) {
               throw new Error("launcher initialize response omitted expected MCP capabilities or release version");
             }
           ' "$RUNNER_TEMP/initialize.json"

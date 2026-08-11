@@ -60,6 +60,22 @@ test("release workflow always builds raw macOS binaries and optionally notarizes
   );
 });
 
+test("release workflow validates the native Claude plugin before builds or publication", async () => {
+  const workflow = await readFile(releaseWorkflowPath, "utf8");
+  const validation = workflow.match(/  validate-claude-plugin-release:[\s\S]*?\n  build-binaries:/)?.[0];
+  const build = workflow.match(/  build-binaries:[\s\S]*?\n  package-deb:/)?.[0];
+  const deb = workflow.match(/  package-deb:[\s\S]*?\n  package-macos-pkg:/)?.[0];
+  const macos = workflow.match(/  package-macos-pkg:[\s\S]*?\n  publish:/)?.[0];
+  const publish = workflow.match(/  publish:[\s\S]*$/)?.[0];
+
+  assert.ok(validation, "plugin release validation job must exist before binary builds");
+  assert.match(validation, /node scripts\/verify-claude-plugin-release\.mjs/);
+  assert.match(build, /needs: validate-claude-plugin-release/);
+  assert.match(deb, /needs: validate-claude-plugin-release/);
+  assert.match(macos, /needs: validate-claude-plugin-release/);
+  assert.match(publish, /needs: \[validate-claude-plugin-release, build-binaries, package-deb, package-macos-pkg\]/);
+});
+
 test("server/latest mirrors verified versioned assets without rebuilding", async () => {
   const workflow = await readFile(latestWorkflowPath, "utf8");
 

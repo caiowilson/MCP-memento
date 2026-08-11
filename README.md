@@ -45,7 +45,7 @@ Add this repository as a Claude Code marketplace, install Memento, then reload a
 /mcp
 ```
 
-The enabled plugin starts Memento automatically for each Claude Code project. On first start it downloads the version-pinned prebuilt binary for x64 or arm64 macOS, Linux, or Windows, verifies the release SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory. The first start requires GitHub access; later starts verify the cache and work offline.
+The enabled plugin starts Memento automatically for each Claude Code project. On first start it downloads the version-pinned prebuilt binary for x64 or arm64 macOS, Linux, or Windows, verifies the release SHA-256 checksum, and caches it in Claude Code's persistent plugin data directory. The first start requires GitHub access; later starts verify the cache and work offline. New marketplace installs also perform one background check per 24 hours after the MCP server starts and stage any available plugin update. The active task keeps its current binary; reload plugins or start a new task to activate the staged plugin update. Legacy marketplace installs remain opted out until `$HOME/.memento-mcp/marketplace-update.json` contains `{ "autoUpdate": true }`.
 
 ### Claude Code workflows plugin (no native binary)
 
@@ -80,7 +80,7 @@ Update a standalone installation in place:
 memento-mcp update
 ```
 
-Use `memento-mcp update --check` to check without installing. Release builds also perform a silent, throttled check at server startup and write only an update-available notice to stderr; they never write update messages to MCP stdout. Set `MEMENTO_UPDATE_CHECK=false` to disable that check. Claude Code plugin installations remain version-pinned and must be updated through `/plugin` commands.
+Use `memento-mcp update --check` to check without installing. Release builds also perform a silent, throttled check at server startup and write only an update-available notice to stderr; they never write update messages to MCP stdout. Set `MEMENTO_UPDATE_CHECK=false` to disable that check. Claude Code marketplace installs stage plugin updates in the background once per day after startup; use `/plugin` commands to update immediately, then reload plugins or start a new task.
 
 ### Build from source
 

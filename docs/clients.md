@@ -94,6 +94,8 @@ The marketplace and plugin are maintained in this repository. When enabled, the 
 
 The plugin pins its launcher and server to the same version. On first start, the launcher detects x64 or arm64 macOS, Linux, or Windows, downloads that version's prebuilt server from the GitHub release, verifies its SHA-256 sidecar, and stores both under `${CLAUDE_PLUGIN_DATA}`. Every later start rehashes the cached executable. A valid cache works offline; a missing or invalid cache requires GitHub access so the launcher can replace it. Go is not required for plugin users.
 
+New marketplace installs check once per 24 hours for an updated marketplace package after the verified MCP server has spawned. The check stages the package using Claude's normal plugin commands, never changes the binary running in the active task, and never blocks MCP startup. Reload plugins or start a new task to activate a staged plugin update. Legacy marketplace installs remain opted out until `$HOME/.memento-mcp/marketplace-update.json` contains `{ "autoUpdate": true }`; unavailable networks, command failures, and timeouts preserve the current server.
+
 Update an installed plugin with:
 
 ```text

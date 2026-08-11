@@ -7,14 +7,200 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { EventEmitter } = require("node:events");
 
 const {
   RELEASE_VERSION,
+  hasLegacyPluginCache,
+  initializeUpdateState,
   isVerified,
+  marketplaceUpdateStatePath,
   parseChecksum,
   resolveBinary,
   resolveTarget,
+  run,
+  runMarketplaceUpdateCheck,
+  startServerProcess,
 } = require("../bin/memento-launcher.cjs");
+
+async function writeSetupPreference(home, autoUpdate) {
+  const filename = path.join(home, ".memento-mcp", "marketplace-update.json");
+  await fsp.mkdir(path.dirname(filename), { recursive: true });
+  await fsp.writeFile(filename, `${JSON.stringify({ autoUpdate })}\n`, { mode: 0o600 });
+}
+
+function recordingRunner(responses, calls) {
+  return async (command, args, options) => {
+    calls.push({ command, args, timeoutMs: options.timeoutMs });
+    const response = responses.shift();
+    if (response instanceof Error) throw response;
+    return response || { stdout: "", stderr: "" };
+  };
+}
+
+test("new marketplace installs persist an enabled update policy while legacy installs remain off", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-update-policy-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const newPluginData = path.join(root, "new-plugin-data");
+  const legacyPluginData = path.join(root, "legacy-plugin-data");
+  const home = path.join(root, "home");
+  await fsp.mkdir(newPluginData);
+  await fsp.mkdir(legacyPluginData);
+  await fsp.mkdir(path.join(legacyPluginData, "bin"));
+
+  const fresh = await initializeUpdateState({ pluginData: newPluginData, home, pluginDataExisted: await hasLegacyPluginCache(newPluginData) });
+  const legacy = await initializeUpdateState({ pluginData: legacyPluginData, home, pluginDataExisted: await hasLegacyPluginCache(legacyPluginData) });
+
+  assert.equal(fresh.effectivePolicy, true);
+  assert.equal(fresh.policyProvenance, "new-marketplace-install");
+  assert.equal(legacy.effectivePolicy, false);
+  assert.equal(legacy.policyProvenance, "legacy-marketplace-install");
+  assert.equal((await fsp.stat(marketplaceUpdateStatePath(newPluginData))).mode & 0o777, 0o600);
+
+  await writeSetupPreference(home, true);
+  const optedIn = await initializeUpdateState({ pluginData: legacyPluginData, home, pluginDataExisted: await hasLegacyPluginCache(legacyPluginData) });
+  assert.equal(optedIn.effectivePolicy, true);
+  assert.equal(optedIn.policyProvenance, "setup-preference");
+});
+
+test("only an existing server cache classifies plugin data as legacy", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-update-provenance-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const emptyPluginData = path.join(root, "empty-plugin-data");
+  const cachedPluginData = path.join(root, "cached-plugin-data");
+  await fsp.mkdir(emptyPluginData);
+  await fsp.mkdir(path.join(cachedPluginData, "bin"), { recursive: true });
+
+  assert.equal(await hasLegacyPluginCache(emptyPluginData), false);
+  assert.equal(await hasLegacyPluginCache(cachedPluginData), true);
+});
+
+test("a pre-created empty plugin-data directory remains a new installation at runtime", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-update-runtime-provenance-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const pluginData = path.join(root, "plugin-data");
+  await fsp.mkdir(pluginData);
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let commands = 0;
+  let safetyExit;
+
+  await run({
+    env: { MEMENTO_PLUGIN_DATA: pluginData },
+    home: path.join(root, "home"),
+    resolveBinary: async () => "/verified/memento-mcp",
+    spawnServer: () => {
+      queueMicrotask(() => {
+        child.emit("spawn");
+        safetyExit = setTimeout(() => child.emit("exit", 0, null), 100);
+      });
+      return child;
+    },
+    commandRunner: async () => {
+      commands += 1;
+      if (commands === 2) {
+        clearTimeout(safetyExit);
+        queueMicrotask(() => child.emit("exit", 0, null));
+      }
+      return { stdout: "Updated memento@memento-mcp to version 1.0.4", stderr: "" };
+    },
+    forwardSignals: false,
+  });
+
+  assert.equal(commands, 2);
+  const state = JSON.parse(await fsp.readFile(marketplaceUpdateStatePath(pluginData), "utf8"));
+  assert.equal(state.policyProvenance, "new-marketplace-install");
+});
+
+test("Claude stages marketplace updates once per day after a persisted attempt", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-update-claude-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const pluginData = path.join(root, "plugin-data");
+  await initializeUpdateState({ pluginData, home: path.join(root, "home"), pluginDataExisted: false });
+  const calls = [];
+  const now = new Date("2026-08-10T00:00:00.000Z");
+  let persistedBeforeCommand = false;
+
+  const first = await runMarketplaceUpdateCheck({
+    pluginData,
+    now: () => now,
+    commandRunner: async (command, args, options) => {
+      calls.push({ command, args, timeoutMs: options.timeoutMs });
+      const state = JSON.parse(await fsp.readFile(marketplaceUpdateStatePath(pluginData), "utf8"));
+      persistedBeforeCommand ||= state.lastCheckedAt === now.toISOString();
+      return { stdout: "Updated memento@memento-mcp to version 1.0.4", stderr: "" };
+    },
+  });
+
+  assert.equal(first.result, "staged");
+  assert.equal(persistedBeforeCommand, true);
+  assert.deepEqual(calls.map(({ command, args }) => [command, ...args]), [
+    ["claude", "plugin", "marketplace", "update", "memento-mcp"],
+    ["claude", "plugin", "update", "memento@memento-mcp"],
+  ]);
+  assert.ok(calls.every(({ timeoutMs }) => timeoutMs > 0 && timeoutMs <= 30_000));
+
+  const second = await runMarketplaceUpdateCheck({
+    pluginData,
+    now: () => new Date("2026-08-10T23:59:59.000Z"),
+    commandRunner: async () => { throw new Error("daily throttle did not hold"); },
+  });
+  assert.equal(second.result, "staged");
+  assert.equal(calls.length, 2);
+});
+
+test("a live update lock and update failures leave the active server available", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-update-lock-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const pluginData = path.join(root, "plugin-data");
+  await initializeUpdateState({ pluginData, home: path.join(root, "home"), pluginDataExisted: false });
+  const lock = path.join(pluginData, "marketplace-update-state.lock");
+  await fsp.writeFile(lock, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600 });
+  let called = false;
+  await runMarketplaceUpdateCheck({
+    pluginData,
+    now: () => new Date("2026-08-10T00:00:00.000Z"),
+    commandRunner: async () => { called = true; },
+  });
+  assert.equal(called, false);
+
+  await fsp.rm(lock);
+  const offline = Object.assign(new Error("offline"), { code: "ENETUNREACH" });
+  const state = await runMarketplaceUpdateCheck({
+    pluginData,
+    now: () => new Date("2026-08-11T01:00:00.000Z"),
+    commandRunner: async () => { throw offline; },
+  });
+  assert.equal(state.result, "offline");
+  assert.equal(state.currentVersion, RELEASE_VERSION);
+});
+
+test("the verified server starts before the background update check", async () => {
+  const events = [];
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  const completed = startServerProcess("/verified/memento-mcp", {
+    spawnServer(binary) {
+      events.push(`spawn:${binary}`);
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    },
+    backgroundCheck: async () => {
+      events.push("check");
+      throw new Error("offline");
+    },
+    notice: (message) => events.push(`notice:${message}`),
+  });
+  queueMicrotask(() => queueMicrotask(() => child.emit("exit", 0, null)));
+  await completed;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events.slice(0, 2), ["spawn:/verified/memento-mcp", "check"]);
+  assert.match(events[2], /^notice:memento plugin update check failed: offline$/);
+  assert.equal(child.killed, false);
+});
 
 test("plugin, marketplace, and launcher versions stay aligned", async () => {
   const pluginRoot = path.resolve(__dirname, "..");

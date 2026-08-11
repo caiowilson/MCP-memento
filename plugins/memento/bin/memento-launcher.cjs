@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const http = require("node:http");
 const https = require("node:https");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
@@ -18,6 +19,182 @@ const MAX_REDIRECTS = 5;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 const LOCK_WAIT_MS = 75_000;
 const LOCK_RETRY_MS = 200;
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const UPDATE_CHECK_DEADLINE_MS = 30_000;
+const UPDATE_STATE_FILE = "marketplace-update-state.json";
+
+function marketplaceUpdateStatePath(pluginData) {
+  return path.join(pluginData, UPDATE_STATE_FILE);
+}
+
+async function readJSON(filename) {
+  try {
+    return JSON.parse(await fsp.readFile(filename, "utf8"));
+  } catch (error) {
+    if (error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeJSONAtomic(filename, value) {
+  await fsp.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 });
+  const temporary = `${filename}.tmp-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+  try {
+    await fsp.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+    await fsp.rename(temporary, filename);
+  } catch (error) {
+    await fsp.rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+function normalizedUpdateState(value = {}) {
+  const state = {
+    currentVersion: typeof value.currentVersion === "string" ? value.currentVersion : RELEASE_VERSION,
+    effectivePolicy: value.effectivePolicy === true,
+    policyProvenance: typeof value.policyProvenance === "string" ? value.policyProvenance : "legacy-marketplace-install",
+    result: typeof value.result === "string" ? value.result : "never",
+  };
+  for (const key of ["availableVersion", "lastCheckedAt"]) {
+    if (typeof value[key] === "string" && value[key] !== "") state[key] = value[key];
+  }
+  return state;
+}
+
+async function persistUpdateState(pluginData, value) {
+  const state = normalizedUpdateState(value);
+  await writeJSONAtomic(marketplaceUpdateStatePath(pluginData), state);
+  return state;
+}
+
+async function initializeUpdateState({ pluginData, home = os.homedir(), pluginDataExisted }) {
+  const preference = await readJSON(path.join(home, ".memento-mcp", "marketplace-update.json"));
+  const persisted = await readJSON(marketplaceUpdateStatePath(pluginData));
+  let effectivePolicy;
+  let policyProvenance;
+  if (preference && typeof preference.autoUpdate === "boolean") {
+    effectivePolicy = preference.autoUpdate;
+    policyProvenance = "setup-preference";
+  } else if (persisted && typeof persisted.effectivePolicy === "boolean") {
+    effectivePolicy = persisted.effectivePolicy;
+    policyProvenance = persisted.policyProvenance;
+  } else if (pluginDataExisted) {
+    effectivePolicy = false;
+    policyProvenance = "legacy-marketplace-install";
+  } else {
+    effectivePolicy = true;
+    policyProvenance = "new-marketplace-install";
+  }
+  return persistUpdateState(pluginData, {
+    ...(persisted || {}),
+    currentVersion: RELEASE_VERSION,
+    effectivePolicy,
+    policyProvenance,
+  });
+}
+
+async function acquireUpdateLock(lockFilename) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await fsp.open(lockFilename, "wx", 0o600);
+      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+      return handle;
+    } catch (error) {
+      if (!error || error.code !== "EEXIST") throw error;
+      if (await lockOwnerAlive(lockFilename)) return null;
+      await fsp.rm(lockFilename, { force: true });
+    }
+  }
+  return null;
+}
+
+function commandResult(command, args, { timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const stdout = [];
+    const stderr = [];
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(Object.assign(new Error("marketplace update deadline exceeded"), { code: "ETIMEDOUT" }));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
+        return;
+      }
+      reject(Object.assign(new Error(`${command} exited ${code === null ? signal : code}`), { code: "COMMAND_FAILED" }));
+    });
+  });
+}
+
+function withDeadline(operation, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Object.assign(new Error("marketplace update deadline exceeded"), { code: "ETIMEDOUT" })), timeoutMs);
+    Promise.resolve().then(operation).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
+function versionFromText(text) {
+  return (String(text || "").match(/\b\d+\.\d+\.\d+\b/g) || []).at(-1) || RELEASE_VERSION;
+}
+
+function updateFailureResult(error) {
+  if (error && error.code === "ETIMEDOUT") return "deadline";
+  if (error && ["ENETUNREACH", "ENOTFOUND", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH"].includes(error.code)) return "offline";
+  return "failed";
+}
+
+async function runMarketplaceUpdateCheck({ pluginData, now = () => new Date(), commandRunner = commandResult, deadlineMs = UPDATE_CHECK_DEADLINE_MS }) {
+  let state = normalizedUpdateState(await readJSON(marketplaceUpdateStatePath(pluginData)) || {});
+  if (!state.effectivePolicy) return state;
+  const currentTime = now();
+  const lastChecked = Date.parse(state.lastCheckedAt || "");
+  if (Number.isFinite(lastChecked) && currentTime.getTime() - lastChecked < UPDATE_CHECK_INTERVAL_MS) return state;
+
+  const lockFilename = path.join(pluginData, "marketplace-update-state.lock");
+  const lock = await acquireUpdateLock(lockFilename);
+  if (!lock) return state;
+  try {
+    state = normalizedUpdateState(await readJSON(marketplaceUpdateStatePath(pluginData)) || state);
+    const lockedLastChecked = Date.parse(state.lastCheckedAt || "");
+    if (Number.isFinite(lockedLastChecked) && currentTime.getTime() - lockedLastChecked < UPDATE_CHECK_INTERVAL_MS) return state;
+
+    const next = await persistUpdateState(pluginData, {
+      ...state,
+      currentVersion: RELEASE_VERSION,
+      lastCheckedAt: currentTime.toISOString(),
+    });
+    const deadline = Date.now() + deadlineMs;
+    const invoke = (command, args) => {
+      const timeoutMs = Math.max(1, deadline - Date.now());
+      return withDeadline(() => commandRunner(command, args, { timeoutMs }), timeoutMs);
+    };
+    try {
+      const refresh = await invoke("claude", ["plugin", "marketplace", "update", "memento-mcp"]);
+      const staged = await invoke("claude", ["plugin", "update", "memento@memento-mcp"]);
+      return persistUpdateState(pluginData, {
+        ...next,
+        availableVersion: versionFromText(`${refresh.stdout}\n${refresh.stderr}\n${staged.stdout}\n${staged.stderr}`),
+        result: "staged",
+      });
+    } catch (error) {
+      return persistUpdateState(pluginData, { ...next, result: updateFailureResult(error) });
+    }
+  } finally {
+    await lock.close().catch(() => {});
+    await fsp.rm(lockFilename, { force: true });
+  }
+}
 
 function resolveTarget(platform = process.platform, arch = process.arch) {
   const os = { darwin: "darwin", linux: "linux", win32: "windows" }[platform];
@@ -271,27 +448,71 @@ async function resolveBinary(options = {}) {
   }
 }
 
-async function run() {
-  const binary = await resolveBinary();
-  const child = spawn(binary, [], {
-    cwd: process.env.CLAUDE_PROJECT_DIR || process.cwd(),
-    env: process.env,
+function startServerProcess(binary, options = {}) {
+  const child = (options.spawnServer || spawn)(binary, [], {
+    cwd: options.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(),
+    env: options.env || process.env,
     stdio: "inherit",
     windowsHide: true,
   });
-
-  for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => {
-      if (!child.killed) child.kill(signal);
-    });
+  child.once("spawn", () => {
+    Promise.resolve()
+      .then(() => options.backgroundCheck && options.backgroundCheck())
+      .catch((error) => (options.notice || ((message) => process.stderr.write(`${message}\n`)))(`memento plugin update check failed: ${error.message}`));
+  });
+  const forwarders = new Map();
+  if (options.forwardSignals !== false) {
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+      const forward = () => {
+        if (!child.killed) child.kill(signal);
+      };
+      forwarders.set(signal, forward);
+      process.on(signal, forward);
+    }
   }
-
-  await new Promise((resolve, reject) => {
-    child.once("error", reject);
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      for (const [signal, forward] of forwarders) process.off(signal, forward);
+    };
+    child.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
     child.once("exit", (code, signal) => {
+      cleanup();
       process.exitCode = code === null ? (signal ? 1 : 0) : code;
       resolve();
     });
+  });
+}
+
+async function hasLegacyPluginCache(pluginData) {
+  try {
+    return (await fsp.stat(path.join(pluginData, "bin"))).isDirectory();
+  } catch (error) {
+    if (error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function run(options = {}) {
+  const env = options.env || process.env;
+  const pluginData = options.pluginData || env.MEMENTO_PLUGIN_DATA;
+  const override = options.override || env.MEMENTO_PLUGIN_BINARY;
+  const pluginDataExisted = pluginData ? await hasLegacyPluginCache(pluginData) : false;
+  const binary = await (options.resolveBinary || resolveBinary)({ ...options, pluginData, override });
+  return startServerProcess(binary, {
+    ...options,
+    env,
+    backgroundCheck: override || !pluginData ? undefined : async () => {
+      await initializeUpdateState({ pluginData, home: options.home, pluginDataExisted });
+      await runMarketplaceUpdateCheck({
+        pluginData,
+        now: options.now,
+        commandRunner: options.commandRunner,
+        deadlineMs: options.deadlineMs,
+      });
+    },
   });
 }
 
@@ -306,10 +527,15 @@ module.exports = {
   RELEASE_TAG,
   RELEASE_VERSION,
   acquireInstallLock,
+  hasLegacyPluginCache,
+  initializeUpdateState,
   isVerified,
+  marketplaceUpdateStatePath,
   parseChecksum,
   requestBuffer,
   resolveBinary,
   resolveTarget,
   run,
+  runMarketplaceUpdateCheck,
+  startServerProcess,
 };
