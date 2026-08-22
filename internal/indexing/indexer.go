@@ -164,6 +164,7 @@ func New(cfg Config) (*Indexer, error) {
 		}
 	}
 	idx.rebuildTrigramIndex()
+	idx.status = idx.statusFromManifestLocked()
 	return idx, nil
 }
 
@@ -374,6 +375,29 @@ func (i *Indexer) Status() Status {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.status
+}
+
+// indexSizeLocked reports what the index currently holds. The manifest is the
+// same source outline, search, and DebugInfo read from, so status stays
+// consistent with the answers those tools return. Counting only the files a
+// pass rewrote would report zero whenever the index is already current.
+func (i *Indexer) indexSizeLocked() (files int, bytes int64) {
+	return len(i.manifest.Files), i.manifest.TotalBytes
+}
+
+// statusFromManifestLocked rebuilds status for an index loaded from disk, so a
+// process that reopens a populated store reports it before any pass runs.
+func (i *Indexer) statusFromManifestLocked() Status {
+	files, bytes := i.indexSizeLocked()
+	if files == 0 {
+		return Status{}
+	}
+	return Status{
+		Ready:         true,
+		LastIndexedAt: i.manifest.UpdatedAt,
+		FilesIndexed:  files,
+		BytesIndexed:  bytes,
+	}
 }
 
 type DebugInfo struct {
@@ -889,8 +913,6 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 	totalBytes = i.manifest.TotalBytes
 	i.mu.Unlock()
 
-	bytesIndexed := int64(0)
-	filesIndexed := 0
 	partial := false
 
 	for _, c := range candidates {
@@ -924,8 +946,6 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		}
 		if ok {
 			totalBytes += delta
-			bytesIndexed += max64(delta, 0)
-			filesIndexed++
 		}
 	}
 
@@ -936,10 +956,11 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 
 	i.mu.Lock()
 	lastError := i.status.Error
+	files, bytesIndexed := i.indexSizeLocked()
 	i.status = Status{
 		Ready:         true,
 		LastIndexedAt: time.Now().UTC().Format(time.RFC3339),
-		FilesIndexed:  filesIndexed,
+		FilesIndexed:  files,
 		BytesIndexed:  bytesIndexed,
 		Partial:       partial,
 		Error:         lastError,
@@ -1632,13 +1653,6 @@ func isPHPIndexExtension(ext string) bool {
 
 func min(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func max64(a, b int64) int64 {
-	if a > b {
 		return a
 	}
 	return b
