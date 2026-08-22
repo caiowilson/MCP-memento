@@ -139,3 +139,57 @@ func TestBackfillFillsVectorsFromPersistedChunks(t *testing.T) {
 		t.Fatalf("expected vector sidecar: %v", err)
 	}
 }
+
+func TestVectorsSurviveSemanticOffToggle(t *testing.T) {
+	root, store := backfillFixture(t)
+	embedder := &flakyEmbedder{release: make(chan struct{})}
+	close(embedder.release) // succeed immediately
+
+	warm, err := New(Config{RootAbs: root, StoreDir: store, Embedder: embedder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	warm.Start(ctx)
+	if err := warm.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	warm.mu.Lock()
+	entry := warm.manifest.Files["alpha.go"]
+	wantFingerprint := warm.manifest.EmbeddingFingerprint
+	warm.mu.Unlock()
+	if entry.Vectors == 0 {
+		t.Fatal("fixture error: expected vectors to be written")
+	}
+	vectorPath := warm.vectorFilePath(entry.ID)
+	cancel()
+
+	// Reopen with semantic off. Sidecars and identity must survive.
+	off, err := New(Config{RootAbs: root, StoreDir: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(vectorPath); statErr != nil {
+		t.Fatalf("semantic off deleted the vector sidecar: %v", statErr)
+	}
+	off.mu.Lock()
+	gotFingerprint := off.manifest.EmbeddingFingerprint
+	gotVectors := off.manifest.Files["alpha.go"].Vectors
+	off.mu.Unlock()
+	if gotFingerprint != wantFingerprint {
+		t.Fatalf("fingerprint = %q, want %q", gotFingerprint, wantFingerprint)
+	}
+	if gotVectors != entry.Vectors {
+		t.Fatalf("vectors = %d, want %d", gotVectors, entry.Vectors)
+	}
+
+	// Reopen with semantic on again. Nothing should need re-embedding.
+	back, err := New(Config{RootAbs: root, StoreDir: store, Embedder: embedder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := back.pendingVectorCount(); got != 0 {
+		t.Fatalf("pendingVectorCount after toggle = %d, want 0", got)
+	}
+}

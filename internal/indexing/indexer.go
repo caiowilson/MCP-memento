@@ -1437,7 +1437,10 @@ type fileEntry struct {
 
 func (i *Indexer) embeddingFingerprint() string {
 	if i.embedder == nil {
-		return "disabled"
+		// Preserve the identity the sidecars were written with. Availability
+		// and configuration must never invalidate stored vectors; only a real
+		// change of embedding identity does.
+		return i.manifest.EmbeddingFingerprint
 	}
 	return i.embedder.Fingerprint()
 }
