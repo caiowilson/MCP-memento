@@ -611,6 +611,9 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 			continue
 		}
 		vectorByLine := map[[2]int][]float32{}
+		// readVectorsFile calls embeddingFingerprint() without holding i.mu.
+		// This is safe only because queryVector is populated only when i.embedder != nil.
+		// See embeddingFingerprint() for the full invariant and its implications.
 		if len(queryVector) > 0 && entry.Vectors > 0 {
 			vectors, err := i.readVectorsFile(entry.ID)
 			if err != nil {
@@ -1440,6 +1443,12 @@ func (i *Indexer) embeddingFingerprint() string {
 		// Preserve the identity the sidecars were written with. Availability
 		// and configuration must never invalidate stored vectors; only a real
 		// change of embedding identity does.
+		// NOTE: This reads i.manifest.EmbeddingFingerprint without holding i.mu.
+		// This is safe only because readVectorsFile (called from Search) is
+		// unreachable when i.embedder == nil (queryVector is only populated when
+		// i.embedder != nil). If a future change decouples queryVector population
+		// from embedder presence (e.g., lexical-fallback vector rerank), this will
+		// become a data race on i.manifest.EmbeddingFingerprint.
 		return i.manifest.EmbeddingFingerprint
 	}
 	return i.embedder.Fingerprint()
