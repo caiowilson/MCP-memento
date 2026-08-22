@@ -949,6 +949,13 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		}
 	}
 
+	if err := i.backfillVectors(ctx); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		i.setError(err)
+	}
+
 	if err := i.saveManifest(); err != nil {
 		i.setError(err)
 		return err
@@ -1077,15 +1084,10 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 	i.mu.Unlock()
 
 	mod := info.ModTime().UnixNano()
-	needsVectors := false
-	if i.embedder != nil && ok {
-		needsVectors = ent.Vectors != ent.Chunks
-		if !needsVectors {
-			_, statErr := os.Stat(i.vectorFilePath(ent.ID))
-			needsVectors = statErr != nil
-		}
-	}
-	if ok && ent.Size == info.Size() && ent.ModTime == mod && !needsVectors {
+	// Content freshness alone decides whether the source must be reprocessed.
+	// Missing vectors are repaired by backfillVectors from the persisted
+	// chunks, so a vector gap never forces a re-read or a re-chunk.
+	if ok && ent.Size == info.Size() && ent.ModTime == mod {
 		_ = file.Close()
 		return false, 0, nil
 	}
@@ -1275,6 +1277,12 @@ func (i *Indexer) recordEmbeddingSuccess() {
 	i.mu.Lock()
 	i.embeddingBackoffUntil = time.Time{}
 	i.mu.Unlock()
+}
+
+// clearEmbeddingBackoffForTest resets the retry window so tests can simulate a
+// runtime coming back without sleeping.
+func (i *Indexer) clearEmbeddingBackoffForTest() {
+	i.recordEmbeddingSuccess()
 }
 
 func normalizeVector(vector []float32) error {
