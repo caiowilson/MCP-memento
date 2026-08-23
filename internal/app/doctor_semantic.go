@@ -31,41 +31,44 @@ func doctorSemantic(ctx context.Context, stdout io.Writer) int {
 		fmt.Fprintf(stdout, "[FAIL] semantic: embedder is %T, expected a runtime\n", config.Embedder)
 		return 1
 	}
+	return doctorSemanticProbe(ctx, stdout, config.Mode, runtime.Name(), runtime.Probe)
+}
 
+func doctorSemanticProbe(ctx context.Context, stdout io.Writer, mode embedding.Mode, name string, probe func(context.Context) embedding.Availability) int {
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	availability := runtime.Probe(probeCtx)
+	availability := probe(probeCtx)
+	if availability.Available {
+		fmt.Fprintf(stdout, "[PASS] semantic: %s reachable (mode %s)\n", name, mode)
+		return 0
+	}
 	if err := probeCtx.Err(); err != nil {
 		label := "WARN"
 		failures := 0
-		if config.Mode == embedding.ModeRequired {
+		if mode == embedding.ModeRequired {
 			label = "FAIL"
 			failures = 1
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			fmt.Fprintf(stdout, "[%s] semantic: runtime probe timed out before it responded (mode %s)\n", label, config.Mode)
+			fmt.Fprintf(stdout, "[%s] semantic: runtime probe timed out before it responded (mode %s)\n", label, mode)
 			fmt.Fprintln(stdout, "       verify the local runtime is running and responsive, then rerun: memento-mcp doctor")
 		} else {
-			fmt.Fprintf(stdout, "[%s] semantic: runtime probe was canceled before it completed (mode %s)\n", label, config.Mode)
+			fmt.Fprintf(stdout, "[%s] semantic: runtime probe was canceled before it completed (mode %s)\n", label, mode)
 			fmt.Fprintln(stdout, "       rerun doctor when the local runtime is available")
 		}
 		return failures
 	}
-	if availability.Available {
-		fmt.Fprintf(stdout, "[PASS] semantic: %s reachable (mode %s)\n", runtime.Name(), config.Mode)
-		return 0
-	}
 
 	label := "WARN"
 	failures := 0
-	if config.Mode == embedding.ModeRequired {
+	if mode == embedding.ModeRequired {
 		label = "FAIL"
 		failures = 1
 	}
-	fmt.Fprintf(stdout, "[%s] semantic: %s (mode %s)\n", label, availability.Reason, config.Mode)
-	_, model, _ := strings.Cut(runtime.Name(), "/")
+	fmt.Fprintf(stdout, "[%s] semantic: %s (mode %s)\n", label, availability.Reason, mode)
+	_, model, _ := strings.Cut(name, "/")
 	fmt.Fprintf(stdout, "       install a local runtime, then run: ollama pull %s\n", model)
-	if config.Mode == embedding.ModeAuto {
+	if mode == embedding.ModeAuto {
 		fmt.Fprintln(stdout, "       retrieval continues to work using lexical ranking")
 	}
 	return failures

@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"memento-mcp/internal/embedding"
 )
 
 func TestDoctorSemanticOffReportsSkip(t *testing.T) {
@@ -122,5 +124,25 @@ func TestDoctorSemanticCancelledProbeReportsTruthfully(t *testing.T) {
 				t.Fatalf("output = %q, must not suggest installing a model", text)
 			}
 		})
+	}
+}
+
+func TestDoctorSemanticSuccessfulProbeWinsOverLateCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var out bytes.Buffer
+	failures := doctorSemanticProbe(ctx, &out, embedding.ModeRequired, "ollama/test-model", func(context.Context) embedding.Availability {
+		cancel()
+		return embedding.Availability{Available: true}
+	})
+	if failures != 0 {
+		t.Fatalf("failures = %d, want 0", failures)
+	}
+	text := out.String()
+	if !strings.Contains(text, "[PASS] semantic: ollama/test-model reachable") {
+		t.Fatalf("output = %q, want successful probe output", text)
+	}
+	if strings.Contains(text, "timed out") || strings.Contains(text, "canceled") {
+		t.Fatalf("output = %q, must not report late cancellation", text)
 	}
 }
