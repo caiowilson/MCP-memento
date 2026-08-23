@@ -43,3 +43,16 @@ func TestModeEnabled(t *testing.T) {
 		t.Fatal("auto and required must be enabled")
 	}
 }
+
+func TestDefaultModeIsAuto(t *testing.T) {
+	if DefaultMode != ModeAuto {
+		t.Fatalf("DefaultMode = %q, want auto", DefaultMode)
+	}
+	mode, err := ParseMode("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode != ModeAuto {
+		t.Fatalf("unset mode = %q, want auto", mode)
+	}
+}

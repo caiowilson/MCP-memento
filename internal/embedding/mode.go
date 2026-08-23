@@ -21,7 +21,9 @@ const (
 )
 
 // DefaultMode is the mode used when MEMENTO_SEMANTIC_ENABLED is unset.
-var DefaultMode = ModeOff
+// Semantic retrieval is attempted by default and degrades to lexical when no
+// runtime is reachable.
+var DefaultMode = ModeAuto
 
 // Enabled reports whether an embedder should be constructed.
 func (m Mode) Enabled() bool { return m == ModeAuto || m == ModeRequired }

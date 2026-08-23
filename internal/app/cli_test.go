@@ -51,6 +51,12 @@ func TestBuildMCPServersConfigJSON(t *testing.T) {
 	}
 }
 
+func TestDefaultMCPEnvEnablesSemanticAuto(t *testing.T) {
+	if defaultMCPEnv["MEMENTO_SEMANTIC_ENABLED"] != "auto" {
+		t.Fatalf("expected MEMENTO_SEMANTIC_ENABLED=auto, got %#v", defaultMCPEnv)
+	}
+}
+
 func TestHandleCLICommandPrintGuidance(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

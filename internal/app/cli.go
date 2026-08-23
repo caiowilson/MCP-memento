@@ -20,6 +20,7 @@ var defaultMCPEnv = map[string]string{
 	"MEMENTO_CONTEXT_MAX_TOKENS":         "7000",
 	"MEMENTO_REDACTION_ENABLED":          "true",
 	"MEMENTO_FEEDBACK_ENABLED":           "false",
+	"MEMENTO_SEMANTIC_ENABLED":           "auto",
 }
 
 func handleCLICommand(args []string, stdout, stderr io.Writer) (bool, int) {
