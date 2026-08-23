@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,23 @@ func TestOllamaReportsServerError(t *testing.T) {
 	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
 	if err == nil || !strings.Contains(err.Error(), "model not found") {
 		t.Fatalf("expected server error, got %v", err)
+	}
+}
+
+func TestOllamaClassifiesExactModelMissingResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "model 'missing' not found"})
+	}))
+	defer server.Close()
+	client, err := NewOllama(OllamaConfig{BaseURL: server.URL, Model: "missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
+	if !errors.Is(err, ErrOllamaModelMissing) {
+		t.Fatalf("error = %v, want ErrOllamaModelMissing", err)
 	}
 }
 

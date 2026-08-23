@@ -85,7 +85,7 @@ func TestRuntimeClassifiesFailureReasons(t *testing.T) {
 		want string
 	}{
 		{errors.New("ollama embedding request: dial tcp 127.0.0.1:11434: connect: connection refused"), "no embedding runtime detected"},
-		{errors.New(`ollama embedding request returned 404 Not Found: {"error":"model not found"}`), "is not available"},
+		{ErrOllamaModelMissing, "is not available"},
 		{context.DeadlineExceeded, "did not respond"},
 	}
 	for _, tc := range cases {

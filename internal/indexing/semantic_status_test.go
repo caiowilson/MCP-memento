@@ -64,7 +64,7 @@ func TestSemanticStatusAutoUnavailableIsNotAnError(t *testing.T) {
 }
 
 func TestSemanticStatusAutoModelMissingIsNotAnError(t *testing.T) {
-	status := semanticStatusForRuntimeError(t, embedding.ModeAuto, errors.New("404 model not found"))
+	status := semanticStatusForRuntimeError(t, embedding.ModeAuto, embedding.ErrOllamaModelMissing)
 	if status.Error != "" {
 		t.Fatalf("auto mode set status.Error = %q, want empty", status.Error)
 	}
@@ -78,8 +78,8 @@ func TestSemanticStatusAutoProviderFailuresRemainErrors(t *testing.T) {
 		name string
 		err  error
 	}{
-		{name: "http 5xx", err: errors.New("embedding provider returned HTTP 503")},
-		{name: "malformed response", err: errors.New("decode embedding response: invalid character '}'")},
+		{name: "http 5xx", err: errors.New("embedding provider returned HTTP 503: model not found")},
+		{name: "malformed response", err: errors.New("decode embedding response 404: model not found")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			status := semanticStatusForRuntimeError(t, embedding.ModeAuto, test.err)
@@ -100,6 +100,15 @@ func TestSemanticStatusRequiredUnavailableIsAnError(t *testing.T) {
 	}
 	if status.Semantic.Mode != "required" {
 		t.Fatalf("mode = %q, want required", status.Semantic.Mode)
+	}
+}
+
+func TestSemanticStatusRequiredProviderFailureIncludesDiagnosticAndRemediation(t *testing.T) {
+	status := semanticStatusForRuntimeError(t, embedding.ModeRequired, errors.New("embedding provider returned HTTP 503: model not found"))
+	for _, want := range []string{"HTTP 503", "Semantic retrieval", "ollama pull"} {
+		if !strings.Contains(status.Error, want) {
+			t.Fatalf("required error = %q, want %q", status.Error, want)
+		}
 	}
 }
 

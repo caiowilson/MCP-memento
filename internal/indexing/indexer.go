@@ -378,8 +378,12 @@ func (i *Indexer) Status() Status {
 	defer i.mu.Unlock()
 	status := i.status
 	status.Semantic = semantic
-	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available && status.Error == "" {
-		status.Error = semantic.Hint
+	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available {
+		if status.Error == "" {
+			status.Error = semantic.Hint
+		} else {
+			status.Error = fmt.Sprintf("%s. %s", status.Error, semantic.Hint)
+		}
 	}
 	return status
 }

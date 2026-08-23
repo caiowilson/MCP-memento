@@ -186,7 +186,7 @@ func classifyReason(name string, err error) string {
 	if isRuntimeUnreachable(message) {
 		return "no embedding runtime detected"
 	}
-	if isRuntimeModelMissing(message) {
+	if errors.Is(err, ErrOllamaModelMissing) {
 		if name != "" {
 			return fmt.Sprintf("model %s is not available in the embedding runtime", name)
 		}
@@ -200,13 +200,9 @@ func isRuntimeUnavailableError(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
-	return isRuntimeUnreachable(message) || isRuntimeModelMissing(message)
+	return isRuntimeUnreachable(message) || errors.Is(err, ErrOllamaModelMissing)
 }
 
 func isRuntimeUnreachable(message string) bool {
 	return strings.Contains(message, "connection refused") || strings.Contains(message, "no such host") || strings.Contains(message, "connect:")
-}
-
-func isRuntimeModelMissing(message string) bool {
-	return strings.Contains(message, "404") || strings.Contains(message, "not found")
 }
