@@ -12,6 +12,12 @@ import (
 	"testing"
 )
 
+type ollamaRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f ollamaRoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
 func TestOllamaEmbedBatchesAndNormalizes(t *testing.T) {
 	var got struct {
 		Model    string   `json:"model"`
@@ -109,6 +115,24 @@ func TestOllamaClassifiesExactModelMissingResponse(t *testing.T) {
 	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
 	if !errors.Is(err, ErrOllamaModelMissing) {
 		t.Fatalf("error = %v, want ErrOllamaModelMissing", err)
+	}
+}
+
+func TestOllamaTypesPreResponseTransportErrors(t *testing.T) {
+	client, err := NewOllama(OllamaConfig{
+		BaseURL: "http://127.0.0.1:11434",
+		Model:   "test-model",
+		Client: &http.Client{Transport: ollamaRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial failed")
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
+	var transportErr *PreResponseTransportError
+	if !errors.As(err, &transportErr) {
+		t.Fatalf("error = %v, want PreResponseTransportError", err)
 	}
 }
 

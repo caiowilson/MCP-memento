@@ -1,11 +1,54 @@
 package indexing
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"memento-mcp/internal/embedding"
 )
+
+// StoredVectorsPending reads the persisted index manifest without constructing
+// an Indexer or mutating sidecars. Doctor uses this read-only seam to report
+// warmup state for the workspace whose index the server uses.
+func StoredVectorsPending(rootAbs string) (int, error) {
+	rootAbs, err := filepath.Abs(rootAbs)
+	if err != nil {
+		return 0, err
+	}
+	dir, err := repoIndexDir(rootAbs)
+	if err != nil {
+		return 0, err
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var stored manifest
+	if err := json.Unmarshal(b, &stored); err != nil {
+		return 0, fmt.Errorf("decode semantic index manifest: %w", err)
+	}
+	if stored.Version != 1 {
+		return 0, fmt.Errorf("unsupported semantic index manifest version %d", stored.Version)
+	}
+	return vectorsPendingFromManifest(stored), nil
+}
+
+func vectorsPendingFromManifest(stored manifest) int {
+	pending := 0
+	for _, entry := range stored.Files {
+		if entry.Chunks > 0 && entry.Vectors != entry.Chunks {
+			pending++
+		}
+	}
+	return pending
+}
 
 // SemanticStatus reports how retrieval is currently operating. Every field is
 // derived on read from the manifest and the runtime, so it cannot drift from

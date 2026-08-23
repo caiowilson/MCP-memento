@@ -61,6 +61,10 @@ func (e *blockingEmbedder) Calls() int {
 	return e.calls
 }
 
+func unavailableTransport(message string) error {
+	return &PreResponseTransportError{Err: errors.New(message)}
+}
+
 func TestRuntimeFingerprintIgnoresAvailability(t *testing.T) {
 	inner := &scriptedEmbedder{err: errors.New("connection refused")}
 	rt := NewRuntime(inner, ModeAuto)
@@ -84,7 +88,7 @@ func TestRuntimeClassifiesFailureReasons(t *testing.T) {
 		err  error
 		want string
 	}{
-		{errors.New("ollama embedding request: dial tcp 127.0.0.1:11434: connect: connection refused"), "no embedding runtime detected"},
+		{unavailableTransport("ollama embedding request: dial tcp 127.0.0.1:11434: connect: connection refused"), "no embedding runtime detected"},
 		{ErrOllamaModelMissing, "is not available"},
 		{context.DeadlineExceeded, "did not respond"},
 	}
@@ -96,6 +100,27 @@ func TestRuntimeClassifiesFailureReasons(t *testing.T) {
 		reason := rt.Availability().Reason
 		if !strings.Contains(reason, tc.want) {
 			t.Fatalf("reason %q does not contain %q", reason, tc.want)
+		}
+	}
+}
+
+func TestRuntimeProviderBodyTransportWordsRemainRaw(t *testing.T) {
+	for _, message := range []string{
+		"ollama embedding request returned 503 Service Unavailable: connection refused",
+		"ollama embedding request returned 500 Internal Server Error: no such host",
+		"ollama embedding request returned 502 Bad Gateway: connect: upstream failed",
+		"ollama embedding request returned 504 Gateway Timeout: timeout",
+	} {
+		rt := NewRuntime(&scriptedEmbedder{err: errors.New(message)}, ModeAuto)
+		_, err := rt.Embed(context.Background(), TaskQuery, []string{"x"})
+		if err == nil {
+			t.Fatalf("Embed() with %q succeeded, want provider error", message)
+		}
+		if errors.Is(err, ErrRuntimeUnavailable) {
+			t.Fatalf("Embed() error %q was downgraded to ErrRuntimeUnavailable", err)
+		}
+		if reason := rt.Availability().Reason; reason != message {
+			t.Fatalf("availability reason = %q, want raw provider error %q", reason, message)
 		}
 	}
 }
@@ -227,6 +252,53 @@ func TestRuntimeAdmitsOnlyOneConcurrentRetry(t *testing.T) {
 	<-first
 	if inner.Calls() != 2 {
 		t.Fatalf("wrapped embedder called %d times, want initial failure plus one retry", inner.Calls())
+	}
+}
+
+func TestRuntimeAllowsConcurrentHealthyEmbeddings(t *testing.T) {
+	inner := &blockingEmbedder{
+		blockOnCall: 2,
+		started:     make(chan struct{}, 1),
+		release:     make(chan struct{}),
+	}
+	rt := NewRuntime(inner, ModeAuto)
+	if availability := rt.Probe(context.Background()); !availability.Available {
+		t.Fatalf("initial probe availability = %+v, want available", availability)
+	}
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := rt.Embed(context.Background(), TaskDocument, []string{"document"})
+		first <- err
+	}()
+	<-inner.started
+
+	second := make(chan error, 1)
+	go func() {
+		_, err := rt.Embed(context.Background(), TaskQuery, []string{"query"})
+		second <- err
+	}()
+	select {
+	case err := <-second:
+		if err != nil {
+			close(inner.release)
+			<-first
+			t.Fatalf("overlapping healthy query embed failed: %v", err)
+		}
+	case <-time.After(time.Second):
+		close(inner.release)
+		<-first
+		t.Fatal("overlapping healthy query embed was not admitted")
+	}
+	close(inner.release)
+	if err := <-first; err != nil {
+		t.Fatalf("healthy document embed failed: %v", err)
+	}
+	if inner.Calls() != 3 {
+		t.Fatalf("wrapped embedder called %d times, want probe plus two overlapping embeds", inner.Calls())
+	}
+	if availability := rt.Availability(); !availability.Available {
+		t.Fatalf("availability = %+v, want healthy after overlapping embeds", availability)
 	}
 }
 

@@ -3,10 +3,17 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"memento-mcp/internal/embedding"
+	"memento-mcp/internal/indexing"
 )
 
 func TestDoctorSemanticOffReportsSkip(t *testing.T) {
@@ -131,7 +138,7 @@ func TestDoctorSemanticSuccessfulProbeWinsOverLateCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var out bytes.Buffer
-	failures := doctorSemanticProbe(ctx, &out, embedding.ModeRequired, "ollama/test-model", func(context.Context) embedding.Availability {
+	failures := doctorSemanticProbe(ctx, &out, embedding.ModeRequired, "ollama/test-model", 0, func(context.Context) embedding.Availability {
 		cancel()
 		return embedding.Availability{Available: true}
 	})
@@ -144,5 +151,53 @@ func TestDoctorSemanticSuccessfulProbeWinsOverLateCancellation(t *testing.T) {
 	}
 	if strings.Contains(text, "timed out") || strings.Contains(text, "canceled") {
 		t.Fatalf("output = %q, must not report late cancellation", text)
+	}
+}
+
+type doctorPendingEmbedder struct{}
+
+func (*doctorPendingEmbedder) Embed(context.Context, embedding.Task, []string) ([][]float32, error) {
+	return nil, errors.New("embedding unavailable")
+}
+
+func (*doctorPendingEmbedder) Fingerprint() string { return "doctor-pending-v1" }
+func (*doctorPendingEmbedder) Name() string        { return "test/doctor-pending" }
+
+func TestDoctorSemanticReachableWithPendingVectorsWarns(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "alpha.go"), []byte("package alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := indexing.New(indexing.Config{RootAbs: root, Embedder: &doctorPendingEmbedder{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": [][]float32{{1, 0}}})
+	}))
+	defer server.Close()
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "auto")
+	t.Setenv("MEMENTO_OLLAMA_URL", server.URL)
+	t.Setenv("MEMENTO_EMBEDDING_MODEL", "test-model")
+
+	var out bytes.Buffer
+	if failures := doctorSemanticAtRoot(ctx, &out, root); failures != 0 {
+		t.Fatalf("failures = %d, output = %q", failures, out.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "[WARN]") || !strings.Contains(text, "vectorsPending=1") || !strings.Contains(text, "warming") {
+		t.Fatalf("output = %q, want reachable warmup diagnostic", text)
+	}
+	if strings.Contains(text, "[PASS] semantic") {
+		t.Fatalf("output = %q, pending vectors must not report fully ready", text)
 	}
 }

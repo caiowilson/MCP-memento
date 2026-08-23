@@ -90,7 +90,11 @@ func (o *Ollama) Embed(ctx context.Context, task Task, inputs []string) ([][]flo
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ollama embedding request: %w", err)
+		requestErr := fmt.Errorf("ollama embedding request: %w", err)
+		if resp == nil {
+			return nil, &PreResponseTransportError{Err: requestErr}
+		}
+		return nil, requestErr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

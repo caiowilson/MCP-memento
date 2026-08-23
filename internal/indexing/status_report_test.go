@@ -102,3 +102,60 @@ func TestStatusReflectsLoadedManifestBeforeIndexPass(t *testing.T) {
 		t.Fatalf("reopened DebugInfo.FilesIndexed = %d, want %d", debug.FilesIndexed, want.FilesIndexed)
 	}
 }
+
+func TestStatusTracksIncrementalAddAndRemove(t *testing.T) {
+	root := t.TempDir()
+	store := t.TempDir()
+	writeStatusFixture(t, root)
+	idx, err := New(Config{RootAbs: root, StoreDir: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	gamma := "package gamma\n\nfunc Gamma() string { return \"gamma\" }\n"
+	if err := os.WriteFile(filepath.Join(root, "gamma.go"), []byte(gamma), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx.mu.Lock()
+	idx.status.LastIndexedAt = "cached-stale"
+	idx.mu.Unlock()
+	if err := idx.EnsureIndexed(ctx, []string{"gamma.go"}); err != nil {
+		t.Fatal(err)
+	}
+	added := idx.Status()
+	idx.mu.Lock()
+	addedManifest := idx.manifest
+	idx.mu.Unlock()
+	if added.FilesIndexed != 3 || added.BytesIndexed != addedManifest.TotalBytes {
+		t.Fatalf("status after add = %+v, manifest files=%d bytes=%d", added, len(addedManifest.Files), addedManifest.TotalBytes)
+	}
+	if added.LastIndexedAt != addedManifest.UpdatedAt || added.LastIndexedAt == "cached-stale" {
+		t.Fatalf("LastIndexedAt after add = %q, manifest = %q", added.LastIndexedAt, addedManifest.UpdatedAt)
+	}
+
+	if err := os.Remove(filepath.Join(root, "alpha.go")); err != nil {
+		t.Fatal(err)
+	}
+	idx.mu.Lock()
+	idx.status.LastIndexedAt = "cached-stale"
+	idx.mu.Unlock()
+	if err := idx.RemovePaths([]string{"alpha.go"}); err != nil {
+		t.Fatal(err)
+	}
+	removed := idx.Status()
+	idx.mu.Lock()
+	removedManifest := idx.manifest
+	idx.mu.Unlock()
+	if removed.FilesIndexed != 2 || removed.BytesIndexed != removedManifest.TotalBytes {
+		t.Fatalf("status after remove = %+v, manifest files=%d bytes=%d", removed, len(removedManifest.Files), removedManifest.TotalBytes)
+	}
+	if removed.LastIndexedAt != removedManifest.UpdatedAt || removed.LastIndexedAt == "cached-stale" {
+		t.Fatalf("LastIndexedAt after remove = %q, manifest = %q", removed.LastIndexedAt, removedManifest.UpdatedAt)
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -17,6 +16,27 @@ const DefaultRuntimeBackoff = 30 * time.Second
 // probeSentinel is the input used to test a runtime end to end. A reachability
 // check would not notice a runtime whose model was never pulled.
 const probeSentinel = "memento embedding runtime probe"
+
+// PreResponseTransportError identifies a provider request that failed before
+// any HTTP response was received. Only providers at the request boundary
+// should construct this type; response status and body errors must remain raw.
+type PreResponseTransportError struct {
+	Err error
+}
+
+func (e *PreResponseTransportError) Error() string {
+	if e == nil || e.Err == nil {
+		return "embedding request failed before receiving a response"
+	}
+	return e.Err.Error()
+}
+
+func (e *PreResponseTransportError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
 
 // ErrRuntimeUnavailable is returned when the runtime is disabled or inside its
 // backoff window. Callers degrade to lexical retrieval.
@@ -43,7 +63,7 @@ type Runtime struct {
 	availability Availability
 	probed       bool
 	retryAt      time.Time
-	attempting   bool
+	retrying     bool
 }
 
 // NewRuntime wraps embedder. A nil embedder yields a runtime that is always
@@ -104,44 +124,61 @@ func (r *Runtime) embed(ctx context.Context, task Task, inputs []string) ([][]fl
 	if !r.mode.Enabled() || r.embedder == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	r.mu.Lock()
-	if r.attempting || (r.probed && !r.availability.Available && r.now().Before(r.retryAt)) {
-		r.mu.Unlock()
-		return nil, ErrRuntimeUnavailable
+	retryAdmission, err := r.admitAttempt()
+	if err != nil {
+		return nil, err
 	}
-	r.attempting = true
-	r.mu.Unlock()
 
 	vectors, err := r.embedder.Embed(ctx, task, inputs)
 	if contextErr := ctx.Err(); contextErr != nil {
 		// A context cancelled during dispatch says nothing about the runtime.
-		r.finishAttempt()
+		r.finishAttempt(retryAdmission)
 		return nil, contextErr
 	}
 	if err != nil {
-		r.markUnavailable(err)
+		r.markUnavailable(err, retryAdmission)
 		if isRuntimeUnavailableError(err) {
 			return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
 		}
 		return nil, err
 	}
-	r.markAvailable()
+	r.markAvailable(retryAdmission)
 	return vectors, nil
 }
 
-func (r *Runtime) markAvailable() {
+// admitAttempt single-flights only the initial availability attempt and later
+// unavailable retries. Once the runtime is healthy, document and query embeds
+// are independent work and may overlap.
+func (r *Runtime) admitAttempt() (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.attempting = false
+	if r.probed && r.availability.Available {
+		return false, nil
+	}
+	if r.retrying || (r.probed && r.now().Before(r.retryAt)) {
+		return false, ErrRuntimeUnavailable
+	}
+	r.retrying = true
+	return true, nil
+}
+
+func (r *Runtime) markAvailable(retryAdmission bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if retryAdmission {
+		r.retrying = false
+	}
 	r.probed = true
 	r.retryAt = time.Time{}
 	r.availability = Availability{Available: true, CheckedAt: r.now()}
 }
 
-func (r *Runtime) markUnavailable(err error) {
+func (r *Runtime) markUnavailable(err error, retryAdmission bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.attempting = false
+	if retryAdmission {
+		r.retrying = false
+	}
 	r.probed = true
 	r.retryAt = r.now().Add(r.backoff)
 	r.availability = Availability{
@@ -151,10 +188,13 @@ func (r *Runtime) markUnavailable(err error) {
 	}
 }
 
-func (r *Runtime) finishAttempt() {
+func (r *Runtime) finishAttempt(retryAdmission bool) {
+	if !retryAdmission {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.attempting = false
+	r.retrying = false
 }
 
 func (r *Runtime) name() string {
@@ -177,13 +217,12 @@ func classifyReason(name string, err error) string {
 	if err == nil {
 		return ""
 	}
-	message := strings.ToLower(err.Error())
-
 	var netErr net.Error
-	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) || strings.Contains(message, "timeout") {
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
 		return "embedding runtime did not respond in time"
 	}
-	if isRuntimeUnreachable(message) {
+	var transportErr *PreResponseTransportError
+	if errors.As(err, &transportErr) {
 		return "no embedding runtime detected"
 	}
 	if errors.Is(err, ErrOllamaModelMissing) {
@@ -199,10 +238,6 @@ func isRuntimeUnavailableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
-	return isRuntimeUnreachable(message) || errors.Is(err, ErrOllamaModelMissing)
-}
-
-func isRuntimeUnreachable(message string) bool {
-	return strings.Contains(message, "connection refused") || strings.Contains(message, "no such host") || strings.Contains(message, "connect:")
+	var transportErr *PreResponseTransportError
+	return errors.As(err, &transportErr) || errors.Is(err, ErrOllamaModelMissing)
 }

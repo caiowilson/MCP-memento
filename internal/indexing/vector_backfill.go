@@ -39,7 +39,9 @@ func (i *Indexer) pendingVectorFiles() []string {
 // pendingVectorCount reports how many indexed files are still awaiting
 // vectors. Status uses it to distinguish "warming up" from "broken".
 func (i *Indexer) pendingVectorCount() int {
-	return len(i.pendingVectorFiles())
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return vectorsPendingFromManifest(i.manifest)
 }
 
 // backfillVectors embeds chunks that are already persisted. Repairing a vector
@@ -72,7 +74,7 @@ func (i *Indexer) backfillVectors(ctx context.Context) error {
 				return ctx.Err()
 			}
 			if !errors.Is(err, errEmbeddingBackoff) && !errors.Is(err, embedding.ErrRuntimeUnavailable) {
-				i.setError(fmt.Errorf("backfill vectors for %s: %w", rel, err))
+				i.setEmbeddingError(fmt.Errorf("backfill vectors for %s: %w", rel, err))
 			}
 			// The runtime is down. Remaining files stay pending for a later pass.
 			break

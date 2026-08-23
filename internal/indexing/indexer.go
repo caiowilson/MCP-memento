@@ -67,6 +67,7 @@ type Indexer struct {
 	manifest              manifest
 	status                Status
 	embeddingBackoffUntil time.Time
+	embeddingError        string
 	trigrams              trigramIndex
 
 	reqCh         chan request
@@ -376,7 +377,7 @@ func (i *Indexer) Status() Status {
 	semantic := i.semanticStatus()
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	status := i.status
+	status := i.statusFromManifestLocked()
 	status.Semantic = semantic
 	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available {
 		if status.Error == "" {
@@ -399,16 +400,15 @@ func (i *Indexer) indexSizeLocked() (files int, bytes int64) {
 // statusFromManifestLocked rebuilds status for an index loaded from disk, so a
 // process that reopens a populated store reports it before any pass runs.
 func (i *Indexer) statusFromManifestLocked() Status {
+	status := i.status
 	files, bytes := i.indexSizeLocked()
-	if files == 0 {
-		return Status{}
+	status.LastIndexedAt = i.manifest.UpdatedAt
+	status.FilesIndexed = files
+	status.BytesIndexed = bytes
+	if files > 0 {
+		status.Ready = true
 	}
-	return Status{
-		Ready:         true,
-		LastIndexedAt: i.manifest.UpdatedAt,
-		FilesIndexed:  files,
-		BytesIndexed:  bytes,
-	}
+	return status
 }
 
 type DebugInfo struct {
@@ -490,6 +490,7 @@ func (i *Indexer) Clear() error {
 	}
 	i.manifest = manifest{}
 	i.status = Status{}
+	i.embeddingError = ""
 	i.trigrams = newTrigramIndex()
 	i.mu.Unlock()
 
@@ -565,20 +566,20 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 			}
 			i.recordEmbeddingFailure()
 			if !errors.Is(err, embedding.ErrRuntimeUnavailable) {
-				i.setError(fmt.Errorf("embed search query: %w", err))
+				i.setEmbeddingError(fmt.Errorf("embed search query: %w", err))
 			}
 		} else if len(vectors) == 1 {
 			queryVector = append([]float32(nil), vectors[0]...)
 			if err := normalizeVector(queryVector); err != nil {
 				i.recordEmbeddingFailure()
-				i.setError(fmt.Errorf("normalize search query embedding: %w", err))
+				i.setEmbeddingError(fmt.Errorf("normalize search query embedding: %w", err))
 				queryVector = nil
 			} else {
 				i.recordEmbeddingSuccess()
 			}
 		} else {
 			i.recordEmbeddingFailure()
-			i.setError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
+			i.setEmbeddingError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
 		}
 	}
 
@@ -1143,7 +1144,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 		if embedErr != nil {
 			vectors = nil
 			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) {
-				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
+				i.setEmbeddingError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
 		} else {
 			vectorCount = len(vectors)
@@ -1213,6 +1214,14 @@ func (i *Indexer) setError(err error) {
 	i.mu.Unlock()
 }
 
+func (i *Indexer) setEmbeddingError(err error) {
+	message := err.Error()
+	i.mu.Lock()
+	i.embeddingError = message
+	i.status.Error = message
+	i.mu.Unlock()
+}
+
 func (i *Indexer) indexedFileSize(rel string) int64 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -1236,6 +1245,7 @@ func (i *Indexer) beginIndexPass() {
 	i.mu.Lock()
 	if i.embedder == nil || !time.Now().Before(i.embeddingBackoffUntil) {
 		i.status.Error = ""
+		i.embeddingError = ""
 	}
 	i.mu.Unlock()
 }
@@ -1292,13 +1302,19 @@ func (i *Indexer) recordEmbeddingFailure() {
 func (i *Indexer) recordEmbeddingSuccess() {
 	i.mu.Lock()
 	i.embeddingBackoffUntil = time.Time{}
+	if i.embeddingError != "" && i.status.Error == i.embeddingError {
+		i.status.Error = ""
+	}
+	i.embeddingError = ""
 	i.mu.Unlock()
 }
 
 // clearEmbeddingBackoffForTest resets the retry window so tests can simulate a
 // runtime coming back without sleeping.
 func (i *Indexer) clearEmbeddingBackoffForTest() {
-	i.recordEmbeddingSuccess()
+	i.mu.Lock()
+	i.embeddingBackoffUntil = time.Time{}
+	i.mu.Unlock()
 }
 
 func normalizeVector(vector []float32) error {

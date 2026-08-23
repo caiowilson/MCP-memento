@@ -4,10 +4,15 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"memento-mcp/internal/embedding"
 )
+
+func runtimeTransportError(message string) error {
+	return &embedding.PreResponseTransportError{Err: errors.New(message)}
+}
 
 type semanticStatusEmbedder struct {
 	err error
@@ -39,7 +44,7 @@ func semanticStatusForRuntimeError(t *testing.T, mode embedding.Mode, err error)
 }
 
 func TestSemanticStatusAutoUnavailableIsNotAnError(t *testing.T) {
-	status := semanticStatusForRuntimeError(t, embedding.ModeAuto, errors.New("connection refused"))
+	status := semanticStatusForRuntimeError(t, embedding.ModeAuto, runtimeTransportError("connection refused"))
 	if status.Error != "" {
 		t.Fatalf("auto mode set status.Error = %q, want empty", status.Error)
 	}
@@ -91,7 +96,7 @@ func TestSemanticStatusAutoProviderFailuresRemainErrors(t *testing.T) {
 }
 
 func TestSemanticStatusRequiredUnavailableIsAnError(t *testing.T) {
-	status := semanticStatusForRuntimeError(t, embedding.ModeRequired, errors.New("connection refused"))
+	status := semanticStatusForRuntimeError(t, embedding.ModeRequired, runtimeTransportError("connection refused"))
 	if status.Error == "" {
 		t.Fatal("required mode must report an error when the runtime is unavailable")
 	}
@@ -149,5 +154,77 @@ func TestSemanticStatusAbsentWhenNoEmbedder(t *testing.T) {
 	}
 	if idx.Status().Semantic != nil {
 		t.Fatal("no embedder configured must not produce a semantic block")
+	}
+}
+
+type recoveringQueryEmbedder struct {
+	mu           sync.Mutex
+	failQuery    bool
+	availability embedding.Availability
+}
+
+func (e *recoveringQueryEmbedder) Embed(_ context.Context, task embedding.Task, inputs []string) ([][]float32, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if task == embedding.TaskQuery && e.failQuery {
+		e.availability = embedding.Availability{Reason: "embedding provider returned HTTP 503"}
+		return nil, errors.New("embedding provider returned HTTP 503")
+	}
+	e.availability = embedding.Availability{Available: true}
+	vectors := make([][]float32, len(inputs))
+	for index := range vectors {
+		vectors[index] = []float32{1, 0}
+	}
+	return vectors, nil
+}
+
+func (*recoveringQueryEmbedder) Fingerprint() string  { return "recovering-query-v1" }
+func (*recoveringQueryEmbedder) Name() string         { return "test/recovering-query" }
+func (*recoveringQueryEmbedder) Mode() embedding.Mode { return embedding.ModeAuto }
+
+func (e *recoveringQueryEmbedder) Availability() embedding.Availability {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.availability
+}
+
+func (e *recoveringQueryEmbedder) recoverQueries() {
+	e.mu.Lock()
+	e.failQuery = false
+	e.mu.Unlock()
+}
+
+func TestSuccessfulQueryRecoveryClearsEmbeddingError(t *testing.T) {
+	root, store := backfillFixture(t)
+	embedder := &recoveringQueryEmbedder{failQuery: true}
+	idx, err := New(Config{RootAbs: root, StoreDir: store, Embedder: embedder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idx.Start(ctx)
+	if err := idx.IndexAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.SearchContext(ctx, "alpha", 5, nil); err != nil {
+		t.Fatal(err)
+	}
+	failed := idx.Status()
+	if failed.Error == "" || failed.Semantic == nil || failed.Semantic.State != "lexical" {
+		t.Fatalf("status after raw query failure = %+v, want lexical with an error", failed)
+	}
+
+	embedder.recoverQueries()
+	idx.clearEmbeddingBackoffForTest()
+	if _, err := idx.SearchContext(ctx, "alpha", 5, nil); err != nil {
+		t.Fatal(err)
+	}
+	recovered := idx.Status()
+	if recovered.Error != "" {
+		t.Fatalf("status error after successful query recovery = %q, want empty", recovered.Error)
+	}
+	if recovered.Semantic == nil || recovered.Semantic.State != "hybrid" {
+		t.Fatalf("semantic after query recovery = %+v, want hybrid", recovered.Semantic)
 	}
 }
