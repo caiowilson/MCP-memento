@@ -62,11 +62,6 @@ func (i *Indexer) semanticStatus() *SemanticStatus {
 	return status
 }
 
-func (i *Indexer) semanticRuntimeUnavailable() bool {
-	reporter, ok := i.embedder.(semanticReporter)
-	return ok && reporter.Mode().Enabled() && !reporter.Availability().Available
-}
-
 // splitEmbedderName turns "ollama/nomic-embed-text:v1.5" into its provider and
 // model halves.
 func splitEmbedderName(name string) (provider, model string) {

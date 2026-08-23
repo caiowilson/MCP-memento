@@ -71,7 +71,7 @@ func (i *Indexer) backfillVectors(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if !errors.Is(err, errEmbeddingBackoff) && !errors.Is(err, embedding.ErrRuntimeUnavailable) && !i.semanticRuntimeUnavailable() {
+			if !errors.Is(err, errEmbeddingBackoff) && !errors.Is(err, embedding.ErrRuntimeUnavailable) {
 				i.setError(fmt.Errorf("backfill vectors for %s: %w", rel, err))
 			}
 			// The runtime is down. Remaining files stay pending for a later pass.

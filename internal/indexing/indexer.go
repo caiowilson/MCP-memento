@@ -379,7 +379,7 @@ func (i *Indexer) Status() Status {
 	status := i.status
 	status.Semantic = semantic
 	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available && status.Error == "" {
-		status.Error = semantic.Reason
+		status.Error = semantic.Hint
 	}
 	return status
 }
@@ -560,7 +560,7 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 				return nil, ctxErr
 			}
 			i.recordEmbeddingFailure()
-			if !errors.Is(err, embedding.ErrRuntimeUnavailable) && !i.semanticRuntimeUnavailable() {
+			if !errors.Is(err, embedding.ErrRuntimeUnavailable) {
 				i.setError(fmt.Errorf("embed search query: %w", err))
 			}
 		} else if len(vectors) == 1 {
@@ -1138,7 +1138,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 		vectors, embedErr = i.embedChunks(ctx, chunks)
 		if embedErr != nil {
 			vectors = nil
-			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) && !i.semanticRuntimeUnavailable() {
+			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) {
 				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
 		} else {

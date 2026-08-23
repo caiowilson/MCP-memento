@@ -120,6 +120,9 @@ func (r *Runtime) embed(ctx context.Context, task Task, inputs []string) ([][]fl
 	}
 	if err != nil {
 		r.markUnavailable(err)
+		if isRuntimeUnavailableError(err) {
+			return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+		}
 		return nil, err
 	}
 	r.markAvailable()
@@ -180,14 +183,30 @@ func classifyReason(name string, err error) string {
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) || strings.Contains(message, "timeout") {
 		return "embedding runtime did not respond in time"
 	}
-	if strings.Contains(message, "connection refused") || strings.Contains(message, "no such host") || strings.Contains(message, "connect:") {
+	if isRuntimeUnreachable(message) {
 		return "no embedding runtime detected"
 	}
-	if strings.Contains(message, "404") || strings.Contains(message, "not found") {
+	if isRuntimeModelMissing(message) {
 		if name != "" {
 			return fmt.Sprintf("model %s is not available in the embedding runtime", name)
 		}
 		return "the configured model is not available in the embedding runtime"
 	}
 	return err.Error()
+}
+
+func isRuntimeUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return isRuntimeUnreachable(message) || isRuntimeModelMissing(message)
+}
+
+func isRuntimeUnreachable(message string) bool {
+	return strings.Contains(message, "connection refused") || strings.Contains(message, "no such host") || strings.Contains(message, "connect:")
+}
+
+func isRuntimeModelMissing(message string) bool {
+	return strings.Contains(message, "404") || strings.Contains(message, "not found")
 }
