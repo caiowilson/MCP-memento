@@ -16,7 +16,7 @@ type Embedder interface {
 }
 
 type RuntimeConfig struct {
-	Enabled        bool
+	Mode           Mode
 	Embedder       Embedder
 	SemanticWeight float64
 	BatchSize      int

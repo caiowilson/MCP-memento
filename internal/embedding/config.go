@@ -18,12 +18,12 @@ const (
 )
 
 func FromEnv() (RuntimeConfig, error) {
-	enabled, err := envBool("MEMENTO_SEMANTIC_ENABLED", false)
+	mode, err := ParseMode(os.Getenv("MEMENTO_SEMANTIC_ENABLED"))
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	if !enabled {
-		return RuntimeConfig{SemanticWeight: DefaultSemanticWeight, BatchSize: DefaultBatchSize}, nil
+	if !mode.Enabled() {
+		return RuntimeConfig{Mode: mode, SemanticWeight: DefaultSemanticWeight, BatchSize: DefaultBatchSize}, nil
 	}
 
 	weight, err := envFloat("MEMENTO_HYBRID_SEMANTIC_WEIGHT", DefaultSemanticWeight)
@@ -58,23 +58,11 @@ func FromEnv() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 	return RuntimeConfig{
-		Enabled:        true,
+		Mode:           mode,
 		Embedder:       embedder,
 		SemanticWeight: weight,
 		BatchSize:      batchSize,
 	}, nil
-}
-
-func envBool(name string, fallback bool) (bool, error) {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback, nil
-	}
-	value, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, fmt.Errorf("parse %s: %w", name, err)
-	}
-	return value, nil
 }
 
 func envFloat(name string, fallback float64) (float64, error) {

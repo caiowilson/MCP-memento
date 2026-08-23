@@ -125,7 +125,7 @@ func TestFromEnvDisabledDoesNotValidateOllamaSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Enabled || config.Embedder != nil {
+	if config.Mode != ModeOff || config.Embedder != nil {
 		t.Fatalf("expected semantic mode disabled, got %#v", config)
 	}
 }
@@ -140,7 +140,7 @@ func TestFromEnvEnabledConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !config.Enabled || config.Embedder == nil || config.Embedder.Name() != "ollama/all-minilm" || config.SemanticWeight != 0.75 || config.BatchSize != 8 {
+	if config.Mode != ModeRequired || config.Embedder == nil || config.Embedder.Name() != "ollama/all-minilm" || config.SemanticWeight != 0.75 || config.BatchSize != 8 {
 		t.Fatalf("unexpected semantic config: %#v", config)
 	}
 }
