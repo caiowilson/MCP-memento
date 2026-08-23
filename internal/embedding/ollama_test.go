@@ -145,6 +145,28 @@ func TestFromEnvEnabledConfiguration(t *testing.T) {
 	}
 }
 
+func TestFromEnvWrapsEmbedderInRuntime(t *testing.T) {
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "auto")
+	t.Setenv("MEMENTO_OLLAMA_URL", "http://127.0.0.1:11434")
+	config, err := FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Mode != ModeAuto {
+		t.Fatalf("mode = %q, want auto", config.Mode)
+	}
+	runtime, ok := config.Embedder.(*Runtime)
+	if !ok {
+		t.Fatalf("embedder type = %T, want *Runtime", config.Embedder)
+	}
+	if runtime.Mode() != ModeAuto {
+		t.Fatalf("runtime mode = %q, want auto", runtime.Mode())
+	}
+	if runtime.Availability().Available {
+		t.Fatal("availability must start false until something is attempted")
+	}
+}
+
 func TestFromEnvRejectsNonFiniteSemanticWeight(t *testing.T) {
 	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "true")
 	t.Setenv("MEMENTO_HYBRID_SEMANTIC_WEIGHT", "NaN")

@@ -59,7 +59,7 @@ func FromEnv() (RuntimeConfig, error) {
 	}
 	return RuntimeConfig{
 		Mode:           mode,
-		Embedder:       embedder,
+		Embedder:       NewRuntime(embedder, mode),
 		SemanticWeight: weight,
 		BatchSize:      batchSize,
 	}, nil

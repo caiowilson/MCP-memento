@@ -553,7 +553,9 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 				return nil, ctxErr
 			}
 			i.recordEmbeddingFailure()
-			i.setError(fmt.Errorf("embed search query: %w", err))
+			if !errors.Is(err, embedding.ErrRuntimeUnavailable) {
+				i.setError(fmt.Errorf("embed search query: %w", err))
+			}
 		} else if len(vectors) == 1 {
 			queryVector = append([]float32(nil), vectors[0]...)
 			if err := normalizeVector(queryVector); err != nil {
@@ -1129,7 +1131,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 		vectors, embedErr = i.embedChunks(ctx, chunks)
 		if embedErr != nil {
 			vectors = nil
-			if !errors.Is(embedErr, errEmbeddingBackoff) {
+			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) {
 				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
 		} else {

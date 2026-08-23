@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+
+	"memento-mcp/internal/embedding"
 )
 
 // pendingVectorFiles returns indexed files whose vectors are missing or
@@ -69,7 +71,7 @@ func (i *Indexer) backfillVectors(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if !errors.Is(err, errEmbeddingBackoff) {
+			if !errors.Is(err, errEmbeddingBackoff) && !errors.Is(err, embedding.ErrRuntimeUnavailable) {
 				i.setError(fmt.Errorf("backfill vectors for %s: %w", rel, err))
 			}
 			// The runtime is down. Remaining files stay pending for a later pass.
