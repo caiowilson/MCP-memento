@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -11,10 +12,12 @@ import (
 type scriptedEmbedder struct {
 	err   error
 	calls int
+	inputs [][]string
 }
 
 func (e *scriptedEmbedder) Embed(_ context.Context, _ Task, inputs []string) ([][]float32, error) {
 	e.calls++
+	e.inputs = append(e.inputs, append([]string(nil), inputs...))
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -27,6 +30,36 @@ func (e *scriptedEmbedder) Embed(_ context.Context, _ Task, inputs []string) ([]
 
 func (*scriptedEmbedder) Fingerprint() string { return "scripted-v1" }
 func (*scriptedEmbedder) Name() string        { return "ollama/test-model" }
+
+type blockingEmbedder struct {
+	mu          sync.Mutex
+	calls       int
+	blockOnCall int
+	err         error
+	started     chan struct{}
+	release     chan struct{}
+}
+
+func (e *blockingEmbedder) Embed(_ context.Context, _ Task, _ []string) ([][]float32, error) {
+	e.mu.Lock()
+	e.calls++
+	call := e.calls
+	e.mu.Unlock()
+	if call == e.blockOnCall {
+		e.started <- struct{}{}
+		<-e.release
+	}
+	return nil, e.err
+}
+
+func (*blockingEmbedder) Fingerprint() string { return "blocking-v1" }
+func (*blockingEmbedder) Name() string        { return "ollama/test-model" }
+
+func (e *blockingEmbedder) Calls() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.calls
+}
 
 func TestRuntimeFingerprintIgnoresAvailability(t *testing.T) {
 	inner := &scriptedEmbedder{err: errors.New("connection refused")}
@@ -89,12 +122,14 @@ func TestRuntimeRecoversAfterBackoffWindow(t *testing.T) {
 	inner := &scriptedEmbedder{err: errors.New("connection refused")}
 	rt := NewRuntime(inner, ModeAuto)
 	rt.backoff = time.Minute
+	now := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
+	rt.now = func() time.Time { return now }
 	if _, err := rt.Embed(context.Background(), TaskDocument, []string{"x"}); err == nil {
 		t.Fatal("expected failure")
 	}
 
 	inner.err = nil
-	rt.expireBackoffForTest()
+	now = now.Add(time.Minute)
 
 	if _, err := rt.Embed(context.Background(), TaskDocument, []string{"x"}); err != nil {
 		t.Fatalf("expected recovery, got %v", err)
@@ -126,7 +161,96 @@ func TestRuntimeProbeUsesSentinel(t *testing.T) {
 	if inner.calls != 1 {
 		t.Fatalf("probe made %d calls, want 1", inner.calls)
 	}
+	if len(inner.inputs) != 1 || len(inner.inputs[0]) != 1 || inner.inputs[0][0] != probeSentinel {
+		t.Fatalf("probe inputs = %#v, want sentinel %q", inner.inputs, probeSentinel)
+	}
 	if availability.CheckedAt.IsZero() {
 		t.Fatal("probe must stamp CheckedAt")
+	}
+}
+
+func TestRuntimeProbeRespectsBackoff(t *testing.T) {
+	inner := &scriptedEmbedder{err: errors.New("connection refused")}
+	rt := NewRuntime(inner, ModeAuto)
+	rt.backoff = time.Minute
+	if _, err := rt.Embed(context.Background(), TaskDocument, []string{"x"}); err == nil {
+		t.Fatal("expected failure")
+	}
+
+	rt.Probe(context.Background())
+
+	if inner.calls != 1 {
+		t.Fatalf("probe made %d calls during backoff, want 1 total", inner.calls)
+	}
+}
+
+func TestRuntimeAdmitsOnlyOneConcurrentRetry(t *testing.T) {
+	inner := &blockingEmbedder{
+		blockOnCall: 2,
+		err:         errors.New("connection refused"),
+		started:     make(chan struct{}, 1),
+		release:     make(chan struct{}),
+	}
+	rt := NewRuntime(inner, ModeAuto)
+	rt.backoff = time.Minute
+	now := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
+	rt.now = func() time.Time { return now }
+	if _, err := rt.Embed(context.Background(), TaskDocument, []string{"x"}); err == nil {
+		t.Fatal("expected initial failure")
+	}
+	now = now.Add(time.Minute)
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := rt.Embed(context.Background(), TaskDocument, []string{"x"})
+		first <- err
+	}()
+	<-inner.started
+
+	second := make(chan error, 1)
+	go func() {
+		_, err := rt.Embed(context.Background(), TaskDocument, []string{"x"})
+		second <- err
+	}()
+	select {
+	case err := <-second:
+		if !errors.Is(err, ErrRuntimeUnavailable) {
+			t.Fatalf("concurrent retry error = %v, want ErrRuntimeUnavailable", err)
+		}
+	case <-time.After(time.Second):
+		close(inner.release)
+		<-first
+		<-second
+		t.Fatal("concurrent retry was admitted")
+	}
+	close(inner.release)
+	<-first
+	if inner.Calls() != 2 {
+		t.Fatalf("wrapped embedder called %d times, want initial failure plus one retry", inner.Calls())
+	}
+}
+
+func TestRuntimeCancelledContextNeverCallsEmbedder(t *testing.T) {
+	inner := &scriptedEmbedder{}
+	rt := NewRuntime(inner, ModeAuto)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := rt.Embed(ctx, TaskDocument, []string{"x"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled embed error = %v, want context.Canceled", err)
+	}
+	if inner.calls != 0 {
+		t.Fatalf("cancelled embed called the provider %d times", inner.calls)
+	}
+	if availability := rt.Availability(); availability.Available || !availability.CheckedAt.IsZero() {
+		t.Fatalf("availability = %+v, want untouched state", availability)
+	}
+}
+
+func TestRuntimeNameDelegatesToWrappedEmbedder(t *testing.T) {
+	inner := &scriptedEmbedder{}
+	rt := NewRuntime(inner, ModeAuto)
+	if rt.Name() != inner.Name() {
+		t.Fatalf("runtime name = %q, want %q", rt.Name(), inner.Name())
 	}
 }

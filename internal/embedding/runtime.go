@@ -43,6 +43,7 @@ type Runtime struct {
 	availability Availability
 	probed       bool
 	retryAt      time.Time
+	attempting   bool
 }
 
 // NewRuntime wraps embedder. A nil embedder yields a runtime that is always
@@ -85,7 +86,7 @@ func (r *Runtime) Availability() Availability {
 // it to get a fresh answer; indexing does not need it, because a real Embed
 // already doubles as a probe.
 func (r *Runtime) Probe(ctx context.Context) Availability {
-	_, _ = r.embed(ctx, TaskQuery, []string{probeSentinel}, true)
+	_, _ = r.embed(ctx, TaskQuery, []string{probeSentinel})
 	return r.Availability()
 }
 
@@ -93,26 +94,31 @@ func (r *Runtime) Probe(ctx context.Context) Availability {
 // mark the runtime unavailable and open a backoff window, so a down runtime is
 // attempted at most once per window.
 func (r *Runtime) Embed(ctx context.Context, task Task, inputs []string) ([][]float32, error) {
-	return r.embed(ctx, task, inputs, false)
+	return r.embed(ctx, task, inputs)
 }
 
-func (r *Runtime) embed(ctx context.Context, task Task, inputs []string, force bool) ([][]float32, error) {
+func (r *Runtime) embed(ctx context.Context, task Task, inputs []string) ([][]float32, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !r.mode.Enabled() || r.embedder == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	r.mu.Lock()
-	if !force && r.probed && !r.availability.Available && r.now().Before(r.retryAt) {
+	if r.attempting || (r.probed && !r.availability.Available && r.now().Before(r.retryAt)) {
 		r.mu.Unlock()
 		return nil, ErrRuntimeUnavailable
 	}
+	r.attempting = true
 	r.mu.Unlock()
 
 	vectors, err := r.embedder.Embed(ctx, task, inputs)
+	if contextErr := ctx.Err(); contextErr != nil {
+		// A context cancelled during dispatch says nothing about the runtime.
+		r.finishAttempt()
+		return nil, contextErr
+	}
 	if err != nil {
-		// A cancelled context says nothing about the runtime.
-		if ctx.Err() != nil {
-			return nil, err
-		}
 		r.markUnavailable(err)
 		return nil, err
 	}
@@ -123,6 +129,7 @@ func (r *Runtime) embed(ctx context.Context, task Task, inputs []string, force b
 func (r *Runtime) markAvailable() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.attempting = false
 	r.probed = true
 	r.retryAt = time.Time{}
 	r.availability = Availability{Available: true, CheckedAt: r.now()}
@@ -131,6 +138,7 @@ func (r *Runtime) markAvailable() {
 func (r *Runtime) markUnavailable(err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.attempting = false
 	r.probed = true
 	r.retryAt = r.now().Add(r.backoff)
 	r.availability = Availability{
@@ -138,6 +146,12 @@ func (r *Runtime) markUnavailable(err error) {
 		Reason:    classifyReason(r.name(), err),
 		CheckedAt: r.now(),
 	}
+}
+
+func (r *Runtime) finishAttempt() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.attempting = false
 }
 
 func (r *Runtime) name() string {
