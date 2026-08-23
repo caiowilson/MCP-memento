@@ -44,12 +44,13 @@ type Config struct {
 }
 
 type Status struct {
-	Ready         bool   `json:"ready"`
-	LastIndexedAt string `json:"lastIndexedAt,omitempty"`
-	FilesIndexed  int    `json:"filesIndexed"`
-	BytesIndexed  int64  `json:"bytesIndexed"`
-	Partial       bool   `json:"partial"`
-	Error         string `json:"error,omitempty"`
+	Ready         bool            `json:"ready"`
+	LastIndexedAt string          `json:"lastIndexedAt,omitempty"`
+	FilesIndexed  int             `json:"filesIndexed"`
+	BytesIndexed  int64           `json:"bytesIndexed"`
+	Partial       bool            `json:"partial"`
+	Error         string          `json:"error,omitempty"`
+	Semantic      *SemanticStatus `json:"semantic,omitempty"`
 }
 
 type Indexer struct {
@@ -372,9 +373,15 @@ func (i *Indexer) RemovePaths(relPaths []string) error {
 }
 
 func (i *Indexer) Status() Status {
+	semantic := i.semanticStatus()
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return i.status
+	status := i.status
+	status.Semantic = semantic
+	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available && status.Error == "" {
+		status.Error = semantic.Reason
+	}
+	return status
 }
 
 // indexSizeLocked reports what the index currently holds. The manifest is the
@@ -553,7 +560,7 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 				return nil, ctxErr
 			}
 			i.recordEmbeddingFailure()
-			if !errors.Is(err, embedding.ErrRuntimeUnavailable) {
+			if !errors.Is(err, embedding.ErrRuntimeUnavailable) && !i.semanticRuntimeUnavailable() {
 				i.setError(fmt.Errorf("embed search query: %w", err))
 			}
 		} else if len(vectors) == 1 {
@@ -1131,7 +1138,7 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 		vectors, embedErr = i.embedChunks(ctx, chunks)
 		if embedErr != nil {
 			vectors = nil
-			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) {
+			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) && !i.semanticRuntimeUnavailable() {
 				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
 		} else {
