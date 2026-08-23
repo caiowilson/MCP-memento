@@ -10,8 +10,8 @@ import (
 )
 
 type scriptedEmbedder struct {
-	err   error
-	calls int
+	err    error
+	calls  int
 	inputs [][]string
 }
 
