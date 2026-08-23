@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -34,6 +35,22 @@ func doctorSemantic(ctx context.Context, stdout io.Writer) int {
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	availability := runtime.Probe(probeCtx)
+	if err := probeCtx.Err(); err != nil {
+		label := "WARN"
+		failures := 0
+		if config.Mode == embedding.ModeRequired {
+			label = "FAIL"
+			failures = 1
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			fmt.Fprintf(stdout, "[%s] semantic: runtime probe timed out before it responded (mode %s)\n", label, config.Mode)
+			fmt.Fprintln(stdout, "       verify the local runtime is running and responsive, then rerun: memento-mcp doctor")
+		} else {
+			fmt.Fprintf(stdout, "[%s] semantic: runtime probe was canceled before it completed (mode %s)\n", label, config.Mode)
+			fmt.Fprintln(stdout, "       rerun doctor when the local runtime is available")
+		}
+		return failures
+	}
 	if availability.Available {
 		fmt.Fprintf(stdout, "[PASS] semantic: %s reachable (mode %s)\n", runtime.Name(), config.Mode)
 		return 0
