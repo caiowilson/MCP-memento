@@ -10,7 +10,7 @@
       "name": "memento",
       "source": "./plugins/memento",
       "description": "Local-first repository context and durable memory through MCP",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "category": "development",
       "tags": ["mcp", "memory", "repository", "context"]
     },
