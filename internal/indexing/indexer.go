@@ -44,12 +44,13 @@ type Config struct {
 }
 
 type Status struct {
-	Ready         bool   `json:"ready"`
-	LastIndexedAt string `json:"lastIndexedAt,omitempty"`
-	FilesIndexed  int    `json:"filesIndexed"`
-	BytesIndexed  int64  `json:"bytesIndexed"`
-	Partial       bool   `json:"partial"`
-	Error         string `json:"error,omitempty"`
+	Ready         bool            `json:"ready"`
+	LastIndexedAt string          `json:"lastIndexedAt,omitempty"`
+	FilesIndexed  int             `json:"filesIndexed"`
+	BytesIndexed  int64           `json:"bytesIndexed"`
+	Partial       bool            `json:"partial"`
+	Error         string          `json:"error,omitempty"`
+	Semantic      *SemanticStatus `json:"semantic,omitempty"`
 }
 
 type Indexer struct {
@@ -66,6 +67,7 @@ type Indexer struct {
 	manifest              manifest
 	status                Status
 	embeddingBackoffUntil time.Time
+	embeddingError        string
 	trigrams              trigramIndex
 
 	reqCh         chan request
@@ -164,6 +166,7 @@ func New(cfg Config) (*Indexer, error) {
 		}
 	}
 	idx.rebuildTrigramIndex()
+	idx.status = idx.statusFromManifestLocked()
 	return idx, nil
 }
 
@@ -371,9 +374,41 @@ func (i *Indexer) RemovePaths(relPaths []string) error {
 }
 
 func (i *Indexer) Status() Status {
+	semantic := i.semanticStatus()
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return i.status
+	status := i.statusFromManifestLocked()
+	status.Semantic = semantic
+	if semantic != nil && semantic.Mode == string(embedding.ModeRequired) && !semantic.Available {
+		if status.Error == "" {
+			status.Error = semantic.Hint
+		} else {
+			status.Error = fmt.Sprintf("%s. %s", status.Error, semantic.Hint)
+		}
+	}
+	return status
+}
+
+// indexSizeLocked reports what the index currently holds. The manifest is the
+// same source outline, search, and DebugInfo read from, so status stays
+// consistent with the answers those tools return. Counting only the files a
+// pass rewrote would report zero whenever the index is already current.
+func (i *Indexer) indexSizeLocked() (files int, bytes int64) {
+	return len(i.manifest.Files), i.manifest.TotalBytes
+}
+
+// statusFromManifestLocked rebuilds status for an index loaded from disk, so a
+// process that reopens a populated store reports it before any pass runs.
+func (i *Indexer) statusFromManifestLocked() Status {
+	status := i.status
+	files, bytes := i.indexSizeLocked()
+	status.LastIndexedAt = i.manifest.UpdatedAt
+	status.FilesIndexed = files
+	status.BytesIndexed = bytes
+	if files > 0 {
+		status.Ready = true
+	}
+	return status
 }
 
 type DebugInfo struct {
@@ -455,6 +490,7 @@ func (i *Indexer) Clear() error {
 	}
 	i.manifest = manifest{}
 	i.status = Status{}
+	i.embeddingError = ""
 	i.trigrams = newTrigramIndex()
 	i.mu.Unlock()
 
@@ -529,19 +565,21 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 				return nil, ctxErr
 			}
 			i.recordEmbeddingFailure()
-			i.setError(fmt.Errorf("embed search query: %w", err))
+			if !errors.Is(err, embedding.ErrRuntimeUnavailable) {
+				i.setEmbeddingError(fmt.Errorf("embed search query: %w", err))
+			}
 		} else if len(vectors) == 1 {
 			queryVector = append([]float32(nil), vectors[0]...)
 			if err := normalizeVector(queryVector); err != nil {
 				i.recordEmbeddingFailure()
-				i.setError(fmt.Errorf("normalize search query embedding: %w", err))
+				i.setEmbeddingError(fmt.Errorf("normalize search query embedding: %w", err))
 				queryVector = nil
 			} else {
 				i.recordEmbeddingSuccess()
 			}
 		} else {
 			i.recordEmbeddingFailure()
-			i.setError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
+			i.setEmbeddingError(fmt.Errorf("embed search query: embedder returned %d vectors, expected 1", len(vectors)))
 		}
 	}
 
@@ -587,6 +625,9 @@ func (i *Indexer) searchContext(ctx context.Context, query string, maxResults in
 			continue
 		}
 		vectorByLine := map[[2]int][]float32{}
+		// readVectorsFile calls embeddingFingerprint() without holding i.mu.
+		// This is safe only because queryVector is populated only when i.embedder != nil.
+		// See embeddingFingerprint() for the full invariant and its implications.
 		if len(queryVector) > 0 && entry.Vectors > 0 {
 			vectors, err := i.readVectorsFile(entry.ID)
 			if err != nil {
@@ -889,8 +930,6 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 	totalBytes = i.manifest.TotalBytes
 	i.mu.Unlock()
 
-	bytesIndexed := int64(0)
-	filesIndexed := 0
 	partial := false
 
 	for _, c := range candidates {
@@ -924,9 +963,14 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 		}
 		if ok {
 			totalBytes += delta
-			bytesIndexed += max64(delta, 0)
-			filesIndexed++
 		}
+	}
+
+	if err := i.backfillVectors(ctx); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		i.setError(err)
 	}
 
 	if err := i.saveManifest(); err != nil {
@@ -936,10 +980,11 @@ func (i *Indexer) indexAll(ctx context.Context) error {
 
 	i.mu.Lock()
 	lastError := i.status.Error
+	files, bytesIndexed := i.indexSizeLocked()
 	i.status = Status{
 		Ready:         true,
 		LastIndexedAt: time.Now().UTC().Format(time.RFC3339),
-		FilesIndexed:  filesIndexed,
+		FilesIndexed:  files,
 		BytesIndexed:  bytesIndexed,
 		Partial:       partial,
 		Error:         lastError,
@@ -1056,15 +1101,10 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 	i.mu.Unlock()
 
 	mod := info.ModTime().UnixNano()
-	needsVectors := false
-	if i.embedder != nil && ok {
-		needsVectors = ent.Vectors != ent.Chunks
-		if !needsVectors {
-			_, statErr := os.Stat(i.vectorFilePath(ent.ID))
-			needsVectors = statErr != nil
-		}
-	}
-	if ok && ent.Size == info.Size() && ent.ModTime == mod && !needsVectors {
+	// Content freshness alone decides whether the source must be reprocessed.
+	// Missing vectors are repaired by backfillVectors from the persisted
+	// chunks, so a vector gap never forces a re-read or a re-chunk.
+	if ok && ent.Size == info.Size() && ent.ModTime == mod {
 		_ = file.Close()
 		return false, 0, nil
 	}
@@ -1103,8 +1143,8 @@ func (i *Indexer) indexOne(ctx context.Context, rel string) (changed bool, delta
 		vectors, embedErr = i.embedChunks(ctx, chunks)
 		if embedErr != nil {
 			vectors = nil
-			if !errors.Is(embedErr, errEmbeddingBackoff) {
-				i.setError(fmt.Errorf("embed %s: %w", rel, embedErr))
+			if !errors.Is(embedErr, errEmbeddingBackoff) && !errors.Is(embedErr, embedding.ErrRuntimeUnavailable) {
+				i.setEmbeddingError(fmt.Errorf("embed %s: %w", rel, embedErr))
 			}
 		} else {
 			vectorCount = len(vectors)
@@ -1174,6 +1214,14 @@ func (i *Indexer) setError(err error) {
 	i.mu.Unlock()
 }
 
+func (i *Indexer) setEmbeddingError(err error) {
+	message := err.Error()
+	i.mu.Lock()
+	i.embeddingError = message
+	i.status.Error = message
+	i.mu.Unlock()
+}
+
 func (i *Indexer) indexedFileSize(rel string) int64 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -1197,6 +1245,7 @@ func (i *Indexer) beginIndexPass() {
 	i.mu.Lock()
 	if i.embedder == nil || !time.Now().Before(i.embeddingBackoffUntil) {
 		i.status.Error = ""
+		i.embeddingError = ""
 	}
 	i.mu.Unlock()
 }
@@ -1251,6 +1300,18 @@ func (i *Indexer) recordEmbeddingFailure() {
 }
 
 func (i *Indexer) recordEmbeddingSuccess() {
+	i.mu.Lock()
+	i.embeddingBackoffUntil = time.Time{}
+	if i.embeddingError != "" && i.status.Error == i.embeddingError {
+		i.status.Error = ""
+	}
+	i.embeddingError = ""
+	i.mu.Unlock()
+}
+
+// clearEmbeddingBackoffForTest resets the retry window so tests can simulate a
+// runtime coming back without sleeping.
+func (i *Indexer) clearEmbeddingBackoffForTest() {
 	i.mu.Lock()
 	i.embeddingBackoffUntil = time.Time{}
 	i.mu.Unlock()
@@ -1408,7 +1469,16 @@ type fileEntry struct {
 
 func (i *Indexer) embeddingFingerprint() string {
 	if i.embedder == nil {
-		return "disabled"
+		// Preserve the identity the sidecars were written with. Availability
+		// and configuration must never invalidate stored vectors; only a real
+		// change of embedding identity does.
+		// NOTE: This reads i.manifest.EmbeddingFingerprint without holding i.mu.
+		// This is safe only because readVectorsFile (called from Search) is
+		// unreachable when i.embedder == nil (queryVector is only populated when
+		// i.embedder != nil). If a future change decouples queryVector population
+		// from embedder presence (e.g., lexical-fallback vector rerank), this will
+		// become a data race on i.manifest.EmbeddingFingerprint.
+		return i.manifest.EmbeddingFingerprint
 	}
 	return i.embedder.Fingerprint()
 }
@@ -1632,13 +1702,6 @@ func isPHPIndexExtension(ext string) bool {
 
 func min(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func max64(a, b int64) int64 {
-	if a > b {
 		return a
 	}
 	return b

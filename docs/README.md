@@ -66,29 +66,34 @@ The `prime` prompt front-loads up to eight fresh-then-stale durable notes and bo
 
 Focused `repo_context` calls use deterministic term-aware scoring by default. The scorer splits natural-language and code identifiers, ignores common query glue, handles a conservative set of inflections, rewards multi-term coverage, and returns one best chunk per matching path. This can bring files outside the active file's relationship graph into a bounded context result without a model runtime. `repo_search` keeps its literal substring contract by default; pass `regex: true` for explicit regular-expression matching.
 
-Semantic retrieval is opt-in. When enabled, Memento asks a local [Ollama](https://docs.ollama.com/) process for embeddings, stores one normalized vector beside each redacted chunk, and combines term-aware lexical and cosine scores for focused context retrieval.
+Semantic retrieval defaults to auto-detection. When a local [Ollama](https://docs.ollama.com/) runtime is reachable, Memento asks it for embeddings, stores one normalized vector beside each redacted chunk, and combines term-aware lexical and cosine scores for focused context retrieval. When no runtime is reachable, it continues with lexical retrieval.
 
 Memento defaults to `nomic-embed-text:v1.5`, a roughly 274 MB general-purpose embedding model with enough context for the current 8 KiB chunk ceiling. Install Ollama separately and pull the model explicitly:
 
 ```bash
 ollama pull nomic-embed-text:v1.5
-MEMENTO_SEMANTIC_ENABLED=true ./bin/memento-mcp
+./bin/memento-mcp
 ```
 
 Memento never downloads a model. Ollama owns its model cache; after the explicit pull, retrieval works offline. Memento accepts only unauthenticated loopback HTTP endpoints and does not follow redirects, so indexed source is not sent to a remote embedding service. Embeddings are created from already-redacted chunk content.
 
 Configuration:
 
-- `MEMENTO_SEMANTIC_ENABLED` (default `false`)
+- `MEMENTO_SEMANTIC_ENABLED` (default `auto`) — `auto` uses semantic retrieval
+  when a local embedding runtime is reachable and falls back to lexical
+  ranking otherwise, which is a healthy state and is not reported as an
+  error. `true` requires it: an unreachable runtime is reported as an error
+  and fails `doctor`, though retrieval still degrades to lexical. `false`
+  disables semantic retrieval entirely.
 - `MEMENTO_EMBEDDING_MODEL` (default `nomic-embed-text:v1.5`)
 - `MEMENTO_OLLAMA_URL` (default `http://127.0.0.1:11434`; loopback HTTP only)
 - `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (default `0.65`; greater than `0` and at most `1`)
 - `MEMENTO_EMBEDDING_BATCH_SIZE` (default `32`)
 - `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (default `30`)
 
-Vector sidecars live under `~/.memento-mcp/repos/<repo-id>/index/v1/files/*.vec`. The embedding fingerprint is recorded in the manifest; changing the model removes incompatible vectors and re-embeds unchanged chunks during the next index pass. The manifest also fingerprints the chunking algorithm and effective size limits. Upgrading to a release with new chunk boundaries triggers a one-time chunk rebuild and, when semantic retrieval is enabled, re-embedding. Prefer explicit model tags so cache invalidation is predictable.
+Vector sidecars live under `~/.memento-mcp/repos/<repo-id>/index/v1/files/*.vec`. The embedding fingerprint is recorded in the manifest; changing the model removes incompatible vectors and re-embeds unchanged chunks during the next index pass. Runtime outages and a `false` toggle preserve existing sidecars; only a genuine embedding identity change resets them. The manifest also fingerprints the chunking algorithm and effective size limits. Upgrading to a release with new chunk boundaries triggers a one-time chunk rebuild and, when semantic retrieval is available, re-embedding. Prefer explicit model tags so cache invalidation is predictable.
 
-If Ollama is stopped or the model is absent, indexing and queries fall back to lexical retrieval. `repo_index_status` and `repo_index_debug` expose the embedding error, and Memento waits 30 seconds before retrying the unavailable runtime. Chunk indexing and all non-semantic tools continue to work.
+If Ollama is stopped or the model is absent, `auto` indexing and queries fall back to lexical retrieval as a healthy reported state. `repo_index_status` and `repo_index_debug` expose the lexical reason, and Memento waits 30 seconds before retrying the unavailable runtime. With `true`, the same fallback keeps the server and retrieval usable but reports an actionable error and fails `doctor`. Chunk indexing and all non-semantic tools continue to work.
 
 ## Secret redaction
 

@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,12 @@ import (
 	"sync/atomic"
 	"testing"
 )
+
+type ollamaRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f ollamaRoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestOllamaEmbedBatchesAndNormalizes(t *testing.T) {
 	var got struct {
@@ -94,6 +101,41 @@ func TestOllamaReportsServerError(t *testing.T) {
 	}
 }
 
+func TestOllamaClassifiesExactModelMissingResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "model 'missing' not found"})
+	}))
+	defer server.Close()
+	client, err := NewOllama(OllamaConfig{BaseURL: server.URL, Model: "missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
+	if !errors.Is(err, ErrOllamaModelMissing) {
+		t.Fatalf("error = %v, want ErrOllamaModelMissing", err)
+	}
+}
+
+func TestOllamaTypesPreResponseTransportErrors(t *testing.T) {
+	client, err := NewOllama(OllamaConfig{
+		BaseURL: "http://127.0.0.1:11434",
+		Model:   "test-model",
+		Client: &http.Client{Transport: ollamaRoundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial failed")
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Embed(context.Background(), TaskQuery, []string{"query"})
+	var transportErr *PreResponseTransportError
+	if !errors.As(err, &transportErr) {
+		t.Fatalf("error = %v, want PreResponseTransportError", err)
+	}
+}
+
 func TestOllamaDoesNotFollowRedirects(t *testing.T) {
 	var targetCalls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +167,7 @@ func TestFromEnvDisabledDoesNotValidateOllamaSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Enabled || config.Embedder != nil {
+	if config.Mode != ModeOff || config.Embedder != nil {
 		t.Fatalf("expected semantic mode disabled, got %#v", config)
 	}
 }
@@ -140,8 +182,30 @@ func TestFromEnvEnabledConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !config.Enabled || config.Embedder == nil || config.Embedder.Name() != "ollama/all-minilm" || config.SemanticWeight != 0.75 || config.BatchSize != 8 {
+	if config.Mode != ModeRequired || config.Embedder == nil || config.Embedder.Name() != "ollama/all-minilm" || config.SemanticWeight != 0.75 || config.BatchSize != 8 {
 		t.Fatalf("unexpected semantic config: %#v", config)
+	}
+}
+
+func TestFromEnvWrapsEmbedderInRuntime(t *testing.T) {
+	t.Setenv("MEMENTO_SEMANTIC_ENABLED", "auto")
+	t.Setenv("MEMENTO_OLLAMA_URL", "http://127.0.0.1:11434")
+	config, err := FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Mode != ModeAuto {
+		t.Fatalf("mode = %q, want auto", config.Mode)
+	}
+	runtime, ok := config.Embedder.(*Runtime)
+	if !ok {
+		t.Fatalf("embedder type = %T, want *Runtime", config.Embedder)
+	}
+	if runtime.Mode() != ModeAuto {
+		t.Fatalf("runtime mode = %q, want auto", runtime.Mode())
+	}
+	if runtime.Availability().Available {
+		t.Fatal("availability must start false until something is attempted")
 	}
 }
 

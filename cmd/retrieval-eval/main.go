@@ -50,7 +50,7 @@ func main() {
 	mode := "lexical"
 	embedderName := ""
 	semanticWeight := 0.0
-	if semantic.Enabled {
+	if semantic.Mode.Enabled() {
 		mode = "semantic"
 		embedderName = semantic.Embedder.Name()
 		semanticWeight = semantic.SemanticWeight
@@ -71,7 +71,7 @@ func main() {
 			fatal(err)
 		}
 	}
-	if semantic.Enabled {
+	if semantic.Mode.Enabled() {
 		fmt.Printf("MODE hybrid model=%s semantic-weight=%.2f\n", semantic.Embedder.Name(), semantic.SemanticWeight)
 	} else {
 		fmt.Println("MODE lexical")

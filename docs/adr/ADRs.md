@@ -31,6 +31,7 @@ This document consolidates all ADRs for this repository.
 - ADR 0019: Intent-vocabulary filtering for catalog domains (terms-v12) (Accepted, 2026-07-16)
 - ADR 0020: Guarded stored-token domain ranking (terms-v13) (Accepted, 2026-07-24)
 - ADR 0021: Provider-scoped authoritative-domain ranking (terms-v14) (Accepted, 2026-07-24)
+- ADR 0022: Semantic retrieval auto-detection and resilient fallback (Accepted, 2026-08-23)
 
 ---
 
@@ -446,7 +447,7 @@ Delete all repo-scoped notes.
 
 ## ADR 0006: Opt-in local hybrid retrieval with Ollama
 
-- Status: Accepted
+- Status: Accepted (superseded in part by ADR 0022)
 - Date: 2026-07-10
 
 ### Context
@@ -1356,6 +1357,55 @@ provider, action, closed-set, and value evidence.
 - Tune against the post-terms-v14 cold-chain fixture: rejected because it would
   invalidate the blind measurement. Its permitted/disposition boundary is
   reserved for a separately fingerprinted scorer.
+
+---
+
+## ADR 0022: Semantic retrieval auto-detection and resilient fallback
+
+- Status: Accepted
+- Date: 2026-08-23
+
+### Context
+
+Local semantic retrieval has become resilient to unavailable runtimes, while
+the opt-in default in ADR 0006 prevents most installations from using it. The
+default must improve discovery without turning an absent local runtime into a
+server failure or making Memento responsible for model provisioning.
+
+### Decision
+
+- Default `MEMENTO_SEMANTIC_ENABLED` to `auto`. A reachable local embedding
+  runtime enables semantic retrieval; lexical fallback is a healthy reported
+  state, not an error.
+- Separate runtime availability from embedding configuration. The embedding
+  fingerprint records the identity used to create vectors and never records
+  transient reachability.
+- Preserve vector sidecars through runtime outages and a `false` toggle. Reset
+  them only for a genuine embedding identity change.
+- Keep `MEMENTO_SEMANTIC_ENABLED` tri-state: `auto` detects availability,
+  `false` disables semantic retrieval, and `true` means required. Required
+  mode remains server- and retrieval-usable through lexical fallback, but
+  reports an actionable status and a `doctor` error when the runtime is
+  unreachable.
+- Continue not to install Ollama or pull models. Consented provisioning is
+  deferred to a later ADR.
+
+### Consequences
+
+- Unset configuration attempts local semantic retrieval without changing the
+  healthy lexical-only behavior of machines without a reachable runtime.
+- Generated and documented client configurations explicitly use `auto`.
+- Operators can opt out with `false` or use `true` when semantic availability
+  is a deployment requirement without sacrificing repository access.
+
+### Alternatives considered
+
+- Retain the opt-in default: preserves the old startup posture but hides a
+  resilient capability from normal installations.
+- Treat an unavailable required runtime as a startup failure: makes a local
+  optional dependency disrupt otherwise useful lexical retrieval.
+- Provision Ollama or models automatically: expands Memento's consent,
+  installation, and model-lifecycle responsibilities before a later decision.
 
 ---
 

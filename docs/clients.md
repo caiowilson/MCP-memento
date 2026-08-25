@@ -219,12 +219,12 @@ Durable notes are shared across linked Git worktrees. Memento maps a linked chec
 
 ## Optional semantic retrieval
 
-`repo_context` focus queries use deterministic term-aware retrieval without configuration; `repo_search` remains literal unless regex mode is requested. Semantic retrieval is disabled by default. Install Ollama, run `ollama pull nomic-embed-text:v1.5`, and add the following environment variable to the client server entry to add local embeddings to focused context ranking:
+`repo_context` focus queries use deterministic term-aware retrieval without configuration; `repo_search` remains literal unless regex mode is requested. Semantic retrieval defaults to auto-detection: after Ollama is installed and `ollama pull nomic-embed-text:v1.5` completes, reachable local embeddings are added to focused context ranking. An unavailable runtime falls back to lexical retrieval; set `MEMENTO_SEMANTIC_ENABLED=false` to opt out entirely, or `true` to require semantic availability while keeping lexical fallback usable.
 
 ```json
 {
   "env": {
-    "MEMENTO_SEMANTIC_ENABLED": "true"
+    "MEMENTO_SEMANTIC_ENABLED": "auto"
   }
 }
 ```
@@ -233,11 +233,11 @@ The MCP client must launch Memento in an environment that can reach the local Ol
 
 ## Runtime configuration
 
-Keep defaults unless a workspace needs different limits or an opt-in feature. `print-config` includes the normal client entry defaults; the complete environment surface is:
+Keep defaults unless a workspace needs different limits or configured behavior. `print-config` includes the normal client entry defaults; the complete environment surface is:
 
 - Indexing: `MEMENTO_CHANGE_DETECTOR` (`auto`), `MEMENTO_INDEX_POLL_SECONDS` (`10`), `MEMENTO_INDEX_MAX_TOTAL_BYTES` (`20971520`), `MEMENTO_INDEX_MAX_FILE_BYTES` (`1048576`), `MEMENTO_GIT_POLL_SECONDS` (`2` hot), `MEMENTO_GIT_MAX_POLL_SECONDS` (`30` quiet), `MEMENTO_GIT_ERROR_MAX_POLL_SECONDS` (`60` after errors), `MEMENTO_GIT_DEBOUNCE_MS` (`500`), and `MEMENTO_FS_DEBOUNCE_MS` (`500`). Git intervals use ±20% per-process jitter; changes and MCP tool activity reset polling to the hot interval.
 - Context: `MEMENTO_CONTEXT_MAX_TOKENS` (`7000`), `MEMENTO_OUTLINE_MAX_FILE_BYTES` (`1048576`), `MEMENTO_RESOURCE_MAX_BYTES` (`32000`), and `MEMENTO_PRIME_MAX_BYTES` (`24000`).
-- Semantic retrieval: `MEMENTO_SEMANTIC_ENABLED` (`false`), `MEMENTO_EMBEDDING_MODEL` (`nomic-embed-text:v1.5`), `MEMENTO_OLLAMA_URL` (`http://127.0.0.1:11434`), `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (`0.65`), `MEMENTO_EMBEDDING_BATCH_SIZE` (`32`), and `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (`30`).
+- Semantic retrieval: `MEMENTO_SEMANTIC_ENABLED` (`auto`), `MEMENTO_EMBEDDING_MODEL` (`nomic-embed-text:v1.5`), `MEMENTO_OLLAMA_URL` (`http://127.0.0.1:11434`), `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (`0.65`), `MEMENTO_EMBEDDING_BATCH_SIZE` (`32`), and `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (`30`).
 - Redaction: `MEMENTO_REDACTION_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (`4.3`), `MEMENTO_REDACTION_HEX_ENTROPY_THRESHOLD` (`3.5`), `MEMENTO_REDACTION_MIN_TOKEN_LENGTH` (`24`), plus JSON regular-expression arrays in `MEMENTO_REDACTION_ADDITIONAL_PATTERNS` and `MEMENTO_REDACTION_ALLOW_PATTERNS`.
 - Operations: `MEMENTO_UPDATE_CHECK` (enabled for release builds unless set to `false`), `MEMENTO_FEEDBACK_ENABLED` (`false`), optional `MEMENTO_FEEDBACK_DIR`, and `MEMENTO_MCP_DEV_LOG` (`0`; use `1` for stderr tool-call logs).
 

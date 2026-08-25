@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -17,6 +18,10 @@ import (
 )
 
 const embeddingInputVersion = 1
+
+// ErrOllamaModelMissing identifies Ollama's exact API response for a model
+// that has not been pulled locally.
+var ErrOllamaModelMissing = errors.New("ollama embedding model missing")
 
 type OllamaConfig struct {
 	BaseURL string
@@ -85,12 +90,20 @@ func (o *Ollama) Embed(ctx context.Context, task Task, inputs []string) ([][]flo
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ollama embedding request: %w", err)
+		requestErr := fmt.Errorf("ollama embedding request: %w", err)
+		if resp == nil {
+			return nil, &PreResponseTransportError{Err: requestErr}
+		}
+		return nil, requestErr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("ollama embedding request returned %s: %s", resp.Status, strings.TrimSpace(string(message)))
+		body := strings.TrimSpace(string(message))
+		if resp.StatusCode == http.StatusNotFound && isOllamaModelMissingResponse(body, o.model) {
+			return nil, fmt.Errorf("%w: ollama embedding request returned %s: %s", ErrOllamaModelMissing, resp.Status, body)
+		}
+		return nil, fmt.Errorf("ollama embedding request returned %s: %s", resp.Status, body)
 	}
 	var payload struct {
 		Embeddings [][]float32 `json:"embeddings"`
@@ -111,6 +124,25 @@ func (o *Ollama) Embed(ctx context.Context, task Task, inputs []string) ([][]flo
 func (o *Ollama) Fingerprint() string { return o.fingerprint }
 
 func (o *Ollama) Name() string { return "ollama/" + o.model }
+
+func isOllamaModelMissingResponse(body, model string) bool {
+	var response struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(body), &response) != nil {
+		return false
+	}
+	for _, known := range []string{
+		fmt.Sprintf("model '%s' not found", model),
+		fmt.Sprintf("model %q not found", model),
+		fmt.Sprintf("model %q not found, try pulling it first", model),
+	} {
+		if response.Error == known {
+			return true
+		}
+	}
+	return false
+}
 
 func validateLoopbackURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))

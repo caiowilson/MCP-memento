@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -58,6 +59,7 @@ func doctorClients(clients []mcpClient, selectedSlugs []string, exe string, stdo
 	} else {
 		fmt.Fprintf(stdout, "[PASS] binary: %s (%s, %s/%s)\n", shortenPath(exe), mcp.ServerVersion(), runtime.GOOS, runtime.GOARCH)
 	}
+	failures += doctorSemantic(context.Background(), stdout)
 
 	selected := clients
 	explicit := len(selectedSlugs) > 0

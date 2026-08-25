@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"memento-mcp/internal/embedding"
 )
 
 const (
@@ -101,10 +103,21 @@ func ConfigFromEnv() Config {
 		Enabled: envOptIn("MEMENTO_FEEDBACK_ENABLED"),
 		Dir:     strings.TrimSpace(os.Getenv("MEMENTO_FEEDBACK_DIR")),
 		Features: FeatureFlags{
-			SemanticRetrieval: envOptIn("MEMENTO_SEMANTIC_ENABLED"),
+			SemanticRetrieval: semanticRetrievalEnabled(),
 			RedactionEnabled:  envDefaultTrue("MEMENTO_REDACTION_ENABLED"),
 		},
 	}
+}
+
+// semanticRetrievalEnabled reports whether semantic retrieval is configured.
+// It tolerates an invalid value by reporting false; configuration validation
+// belongs to embedding.FromEnv, which fails startup on garbage.
+func semanticRetrievalEnabled() bool {
+	mode, err := embedding.ParseMode(os.Getenv("MEMENTO_SEMANTIC_ENABLED"))
+	if err != nil {
+		return false
+	}
+	return mode.Enabled()
 }
 
 func envOptIn(key string) bool {
