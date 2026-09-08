@@ -76,9 +76,9 @@ func runUpdate(args []string, stdout io.Writer) error {
 		}
 	}
 
-	pluginManaged := os.Getenv("CLAUDE_PLUGIN_DATA") != ""
-	if !checkOnly && pluginManaged {
-		return errors.New("this installation is managed by the Claude Code plugin; run /plugin marketplace update memento-mcp, /plugin update memento@memento-mcp, then /reload-plugins")
+	host := pluginHost()
+	if !checkOnly && host != "" {
+		return fmt.Errorf("this installation is managed by the %s plugin; %s", pluginHostName(host), pluginUpdateInstructions(host))
 	}
 
 	u := defaultUpdater()
@@ -95,8 +95,8 @@ func runUpdate(args []string, stdout io.Writer) error {
 		return nil
 	}
 	if checkOnly {
-		if pluginManaged {
-			fmt.Fprintf(stdout, "Update available: %s -> %s. Update the Claude Code plugin with /plugin marketplace update memento-mcp, /plugin update memento@memento-mcp, then /reload-plugins.\n", u.currentVersion, release.version())
+		if host != "" {
+			fmt.Fprintf(stdout, "Update available: %s -> %s. This installation is managed by the %s plugin; %s.\n", u.currentVersion, release.version(), pluginHostName(host), pluginUpdateInstructions(host))
 			return nil
 		}
 		fmt.Fprintf(stdout, "Update available: %s -> %s. Run 'memento-mcp update'.\n", u.currentVersion, release.version())
@@ -358,7 +358,7 @@ func startUpdateNotice(stderr io.Writer) {
 		return
 	}
 	if cached, ok := readUpdateCache(cachePath); ok && time.Since(cached.CheckedAt) < updateInterval {
-		writeUpdateNotice(stderr, mcp.ServerVersion(), cached.LatestVersion, os.Getenv("CLAUDE_PLUGIN_DATA") != "")
+		writeUpdateNotice(stderr, mcp.ServerVersion(), cached.LatestVersion, pluginHost())
 		return
 	}
 	go func() {
@@ -371,7 +371,7 @@ func startUpdateNotice(stderr io.Writer) {
 		}
 		cache := updateCheckCache{CheckedAt: time.Now().UTC(), LatestVersion: release.version()}
 		_ = writeUpdateCache(cachePath, cache)
-		writeUpdateNotice(stderr, u.currentVersion, cache.LatestVersion, os.Getenv("CLAUDE_PLUGIN_DATA") != "")
+		writeUpdateNotice(stderr, u.currentVersion, cache.LatestVersion, pluginHost())
 	}()
 }
 
@@ -428,10 +428,41 @@ func writeUpdateCache(path string, cache updateCheckCache) error {
 	return os.Rename(tmpPath, path)
 }
 
-func writeUpdateNotice(w io.Writer, current, latest string, pluginManaged bool) {
+func pluginHost() string {
+	if host := strings.TrimSpace(os.Getenv("MEMENTO_PLUGIN_HOST")); host != "" {
+		return host
+	}
+	if strings.TrimSpace(os.Getenv("CLAUDE_PLUGIN_DATA")) != "" {
+		return "claude"
+	}
+	return ""
+}
+
+func pluginHostName(host string) string {
+	if host == "codex" {
+		return "Codex"
+	}
+	return "Claude Code"
+}
+
+func pluginUpdateInstructions(host string) string {
+	if host == "codex" {
+		return "run 'codex plugin marketplace upgrade memento-mcp' and 'codex plugin add memento@memento-mcp', then start a new task"
+	}
+	return "run /plugin marketplace update memento-mcp, /plugin update memento@memento-mcp, then /reload-plugins"
+}
+
+func pluginUpdateHint(host string) string {
+	if host == "codex" {
+		return "update the Codex plugin via 'codex plugin marketplace upgrade memento-mcp'"
+	}
+	return "update the Claude Code plugin via /plugin"
+}
+
+func writeUpdateNotice(w io.Writer, current, latest, host string) {
 	if comparison, ok := compareVersions(latest, current); ok && comparison > 0 {
-		if pluginManaged {
-			fmt.Fprintf(w, "memento-mcp: update available (%s -> %s); update the Claude Code plugin via /plugin\n", current, latest)
+		if host != "" {
+			fmt.Fprintf(w, "memento-mcp: update available (%s -> %s); %s\n", current, latest, pluginUpdateHint(host))
 			return
 		}
 		fmt.Fprintf(w, "memento-mcp: update available (%s -> %s); run 'memento-mcp update'\n", current, latest)

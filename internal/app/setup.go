@@ -386,8 +386,8 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if os.Getenv("CLAUDE_PLUGIN_DATA") != "" && !opts.printOnly {
-		return errors.New("refusing to persist a Claude plugin-managed cache path; run setup from a standalone installation")
+	if host := pluginHost(); host != "" && !opts.printOnly {
+		return fmt.Errorf("refusing to persist a %s plugin-managed cache path; run setup from a standalone installation", pluginHostName(host))
 	}
 	exe, err := os.Executable()
 	if err != nil {

@@ -10,7 +10,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const RELEASE_VERSION = "1.0.5";
+const RELEASE_VERSION = "1.1.0";
 const RELEASE_TAG = `server/v${RELEASE_VERSION}`;
 const RELEASE_BASE_URL = `https://github.com/caiowilson/MCP-memento/releases/download/${encodeURIComponent(RELEASE_TAG)}`;
 const MAX_BINARY_BYTES = 128 * 1024 * 1024;
@@ -238,7 +238,7 @@ function requestBuffer(url, options = {}, redirects = 0) {
     const request = client.get(parsed, {
       headers: {
         Accept: "application/octet-stream",
-        "User-Agent": `memento-claude-plugin/${RELEASE_VERSION}`,
+        "User-Agent": `memento-plugin/${RELEASE_VERSION}`,
       },
     }, (response) => {
       const status = response.statusCode || 0;
@@ -371,10 +371,10 @@ async function resolveBinary(options = {}) {
   const pluginRoot = options.pluginRoot || path.resolve(__dirname, "..");
   const pluginData = options.pluginData || process.env.MEMENTO_PLUGIN_DATA;
   if (!pluginData) {
-    throw new Error("CLAUDE_PLUGIN_DATA was not expanded by Claude Code");
+    throw new Error("MEMENTO_PLUGIN_DATA was not provided by the plugin host");
   }
   if (!path.isAbsolute(pluginData) || pluginData.includes("${")) {
-    throw new Error("CLAUDE_PLUGIN_DATA did not resolve to an absolute path");
+    throw new Error("MEMENTO_PLUGIN_DATA did not resolve to an absolute path");
   }
 
   const target = resolveTarget(options.platform, options.arch);
@@ -449,9 +449,10 @@ async function resolveBinary(options = {}) {
 }
 
 function startServerProcess(binary, options = {}) {
+  const env = options.env || process.env;
   const child = (options.spawnServer || spawn)(binary, [], {
-    cwd: options.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(),
-    env: options.env || process.env,
+    cwd: options.cwd || env.CLAUDE_PROJECT_DIR || process.cwd(),
+    env,
     stdio: "inherit",
     windowsHide: true,
   });
@@ -495,16 +496,54 @@ async function hasLegacyPluginCache(pluginData) {
   }
 }
 
+function resolvePluginProvider(value) {
+  const provider = value || "claude";
+  if (provider !== "claude" && provider !== "codex") {
+    throw new Error(`unsupported plugin provider: ${provider}`);
+  }
+  return provider;
+}
+
+function resolveWorkspaceRoot(provider, env = {}, cwd) {
+  if (provider !== "codex") {
+    return undefined;
+  }
+  const configured = env.MEMENTO_PROJECT_DIR || env.CLAUDE_PROJECT_DIR || cwd;
+  return path.resolve(configured || process.cwd());
+}
+
+function serverEnvironment(env, options = {}) {
+  const serverEnv = { ...env };
+  delete serverEnv.MEMENTO_PLUGIN_BINARY;
+  delete serverEnv.MEMENTO_PLUGIN_DATA;
+  delete serverEnv.MEMENTO_PLUGIN_PROVIDER;
+  delete serverEnv.MEMENTO_PLUGIN_HOST;
+  if (options.pluginManaged) {
+    serverEnv.MEMENTO_PLUGIN_HOST = resolvePluginProvider(options.provider);
+  }
+  if (options.workspaceRoot) {
+    serverEnv.MEMENTO_PROJECT_DIR = options.workspaceRoot;
+  }
+  return serverEnv;
+}
+
 async function run(options = {}) {
   const env = options.env || process.env;
+  const provider = resolvePluginProvider(options.provider || env.MEMENTO_PLUGIN_PROVIDER);
   const pluginData = options.pluginData || env.MEMENTO_PLUGIN_DATA;
   const override = options.override || env.MEMENTO_PLUGIN_BINARY;
   const pluginDataExisted = pluginData ? await hasLegacyPluginCache(pluginData) : false;
   const binary = await (options.resolveBinary || resolveBinary)({ ...options, pluginData, override });
+  const workspaceRoot = resolveWorkspaceRoot(provider, env, options.cwd);
   return startServerProcess(binary, {
     ...options,
-    env,
-    backgroundCheck: override || !pluginData ? undefined : async () => {
+    cwd: options.cwd || workspaceRoot,
+    env: serverEnvironment(env, {
+      provider,
+      pluginManaged: Boolean(pluginData) && !override,
+      workspaceRoot,
+    }),
+    backgroundCheck: provider !== "claude" || override || !pluginData ? undefined : async () => {
       await initializeUpdateState({ pluginData, home: options.home, pluginDataExisted });
       await runMarketplaceUpdateCheck({
         pluginData,
@@ -534,8 +573,11 @@ module.exports = {
   parseChecksum,
   requestBuffer,
   resolveBinary,
+  resolvePluginProvider,
   resolveTarget,
+  resolveWorkspaceRoot,
   run,
   runMarketplaceUpdateCheck,
+  serverEnvironment,
   startServerProcess,
 };

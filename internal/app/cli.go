@@ -157,7 +157,7 @@ Usage:
   memento-mcp help          Show this help text
 
 Workspace root precedence:
-  --root DIR -> CLAUDE_PROJECT_DIR -> MCP roots/list -> current working directory
+  --root DIR -> CLAUDE_PROJECT_DIR -> MEMENTO_PROJECT_DIR -> MCP roots/list -> current working directory
 
 Feedback is disabled unless MEMENTO_FEEDBACK_ENABLED=true. It is local-only and
 never sends data over the network.`

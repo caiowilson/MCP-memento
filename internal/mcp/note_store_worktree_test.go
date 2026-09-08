@@ -57,6 +57,46 @@ func TestNoteStoreSharesMemoryAcrossLinkedWorktrees(t *testing.T) {
 	}
 }
 
+func TestNoteStoreSharesMemoryAcrossPluginHosts(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repoRoot := t.TempDir()
+	runNoteStoreGit(t, repoRoot, "init", "-q")
+
+	codexCache := filepath.Join(t.TempDir(), "codex-plugin-data")
+	t.Setenv("MEMENTO_PLUGIN_DATA", codexCache)
+	codexStore, err := NewNoteStore(repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := codexStore.Upsert(Note{Key: "shared-client-note", Text: "written through Codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	claudeCache := filepath.Join(t.TempDir(), "claude-plugin-data")
+	t.Setenv("MEMENTO_PLUGIN_DATA", claudeCache)
+	otherClientStore, err := NewNoteStore(repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantPath := noteStorePath(home, canonicalPath(repoRoot))
+	if codexStore.path != wantPath || otherClientStore.path != wantPath {
+		t.Fatalf("plugin hosts resolved note paths %q and %q, want canonical store %q", codexStore.path, otherClientStore.path, wantPath)
+	}
+	if strings.HasPrefix(wantPath, codexCache) || strings.HasPrefix(wantPath, claudeCache) {
+		t.Fatalf("durable note path %q must not use a provider plugin cache", wantPath)
+	}
+
+	notes, err := otherClientStore.Search("written through Codex", nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 1 || notes[0].Key != "shared-client-note" {
+		t.Fatalf("cross-client search returned %#v, want shared-client-note", notes)
+	}
+}
+
 func TestMemoryScopeRootPreservesWorkspaceSubdirectory(t *testing.T) {
 	mainRoot := t.TempDir()
 	runNoteStoreGit(t, mainRoot, "init", "-q")

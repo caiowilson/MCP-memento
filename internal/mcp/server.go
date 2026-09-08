@@ -43,6 +43,7 @@ type workspaceRootSource string
 const (
 	workspaceRootSourceExplicit         workspaceRootSource = "explicit"
 	workspaceRootSourceClaudeProjectDir workspaceRootSource = "CLAUDE_PROJECT_DIR"
+	workspaceRootSourcePluginProjectDir workspaceRootSource = "MEMENTO_PROJECT_DIR"
 	workspaceRootSourceClientRoots      workspaceRootSource = "roots/list"
 	workspaceRootSourceManual           workspaceRootSource = "repo_switch_workspace"
 	workspaceRootSourceCWD              workspaceRootSource = "cwd"
@@ -205,6 +206,9 @@ func resolveStartupWorkspaceRoot(configRoot string) (string, workspaceRootSource
 	}
 	if envRoot := os.Getenv("CLAUDE_PROJECT_DIR"); strings.TrimSpace(envRoot) != "" {
 		return envRoot, workspaceRootSourceClaudeProjectDir, false, nil
+	}
+	if envRoot := os.Getenv("MEMENTO_PROJECT_DIR"); strings.TrimSpace(envRoot) != "" {
+		return envRoot, workspaceRootSourcePluginProjectDir, false, nil
 	}
 	wd, err := os.Getwd()
 	if err != nil {
@@ -699,7 +703,7 @@ func (s *Server) validateMemoryReadScope(name string, raw json.RawMessage) error
 		return nil
 	}
 
-	return fmt.Errorf("active workspace is unverified: memory reads will not use the MCP server launch directory implicitly; pass root, configure --root or CLAUDE_PROJECT_DIR, use MCP roots/list, or call repo_switch_workspace")
+	return fmt.Errorf("active workspace is unverified: memory reads will not use the MCP server launch directory implicitly; pass root, configure --root, CLAUDE_PROJECT_DIR, or MEMENTO_PROJECT_DIR, use MCP roots/list, or call repo_switch_workspace")
 }
 
 func (s *Server) feedbackProxyToolHandler() ToolHandler {

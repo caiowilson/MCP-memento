@@ -1,0 +1,20 @@
+{
+  "name": "memento-mcp",
+  "interface": {
+    "displayName": "Memento MCP"
+  },
+  "plugins": [
+    {
+      "name": "memento",
+      "source": {
+        "source": "local",
+        "path": "./plugins/memento"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "memento",
+  "version": "1.1.0",
+  "description": "Local-first repository context and durable memory through MCP",
+  "author": {
+    "name": "Memento MCP maintainers",
+    "url": "https://github.com/caiowilson/MCP-memento"
+  },
+  "homepage": "https://github.com/caiowilson/MCP-memento",
+  "repository": "https://github.com/caiowilson/MCP-memento",
+  "license": "MIT",
+  "keywords": ["mcp", "memory", "repository", "context"],
+  "mcpServers": {
+    "memento": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/bin/memento-launcher.cjs"],
+      "env": {
+        "MEMENTO_PLUGIN_DATA": "${PLUGIN_DATA}",
+        "MEMENTO_PLUGIN_PROVIDER": "codex"
+      }
+    }
+  },
+  "interface": {
+    "displayName": "Memento MCP",
+    "shortDescription": "Local repository context and durable memory",
+    "longDescription": "Index the active repository locally, retrieve bounded code context, and preserve explicit notes across Codex tasks.",
+    "developerName": "Memento MCP maintainers",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/caiowilson/MCP-memento",
+    "defaultPrompt": [
+      "Prime this repository with Memento before we start.",
+      "Use Memento to find the code relevant to this task.",
+      "Recall durable Memento notes for this repository."
+    ]
+  }
+}

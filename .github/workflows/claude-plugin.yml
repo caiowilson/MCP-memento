@@ -1,4 +1,4 @@
-name: Claude Code Plugin
+name: Native Plugins
 
 env:
   TREE_SITTER_TAGS: grammar_subset,grammar_subset_go,grammar_subset_javascript,grammar_subset_typescript,grammar_subset_tsx,grammar_subset_python,grammar_subset_rust,grammar_subset_php
@@ -27,6 +27,14 @@ jobs:
 
       - name: Test launcher
         run: node --test plugins/memento/test/launcher.test.cjs
+
+      - name: Install Codex CLI
+        run: npm install --global @openai/codex@0.151.0
+
+      - name: Test Codex plugin contract
+        env:
+          MEMENTO_REQUIRE_CODEX_CLI: "1"
+        run: node --test test/codex-plugin.test.mjs
 
       - name: Test workflow skills
         run: node --test test/memento-workflows.test.mjs

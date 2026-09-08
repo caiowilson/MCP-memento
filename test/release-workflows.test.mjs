@@ -60,7 +60,7 @@ test("release workflow always builds raw macOS binaries and optionally notarizes
   );
 });
 
-test("release workflow validates the native Claude plugin before builds or publication", async () => {
+test("release workflow validates the native plugin manifests before builds or publication", async () => {
   const workflow = await readFile(releaseWorkflowPath, "utf8");
   const validation = workflow.match(/  validate-claude-plugin-release:[\s\S]*?\n  build-binaries:/)?.[0];
   const build = workflow.match(/  build-binaries:[\s\S]*?\n  package-deb:/)?.[0];

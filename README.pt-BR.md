@@ -21,13 +21,29 @@ Um servidor MCP local-first que oferece aos agentes de IA uma memória durável 
 - Claude Code, Claude Desktop e outros clientes MCP: [`docs/clients.md`](./docs/clients.md)
 - Uso com VS Code: [`docs/vscode.md`](./docs/vscode.md)
 - Extensão VS Code: [`vscode-extension/README.md`](./vscode-extension/README.md)
+- Plugin nativo do Codex e Claude Code: [`plugins/memento/README.md`](./plugins/memento/README.md)
 - Workflows do Claude Code sem binário nativo: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
 - Guia de ADR: [`docs/adr/README.md`](./docs/adr/README.md)
 - Índice e decisões de ADR: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
 
 ## Instalação
 
-### Plugin do Claude Code (recomendado)
+### Plugin do Codex (recomendado para o Codex)
+
+Adicione este repositório como marketplace do Codex e instale o plugin nativo do Memento:
+
+```bash
+codex plugin marketplace add caiowilson/MCP-memento
+codex plugin add memento@memento-mcp
+```
+
+Inicie uma nova tarefa do Codex e verifique o servidor `memento` com `/mcp` ou `codex mcp list`. Na primeira inicialização, o plugin baixa o binário versionado para macOS, Linux ou Windows em x64 ou arm64, verifica o SHA-256 e o armazena nos dados persistentes do plugin. Os próximos usos verificam o cache e funcionam offline. Apenas o executável e seu checksum usam esse cache específico do provedor: as notas duráveis permanecem no armazenamento canônico `~/.memento-mcp/repos/<repo-id>/`, compartilhado pelo Codex, Claude, Cursor, BB, clientes baseados em OpenRouter e outros clientes Memento para o mesmo repositório. O Node.js precisa estar no `PATH`; Go não é necessário.
+
+O lançador informa o diretório de trabalho do Codex ao servidor por `MEMENTO_PROJECT_DIR`, então `memory_list` e `memory_search` resolvem o repositório ativo sem `root` explícito.
+
+Para atualizar, execute `codex plugin marketplace upgrade memento-mcp`, reinstale com `codex plugin add memento@memento-mcp` e inicie uma nova tarefa. Consulte o [guia do plugin nativo](./plugins/memento/README.md#codex) para desenvolvimento local, verificação e solução de problemas.
+
+### Plugin do Claude Code (recomendado para o Claude Code)
 
 Adicione este repositório como marketplace do Claude Code, instale o Memento e recarregue os plugins ativos:
 
@@ -60,7 +76,7 @@ Instale a versão mais recente do servidor pré-compilado em `~/.local/bin` e re
 curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
 ```
 
-O instalador verifica o sidecar SHA-256, testa o binário antes da troca, preserva a versão anterior como `.previous`, configura os clientes de forma idempotente e termina executando `doctor`. Defina `MEMENTO_INSTALL_DIR`, passe `--install-dir`, use `--clients codex,claude`, `--no-setup` ou fixe uma release com `--version 1.0.1`. O instalador suporta macOS, Linux e ambientes Windows com shell POSIX em x64 e arm64. Garanta que o diretório escolhido esteja no `PATH` e verifique o binário:
+O instalador verifica o sidecar SHA-256, testa o binário antes da troca, preserva a versão anterior como `.previous`, configura os clientes de forma idempotente e termina executando `doctor`. Defina `MEMENTO_INSTALL_DIR`, passe `--install-dir`, use `--clients codex,claude`, `--no-setup` ou fixe uma release com `--version 1.1.0`. O instalador suporta macOS, Linux e ambientes Windows com shell POSIX em x64 e arm64. Garanta que o diretório escolhido esteja no `PATH` e verifique o binário:
 
 ```bash
 memento-mcp help
@@ -73,7 +89,7 @@ Atualize uma instalação independente no próprio local:
 memento-mcp update
 ```
 
-Use `memento-mcp update --check` para apenas verificar, sem instalar. Builds de release também fazem uma verificação silenciosa e limitada a uma vez por dia ao iniciar o servidor, escrevendo um aviso somente no stderr quando houver atualização; mensagens de atualização nunca são escritas no stdout do MCP. Defina `MEMENTO_UPDATE_CHECK=false` para desativar essa verificação. Instalações pelo marketplace do Claude Code deixam atualizações do plugin agendadas em segundo plano; use os comandos `/plugin` para atualizar imediatamente e depois recarregue os plugins ou inicie uma nova tarefa.
+Use `memento-mcp update --check` para apenas verificar, sem instalar. Builds de release também fazem uma verificação silenciosa e limitada a uma vez por dia ao iniciar o servidor, escrevendo um aviso somente no stderr quando houver atualização; mensagens de atualização nunca são escritas no stdout do MCP. Defina `MEMENTO_UPDATE_CHECK=false` para desativar essa verificação. Instalações pelo marketplace do Claude Code deixam atualizações do plugin agendadas em segundo plano; use os comandos `/plugin` para atualizar imediatamente e depois recarregue os plugins ou inicie uma nova tarefa. Atualizações do plugin do Codex são explícitas e usam o fluxo `codex plugin marketplace upgrade` e reinstalação descrito acima.
 
 ### Compilação a partir do código-fonte
 
@@ -147,7 +163,7 @@ No macOS ou WSL, `claude mcp add-from-claude-desktop` pode importar esse servido
 ## Como Funciona
 
 1. O servidor inicia via stdio JSON-RPC e registra as ferramentas MCP.
-2. Ele detecta automaticamente a raiz do workspace (`--root`, `CLAUDE_PROJECT_DIR`, MCP `roots/list` e depois cwd) e cria um índice local de chunks em `~/.memento-mcp/`.
+2. Ele detecta automaticamente a raiz do workspace (`--root`, `CLAUDE_PROJECT_DIR`, `MEMENTO_PROJECT_DIR`, MCP `roots/list` e depois cwd) e cria um índice local de chunks em `~/.memento-mcp/`.
 3. A detecção de mudanças é incremental:
    - Repositórios Git: polling de `git status` (caminho rápido)
    - Repositórios sem Git: fallback com watcher do sistema de arquivos

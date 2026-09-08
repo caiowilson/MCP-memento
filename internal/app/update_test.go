@@ -166,13 +166,28 @@ func TestUpdateCacheAndNotice(t *testing.T) {
 		t.Fatalf("read cache = %#v, %v", got, ok)
 	}
 	var out bytes.Buffer
-	writeUpdateNotice(&out, "1.1.0", "1.2.0", false)
+	writeUpdateNotice(&out, "1.1.0", "1.2.0", "")
 	if !strings.Contains(out.String(), "memento-mcp update") {
 		t.Fatalf("notice = %q", out.String())
 	}
 	out.Reset()
-	writeUpdateNotice(&out, "1.1.0", "1.2.0", true)
+	writeUpdateNotice(&out, "1.1.0", "1.2.0", "claude")
 	if !strings.Contains(out.String(), "via /plugin") {
 		t.Fatalf("plugin notice = %q", out.String())
+	}
+	out.Reset()
+	writeUpdateNotice(&out, "1.1.0", "1.2.0", "codex")
+	if !strings.Contains(out.String(), "codex plugin marketplace upgrade memento-mcp") || strings.Contains(out.String(), "memento-mcp update") {
+		t.Fatalf("codex notice = %q", out.String())
+	}
+}
+
+func TestRunUpdateRejectsCodexPluginManagedInstall(t *testing.T) {
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	t.Setenv("MEMENTO_PLUGIN_HOST", "codex")
+	var out bytes.Buffer
+	err := runUpdate(nil, &out)
+	if err == nil || !strings.Contains(err.Error(), "managed by the Codex plugin") || !strings.Contains(err.Error(), "codex plugin marketplace upgrade memento-mcp") {
+		t.Fatalf("expected Codex plugin-managed error, got %v", err)
 	}
 }

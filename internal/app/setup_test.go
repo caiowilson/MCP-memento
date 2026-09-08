@@ -521,6 +521,15 @@ func TestConfigureClientsPreflightsAllJSONBeforeWriting(t *testing.T) {
 	}
 }
 
+func TestRunSetupRefusesCodexPluginManagedExecutablePath(t *testing.T) {
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	t.Setenv("MEMENTO_PLUGIN_HOST", "codex")
+	err := runSetup([]string{"--client=vscode"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "Codex plugin-managed cache path") {
+		t.Fatalf("expected Codex plugin-managed setup refusal, got %v", err)
+	}
+}
+
 func TestRunSetupRefusesPluginManagedExecutablePath(t *testing.T) {
 	t.Setenv("CLAUDE_PLUGIN_DATA", t.TempDir())
 	err := runSetup([]string{"--client=vscode"}, &bytes.Buffer{}, &bytes.Buffer{})

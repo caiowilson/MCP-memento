@@ -17,9 +17,12 @@ const {
   marketplaceUpdateStatePath,
   parseChecksum,
   resolveBinary,
+  resolvePluginProvider,
   resolveTarget,
+  resolveWorkspaceRoot,
   run,
   runMarketplaceUpdateCheck,
+  serverEnvironment,
   startServerProcess,
 } = require("../bin/memento-launcher.cjs");
 
@@ -178,12 +181,20 @@ test("a live update lock and update failures leave the active server available",
 
 test("the verified server starts before the background update check", async () => {
   const events = [];
+  const suppliedEnv = {
+    CLAUDE_PROJECT_DIR: "/workspace/from-supplied-env",
+    MEMENTO_TEST_MARKER: "preserved",
+  };
   const child = new EventEmitter();
   child.killed = false;
   child.kill = () => { child.killed = true; };
   const completed = startServerProcess("/verified/memento-mcp", {
-    spawnServer(binary) {
+    env: suppliedEnv,
+    spawnServer(binary, args, spawnOptions) {
       events.push(`spawn:${binary}`);
+      assert.deepEqual(args, []);
+      assert.equal(spawnOptions.cwd, suppliedEnv.CLAUDE_PROJECT_DIR);
+      assert.equal(spawnOptions.env, suppliedEnv);
       queueMicrotask(() => child.emit("spawn"));
       return child;
     },
@@ -202,12 +213,187 @@ test("the verified server starts before the background update check", async () =
   assert.equal(child.killed, false);
 });
 
+test("Codex starts the verified server without invoking Claude update commands", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-codex-runtime-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const pluginData = path.join(root, "plugin-data");
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let commands = 0;
+  let spawnedEnv;
+
+  const env = {
+    HOME: "/shared-user-home",
+    MEMENTO_PLUGIN_BINARY: "/verified/memento-mcp",
+    MEMENTO_PLUGIN_DATA: pluginData,
+    MEMENTO_PLUGIN_PROVIDER: "codex",
+  };
+
+  const completed = run({
+    env,
+    resolveBinary: async () => "/verified/memento-mcp",
+    spawnServer: (_binary, _args, spawnOptions) => {
+      spawnedEnv = spawnOptions.env;
+      setImmediate(() => {
+        child.emit("spawn");
+        setImmediate(() => child.emit("exit", 0, null));
+      });
+      return child;
+    },
+    commandRunner: async () => {
+      commands += 1;
+      throw new Error("Codex must not invoke Claude plugin commands");
+    },
+    forwardSignals: false,
+  });
+  await completed;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(commands, 0);
+  assert.equal(spawnedEnv.HOME, env.HOME);
+  assert.equal(spawnedEnv.MEMENTO_PLUGIN_BINARY, undefined);
+  assert.equal(spawnedEnv.MEMENTO_PLUGIN_DATA, undefined);
+  assert.equal(spawnedEnv.MEMENTO_PLUGIN_PROVIDER, undefined);
+  await assert.rejects(fsp.stat(marketplaceUpdateStatePath(pluginData)), { code: "ENOENT" });
+});
+
+test("Codex passes its workspace root and plugin-managed host to the server", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-codex-root-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  await fsp.mkdir(workspace);
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let spawnOptions;
+
+  const completed = run({
+    env: {
+      MEMENTO_PLUGIN_DATA: path.join(root, "plugin-data"),
+      MEMENTO_PLUGIN_PROVIDER: "codex",
+    },
+    cwd: workspace,
+    resolveBinary: async () => "/verified/memento-mcp",
+    spawnServer: (_binary, _args, options) => {
+      spawnOptions = options;
+      setImmediate(() => {
+        child.emit("spawn");
+        setImmediate(() => child.emit("exit", 0, null));
+      });
+      return child;
+    },
+    forwardSignals: false,
+  });
+  await completed;
+
+  assert.equal(spawnOptions.cwd, workspace);
+  assert.equal(spawnOptions.env.MEMENTO_PROJECT_DIR, workspace);
+  assert.equal(spawnOptions.env.MEMENTO_PLUGIN_HOST, "codex");
+});
+
+test("Claude keeps its own project directory and plugin-managed host", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-claude-root-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let spawnOptions;
+
+  const completed = run({
+    env: {
+      CLAUDE_PROJECT_DIR: root,
+      MEMENTO_PLUGIN_DATA: path.join(root, "plugin-data"),
+    },
+    home: root,
+    resolveBinary: async () => "/verified/memento-mcp",
+    spawnServer: (_binary, _args, options) => {
+      spawnOptions = options;
+      setImmediate(() => {
+        child.emit("spawn");
+        setImmediate(() => child.emit("exit", 0, null));
+      });
+      return child;
+    },
+    commandRunner: async () => ({ stdout: "", stderr: "" }),
+    forwardSignals: false,
+  });
+  await completed;
+
+  assert.equal(spawnOptions.cwd, root);
+  assert.equal(spawnOptions.env.MEMENTO_PROJECT_DIR, undefined);
+  assert.equal(spawnOptions.env.MEMENTO_PLUGIN_HOST, "claude");
+});
+
+test("a local binary override is not reported as plugin-managed", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-override-host-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let spawnOptions;
+
+  const completed = run({
+    env: {
+      MEMENTO_PLUGIN_BINARY: "/local/build/memento-mcp",
+      MEMENTO_PLUGIN_DATA: path.join(root, "plugin-data"),
+      MEMENTO_PLUGIN_PROVIDER: "codex",
+    },
+    cwd: root,
+    resolveBinary: async () => "/local/build/memento-mcp",
+    spawnServer: (_binary, _args, options) => {
+      spawnOptions = options;
+      setImmediate(() => {
+        child.emit("spawn");
+        setImmediate(() => child.emit("exit", 0, null));
+      });
+      return child;
+    },
+    forwardSignals: false,
+  });
+  await completed;
+
+  assert.equal(spawnOptions.env.MEMENTO_PLUGIN_HOST, undefined);
+  assert.equal(spawnOptions.env.MEMENTO_PROJECT_DIR, root);
+});
+
+test("workspace root resolution stays Codex-specific and absolute", () => {
+  assert.equal(resolveWorkspaceRoot("claude", { CLAUDE_PROJECT_DIR: "/workspace" }, "/cwd"), undefined);
+  assert.equal(resolveWorkspaceRoot("codex", {}, "/cwd/repo"), "/cwd/repo");
+  assert.equal(resolveWorkspaceRoot("codex", { MEMENTO_PROJECT_DIR: "/explicit" }, "/cwd"), "/explicit");
+  assert.equal(path.isAbsolute(resolveWorkspaceRoot("codex", {}, "relative/repo")), true);
+});
+
+test("plugin provider defaults to Claude and rejects unknown hosts", () => {
+  assert.equal(resolvePluginProvider(), "claude");
+  assert.equal(resolvePluginProvider("codex"), "codex");
+  assert.throws(() => resolvePluginProvider("other"), /unsupported plugin provider/);
+});
+
+test("server environment preserves shared user storage while removing launcher-only state", () => {
+  const source = {
+    HOME: "/shared-user-home",
+    MEMENTO_PLUGIN_BINARY: "/provider/cache/memento-mcp",
+    MEMENTO_PLUGIN_DATA: "/provider/cache",
+    MEMENTO_PLUGIN_PROVIDER: "codex",
+    MEMENTO_UPDATE_CHECK: "false",
+  };
+
+  assert.deepEqual(serverEnvironment(source), {
+    HOME: source.HOME,
+    MEMENTO_UPDATE_CHECK: source.MEMENTO_UPDATE_CHECK,
+  });
+  assert.equal(source.MEMENTO_PLUGIN_DATA, "/provider/cache");
+});
+
 test("plugin, marketplace, and launcher versions stay aligned", async () => {
   const pluginRoot = path.resolve(__dirname, "..");
   const plugin = JSON.parse(await fsp.readFile(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  const codexPlugin = JSON.parse(await fsp.readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const marketplace = JSON.parse(await fsp.readFile(path.join(pluginRoot, "..", "..", ".claude-plugin", "marketplace.json"), "utf8"));
   const entry = marketplace.plugins.find((candidate) => candidate.name === plugin.name);
   assert.equal(plugin.version, RELEASE_VERSION);
+  assert.equal(codexPlugin.version, RELEASE_VERSION);
   assert.equal(entry.version, RELEASE_VERSION);
 });
 
@@ -275,6 +461,35 @@ test("resolveBinary downloads, verifies, and caches a release binary", async () 
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
+});
+
+test("a verified cached binary stays byte-identical when the release is unavailable", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "memento-plugin-offline-cache-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const pluginData = path.join(root, "data");
+  const pluginRoot = path.join(root, "plugin");
+  const asset = resolveTarget().asset;
+  const installed = path.join(pluginData, "bin", `server-v${RELEASE_VERSION}`, asset);
+  const binary = Buffer.from("known-good cached executable");
+  const digest = crypto.createHash("sha256").update(binary).digest("hex");
+  await fsp.mkdir(path.dirname(installed), { recursive: true });
+  await fsp.writeFile(installed, binary, { mode: 0o700 });
+  await fsp.writeFile(`${installed}.sha256`, `${digest}  ${asset}\n`, { mode: 0o600 });
+  let requests = 0;
+
+  const resolved = await resolveBinary({
+    pluginData,
+    pluginRoot,
+    requestBuffer: async () => {
+      requests += 1;
+      throw Object.assign(new Error("offline"), { code: "ENETUNREACH" });
+    },
+  });
+
+  assert.equal(resolved, installed);
+  assert.equal(requests, 0);
+  assert.deepEqual(await fsp.readFile(installed), binary);
+  assert.equal(await isVerified(installed, `${installed}.sha256`, asset), true);
 });
 
 test("resolveBinary replaces a corrupted cached binary", async () => {
@@ -358,6 +573,20 @@ test("resolveBinary supports an explicit local binary for development", async ()
 test("resolveBinary rejects an unexpanded plugin data path", async () => {
   await assert.rejects(
     resolveBinary({ pluginData: "${CLAUDE_PLUGIN_DATA}", pluginRoot: "/tmp/plugin" }),
-    /did not resolve to an absolute path/,
+    /MEMENTO_PLUGIN_DATA did not resolve to an absolute path/,
+  );
+});
+
+test("resolveBinary fails clearly when the plugin host omits its data directory", async (t) => {
+  const previous = process.env.MEMENTO_PLUGIN_DATA;
+  delete process.env.MEMENTO_PLUGIN_DATA;
+  t.after(() => {
+    if (previous === undefined) delete process.env.MEMENTO_PLUGIN_DATA;
+    else process.env.MEMENTO_PLUGIN_DATA = previous;
+  });
+
+  await assert.rejects(
+    resolveBinary({ pluginRoot: "/tmp/plugin" }),
+    /MEMENTO_PLUGIN_DATA was not provided by the plugin host/,
   );
 });

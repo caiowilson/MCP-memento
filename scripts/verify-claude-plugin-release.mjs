@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+const require = createRequire(import.meta.url);
 
 function expectedVersion(refName) {
   const match = /^server\/v(\d+\.\d+\.\d+)$/.exec(refName || "");
@@ -15,19 +18,21 @@ async function readJSON(root, relativePath) {
 export async function validateClaudePluginRelease({ root, refName }) {
   const expected = expectedVersion(refName);
   const marketplacePath = ".claude-plugin/marketplace.json";
-  const pluginPath = "plugins/memento/.claude-plugin/plugin.json";
+  const claudePluginPath = "plugins/memento/.claude-plugin/plugin.json";
+  const codexPluginPath = "plugins/memento/.codex-plugin/plugin.json";
   const launcherPath = "plugins/memento/bin/memento-launcher.cjs";
-  const [marketplace, plugin, launcher] = await Promise.all([
+  const [marketplace, claudePlugin, codexPlugin] = await Promise.all([
     readJSON(root, marketplacePath),
-    readJSON(root, pluginPath),
-    readFile(resolve(root, launcherPath), "utf8"),
+    readJSON(root, claudePluginPath),
+    readJSON(root, codexPluginPath),
   ]);
+  const launcher = require(resolve(root, launcherPath));
   const entry = marketplace.plugins?.find((candidate) => candidate.name === "memento");
-  const launcherVersion = /const\s+RELEASE_VERSION\s*=\s*"([^"]+)"/.exec(launcher)?.[1];
   const mismatches = [
     [marketplacePath, entry?.version],
-    [pluginPath, plugin.version],
-    [launcherPath, launcherVersion],
+    [claudePluginPath, claudePlugin.version],
+    [codexPluginPath, codexPlugin.version],
+    [launcherPath, launcher.RELEASE_VERSION],
   ].filter(([, actual]) => actual !== expected);
 
   if (mismatches.length > 0) {

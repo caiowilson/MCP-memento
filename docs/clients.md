@@ -77,6 +77,47 @@ The update command downloads the matching macOS, Linux, or Windows asset, verifi
 
 Published builds check for a newer server release in the background at most once every 24 hours. The request contains no workspace path or repository content. Only an available-update notice is written to stderr, keeping MCP stdout protocol-safe; network and cache failures stay silent. Set `MEMENTO_UPDATE_CHECK=false` to opt out. Development builds do not perform the automatic check.
 
+## Codex
+
+### Plugin installation (recommended)
+
+The native Codex plugin removes the standalone binary path and MCP registration steps. Add this repository as a marketplace and install Memento:
+
+```bash
+codex plugin marketplace add caiowilson/MCP-memento
+codex plugin add memento@memento-mcp
+```
+
+Start a new task after installation. Use `/mcp` in Codex or `codex mcp list` in a terminal to verify the plugin-provided `memento` STDIO server. The ChatGPT desktop app and Codex CLI support plugins; the Codex IDE extension can use standalone MCP configuration but does not install plugins.
+
+The plugin pins its launcher and server to the same version. On first start, the launcher detects x64 or arm64 macOS, Linux, or Windows, downloads that version's prebuilt server, verifies its SHA-256 sidecar, and stores both under Codex `${PLUGIN_DATA}`. Every later start rehashes the cached executable. A valid cache works offline; a missing or invalid cache needs GitHub access so the launcher can replace it. Node.js must be on `PATH`; Go is not required.
+
+`${PLUGIN_DATA}` is only the provider-specific executable cache. The server does not use it for repository data: indexes and durable notes continue to resolve under the user's canonical `~/.memento-mcp/repos/<repo-id>/` tree. The repository identity is derived from the active canonical workspace, and linked Git worktrees share the main worktree's durable-note scope. Consequently, Codex reads notes written through Claude, Cursor, BB, OpenRouter-based clients, and other Memento clients—and those clients read notes written through Codex. Re-creatable indexes may remain checkout-local so code context follows the active worktree; user-authored durable notes are shared.
+
+Update the Git marketplace snapshot, reinstall the plugin, and start a new task:
+
+```bash
+codex plugin marketplace upgrade memento-mcp
+codex plugin add memento@memento-mcp
+```
+
+The plugin launcher passes the Codex workspace directory to the server as `MEMENTO_PROJECT_DIR`, so `memory_list` and `memory_search` resolve the active repository without an explicit `root` argument. Set `MEMENTO_PROJECT_DIR` yourself to pin a different checkout; `--root` and `CLAUDE_PROJECT_DIR` still take precedence.
+
+Codex updates are explicit. The shared launcher does not invoke Claude's background marketplace commands when Codex starts it.
+
+For local development, add the current checkout as a local marketplace, install from it, and use a locally built server without changing the secure download path:
+
+```bash
+codex plugin marketplace add "$PWD"
+codex plugin add memento@memento-mcp
+make build
+MEMENTO_PLUGIN_BINARY="$PWD/bin/memento-mcp" codex
+```
+
+If the marketplace name is already configured from GitHub, use an isolated Codex home for the local source or remove that marketplace before adding the checkout. If startup fails, confirm `node` is on `PATH`, check that the pinned GitHub release is reachable, and verify that the OS/CPU pair is supported. A missing or corrupted cache is downloaded again automatically. Always use a new task after installation or update so Codex loads the new plugin snapshot.
+
+These commands and paths follow the official [Codex plugin](https://developers.openai.com/plugins/build/plugins) and [MCP](https://developers.openai.com/codex/mcp) documentation.
+
 ## Claude Code
 
 ### Plugin installation (recommended)
@@ -182,7 +223,7 @@ Select `memento` in the interactive importer, then verify it with `claude mcp li
 
 If your MCP client expects a different JSON shape, reuse the same values for `command`, `args`, `cwd`, `env`, and stdio transport.
 
-## ChatGPT and Codex
+## Standalone Codex and ChatGPT desktop setup
 
 Register a standalone build with Codex using its absolute path:
 
@@ -208,12 +249,13 @@ The server resolves its workspace root in this order:
 
 1. Explicit `--root DIR` or client config
 2. `CLAUDE_PROJECT_DIR` from Claude Code
-3. MCP client `roots/list`, when the client advertises Roots support
-4. Current working directory
+3. `MEMENTO_PROJECT_DIR`, set by the Codex plugin launcher from the Codex workspace
+4. MCP client `roots/list`, when the client advertises Roots support
+5. Current working directory
 
 Claude Code sessions therefore index the launched project without a manual `repo_switch_workspace` call. Use `repo_switch_workspace` only when you intentionally retarget the same MCP session to another repository.
 
-The current-working-directory fallback is not treated as verified active-workspace scope for `memory_search` or `memory_list`. Those reads fail closed until the caller passes `root` or the workspace is established by one of the first three sources above or by `repo_switch_workspace`. For clients with MCP Roots support, tool calls are also held while a `roots/list_changed` refresh is pending, preventing results from the previously active workspace.
+The current-working-directory fallback is not treated as verified active-workspace scope for `memory_search` or `memory_list`. Those reads fail closed until the caller passes `root` or the workspace is established by one of the first four sources above or by `repo_switch_workspace`. For clients with MCP Roots support, tool calls are also held while a `roots/list_changed` refresh is pending, preventing results from the previously active workspace.
 
 Durable notes are shared across linked Git worktrees. Memento maps a linked checkout to the corresponding path in the main worktree for locked, atomic note storage, while repository context, diffs, and memory-anchor reconciliation continue to use the active checkout. The public `root` argument always means the active checkout for both `memory_*` and `repo_*`; never pass the main worktree merely to reach shared memory. Structured tool results report the resolved checkout, and memory results also report the durable-memory scope. Older worktree-specific note files are merged into the shared store once and archived in place.
 
@@ -239,6 +281,7 @@ Keep defaults unless a workspace needs different limits or configured behavior. 
 - Context: `MEMENTO_CONTEXT_MAX_TOKENS` (`7000`), `MEMENTO_OUTLINE_MAX_FILE_BYTES` (`1048576`), `MEMENTO_RESOURCE_MAX_BYTES` (`32000`), and `MEMENTO_PRIME_MAX_BYTES` (`24000`).
 - Semantic retrieval: `MEMENTO_SEMANTIC_ENABLED` (`auto`), `MEMENTO_EMBEDDING_MODEL` (`nomic-embed-text:v1.5`), `MEMENTO_OLLAMA_URL` (`http://127.0.0.1:11434`), `MEMENTO_HYBRID_SEMANTIC_WEIGHT` (`0.65`), `MEMENTO_EMBEDDING_BATCH_SIZE` (`32`), and `MEMENTO_EMBEDDING_TIMEOUT_SECONDS` (`30`).
 - Redaction: `MEMENTO_REDACTION_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_ENABLED` (`true`), `MEMENTO_REDACTION_ENTROPY_THRESHOLD` (`4.3`), `MEMENTO_REDACTION_HEX_ENTROPY_THRESHOLD` (`3.5`), `MEMENTO_REDACTION_MIN_TOKEN_LENGTH` (`24`), plus JSON regular-expression arrays in `MEMENTO_REDACTION_ADDITIONAL_PATTERNS` and `MEMENTO_REDACTION_ALLOW_PATTERNS`.
+- Workspace and plugin host: `MEMENTO_PROJECT_DIR` (workspace root fallback after `--root` and `CLAUDE_PROJECT_DIR`; set by the Codex plugin launcher) and `MEMENTO_PLUGIN_HOST` (`claude` or `codex`; set by a plugin launcher to make `update` and `setup` refuse to mutate a plugin-managed install; `CLAUDE_PLUGIN_DATA`, set by Claude Code, implies the `claude` host). The launcher-only variables `MEMENTO_PLUGIN_BINARY`, `MEMENTO_PLUGIN_DATA`, and `MEMENTO_PLUGIN_PROVIDER` are described in the Codex and Claude Code plugin sections above.
 - Operations: `MEMENTO_UPDATE_CHECK` (enabled for release builds unless set to `false`), `MEMENTO_FEEDBACK_ENABLED` (`false`), optional `MEMENTO_FEEDBACK_DIR`, and `MEMENTO_MCP_DEV_LOG` (`0`; use `1` for stderr tool-call logs).
 
 Invalid values fail closed or fall back as documented by `memento-mcp help`; security-sensitive Ollama URLs must remain unauthenticated loopback HTTP.

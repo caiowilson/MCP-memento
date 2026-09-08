@@ -634,6 +634,38 @@ func TestBrokerMemoryReadsRejectUnverifiedCWD(t *testing.T) {
 	}
 }
 
+func TestBrokerMemoryReadsAcceptPluginProjectDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", root)
+
+	s, err := NewServer(Config{childFactory: newLocalChildFactory(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	s.StartBackgroundIndexing(context.Background())
+
+	for _, tc := range []struct {
+		name string
+		args json.RawMessage
+	}{
+		{name: "memory_search", args: json.RawMessage(`{"query":"handoff"}`)},
+		{name: "memory_list", args: json.RawMessage(`{}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := s.callTool(context.Background(), toolCallParams{Name: tc.name, Arguments: tc.args})
+			if err != nil {
+				t.Fatalf("plugin-provided workspace root should permit memory reads: %v", err)
+			}
+			if res.IsError {
+				t.Fatalf("expected successful memory read, got %#v", res)
+			}
+		})
+	}
+}
+
 func TestBrokerToolsListAddsRootOverrideSchema(t *testing.T) {
 	root := t.TempDir()
 	s := newBrokerServerForTest(t, root)

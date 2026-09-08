@@ -25,7 +25,7 @@ help:
 	@printf "  build     Build ./cmd/server into ./bin/$(BIN_NAME)\n"
 	@printf "  test      Run Go, release-contract, retrieval, and PHP compatibility tests\n"
 	@printf "  coverage-internal Run the two blocking internal-package coverage checks\n"
-	@printf "  plugin-test Test and strictly validate the Claude Code plugin\n"
+	@printf "  plugin-test Test the Codex plugin and strictly validate the Claude Code plugins\n"
 	@printf "  release-test Validate release workflow and macOS signing contracts\n"
 	@printf "  retrieval-eval Run retrieval fixtures and print ranking metrics\n"
 	@printf "  php-compat-eval Run PHP structural, Composer, relationship, and retrieval accuracy gates\n"
@@ -74,6 +74,7 @@ coverage-internal:
 
 plugin-test:
 	node --test plugins/memento/test/launcher.test.cjs
+	node --test test/codex-plugin.test.mjs
 	node --test test/memento-workflows.test.mjs
 	claude plugin validate --strict .
 	claude plugin validate --strict ./plugins/memento

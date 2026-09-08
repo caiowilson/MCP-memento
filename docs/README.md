@@ -9,6 +9,7 @@ This directory collects the main project documentation, including client setup, 
 ## Contents
 
 - Getting started: `../README.md`
+- Native Codex plugin: `clients.md#codex`
 - Claude Code plugin, manual setup, and Claude Desktop: `clients.md#claude-code`
 - Generic MCP clients: `clients.md`
 - VS Code usage: `vscode.md`
@@ -46,9 +47,9 @@ This directory collects the main project documentation, including client setup, 
 
 ## Automatic indexing
 
-On startup the server resolves the workspace root in this order: explicit `--root`/config, `CLAUDE_PROJECT_DIR` (set by Claude Code), MCP client `roots/list`, then the current working directory. It then builds a best-effort, on-disk index of that repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. `repo_switch_workspace` remains available as a manual override during a session.
+On startup the server resolves the workspace root in this order: explicit `--root`/config, `CLAUDE_PROJECT_DIR` (set by Claude Code), `MEMENTO_PROJECT_DIR` (set by the Codex plugin launcher), MCP client `roots/list`, then the current working directory. It then builds a best-effort, on-disk index of that repo under `~/.memento-mcp/` so tools like `repo_context` can return useful chunks quickly. `repo_switch_workspace` remains available as a manual override during a session.
 
-`memory_search` and `memory_list` fail closed when the only available scope is the server's launch directory, because that directory may not be the client's active workspace. Pass the tool's `root` argument, configure `--root` or `CLAUDE_PROJECT_DIR`, use a client with MCP Roots support, or call `repo_switch_workspace` before reading durable notes. When a Roots-capable client reports a workspace change, Memento also blocks tool results until the refreshed `roots/list` response is processed.
+`memory_search` and `memory_list` fail closed when the only available scope is the server's launch directory, because that directory may not be the client's active workspace. Pass the tool's `root` argument, configure `--root`, `CLAUDE_PROJECT_DIR`, or `MEMENTO_PROJECT_DIR`, use a client with MCP Roots support, or call `repo_switch_workspace` before reading durable notes. When a Roots-capable client reports a workspace change, Memento also blocks tool results until the refreshed `roots/list` response is processed.
 
 By default (`MEMENTO_CHANGE_DETECTOR=auto`) the indexer uses handle-free adaptive Git polling for Git worktrees, including linked or isolated worktrees, and falls back to a recursive filesystem watcher only when Git is unavailable. The nominal interval backs off from 2 to 4, 8, 16, then 30 seconds while quiet; changes or MCP tool activity reset it to 2 seconds, repeated Git errors cap at 60 seconds, and ±20% jitter keeps concurrent sessions from scanning together. Dirty-path fingerprints catch repeated edits and transitions back to clean content. You can force a specific strategy with `MEMENTO_CHANGE_DETECTOR=fs` (filesystem watcher first) or `MEMENTO_CHANGE_DETECTOR=git` (Git polling first). See `docs/adr/ADRs.md`.
 

@@ -506,6 +506,38 @@ func TestNewServerUsesClaudeProjectDir(t *testing.T) {
 	}
 }
 
+func TestNewServerUsesPluginProjectDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", dir)
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	if s.root != dir || s.rootSource != workspaceRootSourcePluginProjectDir {
+		t.Fatalf("root %s (source %s), want %s from MEMENTO_PROJECT_DIR", s.root, s.rootSource, dir)
+	}
+}
+
+func TestClaudeProjectDirWinsOverPluginProjectDir(t *testing.T) {
+	claudeDir := t.TempDir()
+	t.Setenv("CLAUDE_PROJECT_DIR", claudeDir)
+	t.Setenv("MEMENTO_PROJECT_DIR", t.TempDir())
+	s, err := NewServer(Config{
+		childFactory: newLocalChildFactory(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.shutdown() })
+	if s.root != claudeDir || s.rootSource != workspaceRootSourceClaudeProjectDir {
+		t.Fatalf("root %s (source %s), want %s from CLAUDE_PROJECT_DIR", s.root, s.rootSource, claudeDir)
+	}
+}
+
 func TestStartBackgroundIndexingIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "fixture.go"), []byte("package fixture\n"), 0o644); err != nil {
@@ -562,6 +594,7 @@ func TestNewServerFallsBackToCwd(t *testing.T) {
 		}
 	})
 	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", "")
 
 	s, err := NewServer(Config{
 		childFactory: newLocalChildFactory(t),
@@ -636,6 +669,7 @@ func TestServeStdioUsesRootsListFallback(t *testing.T) {
 		}
 	})
 	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", "")
 
 	s, err := NewServer(Config{
 		childFactory: newLocalChildFactory(t),
@@ -738,6 +772,7 @@ func TestServeStdioRejectsToolCallWhileRootsListPending(t *testing.T) {
 		}
 	})
 	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", "")
 
 	s, err := NewServer(Config{
 		childFactory: newLocalChildFactory(t),
@@ -829,6 +864,7 @@ func TestServeStdioRejectsToolCallWhileRootsListRefreshPending(t *testing.T) {
 		}
 	})
 	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Setenv("MEMENTO_PROJECT_DIR", "")
 
 	s, err := NewServer(Config{childFactory: newLocalChildFactory(t)})
 	if err != nil {

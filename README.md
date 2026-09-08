@@ -28,13 +28,27 @@ fun easy tl;dr version of the change logs: [`Nomit Memento`](https://nomit.dev/c
 - PHP compatibility, Composer autoloading, fixtures, and accuracy metrics: [`docs/php-compatibility.md`](./docs/php-compatibility.md)
 - macOS release signing and notarization: [`docs/macos-signing.md`](./docs/macos-signing.md)
 - VS Code extension: [`vscode-extension/README.md`](./vscode-extension/README.md)
+- Native Codex and Claude Code plugin: [`plugins/memento/README.md`](./plugins/memento/README.md)
 - Credential-free Claude Code workflows: [`plugins/memento-workflows/README.md`](./plugins/memento-workflows/README.md)
 - ADR guide: [`docs/adr/README.md`](./docs/adr/README.md)
 - ADR index and decisions: [`docs/adr/ADRs.md`](./docs/adr/ADRs.md)
 
 ## Installation
 
-### Claude Code plugin (recommended)
+### Codex plugin (recommended for Codex)
+
+Add this repository as a Codex marketplace and install the native Memento plugin:
+
+```bash
+codex plugin marketplace add caiowilson/MCP-memento
+codex plugin add memento@memento-mcp
+```
+
+Start a new Codex task, then use `/mcp` or `codex mcp list` to verify the `memento` server. On first start, the plugin downloads the version-pinned binary for x64 or arm64 macOS, Linux, or Windows, verifies its SHA-256 checksum, and caches it in Codex plugin data. Later starts rehash that cache and work offline. Only the executable and its checksum use the provider-specific plugin cache: durable notes remain in the canonical `~/.memento-mcp/repos/<repo-id>/` store, so Codex, Claude, Cursor, BB, OpenRouter-based clients, and other Memento clients share memory for the same repository. Node.js must be on `PATH`; Go is not required.
+
+To update, run `codex plugin marketplace upgrade memento-mcp`, reinstall with `codex plugin add memento@memento-mcp`, and start a new task. See the [native plugin guide](./plugins/memento/README.md#codex) for local development, verification, and troubleshooting. The packaging follows the official [Codex plugin documentation](https://developers.openai.com/plugins/build/plugins).
+
+### Claude Code plugin (recommended for Claude Code)
 
 Add this repository as a Claude Code marketplace, install Memento, then reload active plugins:
 
@@ -67,7 +81,7 @@ Install the latest prebuilt server to `~/.local/bin`, then automatically registe
 curl -fsSL https://github.com/caiowilson/MCP-memento/releases/download/server%2Flatest/install.sh | sh
 ```
 
-The installer downloads the platform binary and its SHA-256 sidecar, validates the sidecar filename and digest, executes a staged version preflight, atomically replaces the target, retains the prior binary as `.previous`, runs idempotent client setup, and finishes with `doctor`. Set `MEMENTO_INSTALL_DIR` or pass `--install-dir`; use `--clients codex,claude`, `--no-setup`, or `--version 1.0.4` for deterministic control. It supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
+The installer downloads the platform binary and its SHA-256 sidecar, validates the sidecar filename and digest, executes a staged version preflight, atomically replaces the target, retains the prior binary as `.previous`, runs idempotent client setup, and finishes with `doctor`. Set `MEMENTO_INSTALL_DIR` or pass `--install-dir`; use `--clients codex,claude`, `--no-setup`, or `--version 1.1.0` for deterministic control. It supports x64 and arm64 macOS, Linux, and Windows environments with a POSIX shell. Ensure the selected directory is on `PATH`, then verify the binary:
 
 ```bash
 memento-mcp help
@@ -80,7 +94,7 @@ Update a standalone installation in place:
 memento-mcp update
 ```
 
-Use `memento-mcp update --check` to check without installing. Release builds also perform a silent, throttled check at server startup and write only an update-available notice to stderr; they never write update messages to MCP stdout. Set `MEMENTO_UPDATE_CHECK=false` to disable that check. Claude Code marketplace installs stage plugin updates in the background once per day after startup; use `/plugin` commands to update immediately, then reload plugins or start a new task.
+Use `memento-mcp update --check` to check without installing. Release builds also perform a silent, throttled check at server startup and write only an update-available notice to stderr; they never write update messages to MCP stdout. Set `MEMENTO_UPDATE_CHECK=false` to disable that check. Claude Code marketplace installs stage plugin updates in the background once per day; Codex plugin updates use the explicit `codex plugin marketplace upgrade` and reinstall flow above.
 
 ### Build from source
 
@@ -106,7 +120,7 @@ memento-mcp setup --clients=codex,claude
 memento-mcp doctor --clients=codex,claude
 ```
 
-Use `memento-mcp print-config` for a generic JSON entry and `memento-mcp print-guidance` for the canonical agent instructions. Claude Code plugin users need no separate MCP configuration; verify the automatically started server with `/mcp`.
+Use `memento-mcp print-config` for a generic JSON entry and `memento-mcp print-guidance` for the canonical agent instructions. Codex and Claude Code plugin users need no separate MCP registration; verify the automatically started server with `/mcp`.
 
 For manual Claude Code or Codex setup, the shortest local commands are:
 
@@ -128,7 +142,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
 ## How It Works
 
 1. The server starts over stdio JSON-RPC and registers MCP tools.
-2. It auto-detects the workspace root (`--root`, `CLAUDE_PROJECT_DIR`, MCP `roots/list`, then cwd) and builds a local chunk index under `~/.memento-mcp/`.
+2. It auto-detects the workspace root (`--root`, `CLAUDE_PROJECT_DIR`, `MEMENTO_PROJECT_DIR`, MCP `roots/list`, then cwd) and builds a local chunk index under `~/.memento-mcp/`.
 3. Change detection is incremental:
    - Default (`auto`): adaptive, jittered Git polling first for Git worktrees (including linked/isolated worktrees), with a recursive filesystem watcher only as fallback
    - Configurable via `MEMENTO_CHANGE_DETECTOR` (`auto` / `fs` / `git`)
@@ -154,7 +168,7 @@ Run `claude mcp list` or `codex mcp list` to verify the registration. Memento th
 ### Prerequisites
 
 - Go `1.25.5`
-- Node.js (if working on `vscode-extension/` or the Claude Code plugin)
+- Node.js (if working on `vscode-extension/` or either native plugin)
 
 ### Local Development
 
